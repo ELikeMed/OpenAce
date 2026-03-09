@@ -354,7 +354,7 @@ function App() {
           {/* Status Footer */}
           {!collapsed && (
             <Box sx={{
-              p: 2, mx: 2, mb: 2,
+              p: 2, mx: 2, mb: 1,
               borderRadius: 2,
               background: alpha(BRAND.primary, 0.06),
               border: `1px solid ${alpha(BRAND.primary, 0.12)}`,
@@ -370,6 +370,46 @@ function App() {
               </Typography>
             </Box>
           )}
+
+          {/* Founder Credit */}
+          <Box sx={{
+            px: collapsed ? 1 : 2, pb: 2, pt: 0.5,
+            textAlign: 'center',
+          }}>
+            {collapsed ? (
+              <Tooltip title="Created by Eric Greenstein" placement="right" arrow>
+                <Avatar sx={{
+                  width: 28, height: 28, mx: 'auto',
+                  fontSize: '0.7rem', fontWeight: 700,
+                  background: alpha(BRAND.textMuted, 0.1),
+                  color: BRAND.textMuted,
+                  cursor: 'default',
+                }}>
+                  EG
+                </Avatar>
+              </Tooltip>
+            ) : (
+              <Box>
+                <Typography sx={{ fontSize: '0.65rem', color: BRAND.textMuted, letterSpacing: '0.05em' }}>
+                  Created by{' '}
+                  <Box component="span" sx={{ fontWeight: 700, color: BRAND.textSecondary }}>
+                    Eric Greenstein
+                  </Box>
+                </Typography>
+                <Typography
+                  component="a"
+                  href="mailto:likemindedpro@gmail.com"
+                  sx={{
+                    fontSize: '0.6rem', color: alpha(BRAND.primary, 0.7),
+                    textDecoration: 'none', display: 'block', mt: 0.25,
+                    '&:hover': { color: BRAND.primary },
+                  }}
+                >
+                  likemindedpro@gmail.com
+                </Typography>
+              </Box>
+            )}
+          </Box>
         </Drawer>
 
         {/* Main Content Area */}
