@@ -1,0 +1,14 @@
+{
+  "id": "code-review",
+  "name": "Code Review Assistant",
+  "description": "Review code for quality, security, and best practices",
+  "category": "cto",
+  "prompt": "Review the provided code and analyze:\n    1. Code quality and readability\n    2. Security vulnerabilities\n    3. Performance issues\n    4. Best practices compliance\n    5. Suggested improvements\n    6. Priority of changes (P0, P1, P2)",
+  "tools": [],
+  "examples": [
+    "Review this code",
+    "Check my PR for issues"
+  ],
+  "created_at": "2026-02-11T19:55:49.048Z",
+  "enabled": true
+}

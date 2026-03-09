@@ -1,0 +1,14 @@
+{
+  "id": "tech-stack-review",
+  "name": "Tech Stack Review",
+  "description": "Evaluate technology stack and recommend improvements",
+  "category": "cto",
+  "prompt": "Review the tech stack and assess:\n    1. Current technologies and versions\n    2. Security and maintenance status\n    3. Performance and scalability\n    4. Cost efficiency\n    5. Modern alternatives\n    6. Migration recommendations",
+  "tools": [],
+  "examples": [
+    "Review our tech stack",
+    "Should we upgrade our technologies?"
+  ],
+  "created_at": "2026-02-11T19:55:49.048Z",
+  "enabled": true
+}

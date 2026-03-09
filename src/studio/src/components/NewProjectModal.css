@@ -1,0 +1,290 @@
+/* ── Modal overlay ── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+
+/* ── Modal container ── */
+.modal-card {
+  background: #16162a;
+  border: 1px solid #2a2a3e;
+  border-radius: 14px;
+  padding: 28px 30px;
+  width: 700px;
+  max-width: 92vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+  animation: modalFadeIn 0.2s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── Header ── */
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.modal-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #e0e0e0;
+  margin: 0;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.modal-step-indicator {
+  font-size: 12px;
+  font-weight: 600;
+  color: #667eea;
+  background: rgba(102, 126, 234, 0.12);
+  padding: 4px 12px;
+  border-radius: 20px;
+  letter-spacing: 0.3px;
+}
+
+/* ── Subtitle ── */
+.modal-subtitle {
+  font-size: 14px;
+  color: #888;
+  margin: 0 0 16px 0;
+}
+
+/* ── Step transitions ── */
+.modal-step {
+  animation: stepSlideIn 0.25s ease-out;
+}
+
+@keyframes stepSlideIn {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ── Template grid ── */
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 600px) {
+  .template-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ── Template card ── */
+.template-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 18px 10px 14px;
+  border: 1px solid #2a2a3e;
+  border-radius: 10px;
+  background: #0e0e16;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, transform 0.15s, box-shadow 0.2s;
+  font-family: inherit;
+  color: inherit;
+}
+
+.template-card:hover {
+  border-color: #444;
+  background: #1a1a30;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.template-card.selected {
+  border-color: #667eea;
+  background: rgba(102, 126, 234, 0.1);
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.25);
+}
+
+.template-card-icon {
+  font-size: 2.2rem;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+.template-card-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e0e0e0;
+}
+
+.template-card-desc {
+  font-size: 11px;
+  color: #777;
+  line-height: 1.35;
+}
+
+/* ── Selected template bar (step 2) ── */
+.selected-template-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid #2a2a3e;
+  border-radius: 10px;
+  background: rgba(102, 126, 234, 0.06);
+  margin-bottom: 20px;
+}
+
+.selected-template-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.selected-template-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #e0e0e0;
+  flex: 1;
+}
+
+.modal-btn-change {
+  background: none;
+  border: none;
+  color: #667eea;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.15s;
+  font-family: inherit;
+}
+.modal-btn-change:hover {
+  background: rgba(102, 126, 234, 0.12);
+}
+
+/* ── Form fields ── */
+.modal-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 14px;
+}
+
+.modal-optional {
+  font-weight: 400;
+  text-transform: none;
+  color: #555;
+  letter-spacing: 0;
+}
+
+.modal-input,
+.modal-select,
+.modal-textarea {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 1px solid #2a2a3e;
+  border-radius: 8px;
+  background: #0e0e16;
+  color: #e0e0e0;
+  font-size: 14px;
+  font-family: 'Inter', sans-serif;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+.modal-input:focus,
+.modal-select:focus,
+.modal-textarea:focus {
+  border-color: #667eea;
+}
+
+.modal-select {
+  cursor: pointer;
+  appearance: auto;
+}
+
+.modal-textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.modal-slug-preview {
+  display: block;
+  font-size: 11px;
+  color: #667eea;
+  margin-top: 4px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* ── Error ── */
+.modal-error {
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(255, 80, 80, 0.12);
+  color: #ff6b6b;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+/* ── Actions row ── */
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+/* ── Buttons ── */
+.modal-btn {
+  padding: 9px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.15s, background 0.15s;
+  font-family: inherit;
+}
+.modal-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.modal-btn-cancel {
+  background: rgba(255, 255, 255, 0.06);
+  color: #aaa;
+}
+.modal-btn-cancel:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.modal-btn-create {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+}
+.modal-btn-create:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}

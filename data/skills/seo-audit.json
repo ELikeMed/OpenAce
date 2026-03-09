@@ -1,0 +1,39 @@
+{
+  "id": "seo-audit",
+  "name": "SEO Website Audit",
+  "description": "Performs a comprehensive SEO audit of a website, analyzing on-page factors, technical SEO, content quality, and providing actionable recommendations to improve search rankings.",
+  "category": "marketing",
+  "role": "CMO",
+  "triggers": [
+    "seo audit",
+    "seo analysis",
+    "check seo",
+    "website optimization",
+    "search ranking",
+    "seo review"
+  ],
+  "data_requirements": [
+    {
+      "field": "website_url",
+      "description": "The full URL of the website to audit (e.g., https://example.com)",
+      "required": true
+    },
+    {
+      "field": "target_keywords",
+      "description": "Comma-separated list of target keywords the site should rank for",
+      "required": false
+    },
+    {
+      "field": "competitor_urls",
+      "description": "URLs of competitor websites for comparative analysis",
+      "required": false
+    }
+  ],
+  "systemPrompt": "You are an expert SEO analyst performing a comprehensive website audit. Analyze the following aspects of the provided website:\n\n1. **Title Tags & Meta Descriptions** — Evaluate uniqueness, length, keyword usage, and click-worthiness.\n2. **Heading Structure (H1-H6)** — Check hierarchy, keyword placement, and content organization.\n3. **Page Speed Indicators** — Assess loading performance factors like image optimization, code minification, and render-blocking resources.\n4. **Mobile-Friendliness** — Evaluate responsive design, touch targets, and mobile viewport configuration.\n5. **Content Quality** — Analyze depth, originality, keyword density, readability, and E-E-A-T signals.\n6. **Internal Linking** — Review link structure, anchor text usage, orphan pages, and crawl depth.\n7. **Backlink Profile** — Assess domain authority signals, referring domains, and link quality.\n8. **Keyword Optimization** — Evaluate keyword targeting, semantic relevance, and search intent alignment.\n9. **Schema Markup** — Check for structured data implementation and rich snippet opportunities.\n10. **Technical SEO** — Review crawlability, indexation, sitemap, robots.txt, canonical tags, and SSL.\n\nFor each area, provide:\n- A score from 1-10\n- Current status summary\n- Specific issues found\n- Prioritized recommendations\n\nIMPORTANT: Use ONLY real data provided by the user. If specific data is missing, clearly state what data you need and offer to research it. Never fabricate statistics, URLs, or specific claims.",
+  "outputFormat": "Structured SEO audit report with: Executive Summary, Overall Score (1-100), Individual Category Scores (1-10 each), Detailed Findings per category, Prioritized Action Items (High/Medium/Low), and Quick Wins section.",
+  "chainable": true,
+  "chainTargets": [
+    "content-writer",
+    "landing-page-builder"
+  ]
+}

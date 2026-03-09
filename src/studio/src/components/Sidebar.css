@@ -1,0 +1,167 @@
+/* Sidebar */
+.sidebar {
+  width: 250px;
+  min-width: 250px;
+  background: #12121a;
+  border-right: 1px solid #2a2a3e;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-section {
+  padding: 14px 12px;
+  overflow-y: auto;
+}
+.sidebar-section:first-child {
+  flex: 0 1 auto;
+  max-height: 50%;
+  border-bottom: 1px solid #2a2a3e;
+}
+
+.file-tree-section {
+  flex: 1 1 0;
+  overflow-y: auto;
+}
+
+.sidebar-heading {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #666;
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+
+.sidebar-loading,
+.sidebar-empty {
+  font-size: 13px;
+  color: #555;
+  padding: 8px 4px;
+}
+
+/* Project list */
+.project-list {
+  list-style: none;
+}
+
+.project-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+  margin-bottom: 2px;
+}
+.project-item:hover {
+  background: rgba(102, 126, 234, 0.08);
+}
+.project-item.selected {
+  background: rgba(102, 126, 234, 0.18);
+}
+
+.project-item-info {
+  flex: 1;
+  min-width: 0;
+}
+.project-item-name {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #e0e0e0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.project-item-meta {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+.project-item-type {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(118, 75, 162, 0.2);
+  color: #a78bfa;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.project-item-files {
+  font-size: 10px;
+  color: #666;
+}
+
+.project-delete-btn {
+  visibility: hidden;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  opacity: 0.6;
+  transition: opacity 0.15s, background 0.15s;
+}
+.project-item:hover .project-delete-btn {
+  visibility: visible;
+}
+.project-delete-btn:hover {
+  opacity: 1;
+  background: rgba(255, 80, 80, 0.15);
+}
+
+/* File tree */
+.file-tree {
+  font-size: 13px;
+}
+
+.tree-file,
+.tree-dir-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.tree-file:hover,
+.tree-dir-header:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.tree-file.tree-file-selected {
+  background: rgba(102, 126, 234, 0.18);
+}
+.tree-file.tree-file-selected .tree-name {
+  color: #667eea;
+  font-weight: 500;
+}
+
+.tree-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.tree-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #ccc;
+}
+.tree-size {
+  font-size: 10px;
+  color: #555;
+  flex-shrink: 0;
+}
+.tree-arrow {
+  font-size: 10px;
+  color: #555;
+  flex-shrink: 0;
+}
+
+.tree-children {
+  padding-left: 16px;
+}

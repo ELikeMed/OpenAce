@@ -1,0 +1,79 @@
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.google-drive-importer {
+    background: #2a2a2e;
+    padding: 20px;
+    border-radius: 8px;
+    width: 80%;
+    max-width: 600px;
+    color: #fff;
+    position: relative;
+}
+
+.google-drive-importer h2 {
+    margin-top: 0;
+}
+
+.connect-container {
+    text-align: center;
+    padding: 20px;
+}
+
+.folder-list ul, .file-list ul {
+    list-style: none;
+    padding: 0;
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #444;
+}
+
+.folder-list li {
+    padding: 8px;
+    cursor: pointer;
+}
+
+.folder-list li:hover, .folder-list li.selected {
+    background: #444;
+}
+
+.file-list li {
+    padding: 8px;
+    display: flex;
+    align-items: center;
+}
+
+.file-list input[type="checkbox"] {
+    margin-right: 10px;
+}
+
+.close-button {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+}
+
+.spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #3498db;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    animation: spin 1s linear infinite;
+    margin: 20px auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}

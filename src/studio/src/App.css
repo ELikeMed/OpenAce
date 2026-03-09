@@ -1,0 +1,274 @@
+/* ============================================
+   Ace Studio — Dark Theme (matches OpenAce dashboard)
+   ============================================ */
+
+/* Reset & base */
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  background: #0a0a0f;
+  color: #e0e0e0;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* ---- Layout ---- */
+.studio-app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #0a0a0f;
+}
+
+/* Top bar */
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 52px;
+  padding: 0 20px;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid #2a2a3e;
+  flex-shrink: 0;
+}
+.top-bar-left {
+  flex: 0 0 250px;
+}
+.top-bar-right {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.top-bar-center {
+  flex: 1;
+  text-align: center;
+}
+.top-bar-right {
+  text-align: right;
+}
+
+.brand {
+  font-size: 20px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.5px;
+}
+
+.project-name-display {
+  font-size: 14px;
+  font-weight: 500;
+  color: #e0e0e0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-type-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(102, 126, 234, 0.2);
+  color: #667eea;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.no-project-hint {
+  font-size: 13px;
+  color: #555;
+}
+
+.btn-new-project {
+  padding: 7px 16px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.15s;
+}
+.btn-new-project:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+.btn-new-project:active {
+  transform: translateY(0);
+}
+
+/* Action buttons (Download ZIP / Open in VS Code) */
+.btn-action {
+  padding: 7px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #ccc;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.15s;
+  white-space: nowrap;
+}
+.btn-action:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+.btn-action:active {
+  transform: translateY(0);
+}
+.btn-download:hover {
+  border-color: rgba(102, 126, 234, 0.4);
+  color: #667eea;
+}
+.btn-vscode:hover {
+  border-color: rgba(0, 168, 232, 0.4);
+  color: #00a8e8;
+}
+
+.vscode-status {
+  font-size: 11px;
+  color: #4caf50;
+  padding: 4px 8px;
+  background: rgba(76, 175, 80, 0.12);
+  border-radius: 6px;
+  animation: fade-in-out 3s ease forwards;
+  white-space: nowrap;
+}
+
+@keyframes fade-in-out {
+  0%   { opacity: 0; }
+  10%  { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Three-panel container */
+.panels {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ---- Center panel (preview/code/split) ---- */
+.center-panel {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* View toolbar */
+.view-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid #2a2a3e;
+  flex-shrink: 0;
+  min-height: 36px;
+}
+
+.view-toolbar-btn {
+  padding: 4px 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #888;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.view-toolbar-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #ccc;
+}
+.view-toolbar-btn.active {
+  background: rgba(102, 126, 234, 0.18);
+  color: #667eea;
+  border-color: rgba(102, 126, 234, 0.3);
+  font-weight: 600;
+}
+
+/* View content area */
+.view-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Split view layout */
+.view-content.split-view {
+  flex-direction: column;
+}
+.split-top,
+.split-bottom {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.split-top {
+  border-bottom: 2px solid #2a2a3e;
+}
+
+/* Refresh indicator */
+.refresh-indicator {
+  position: absolute;
+  top: 48px;
+  right: 16px;
+  z-index: 100;
+  background: rgba(0, 122, 204, 0.9);
+  color: #fff;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  animation: refresh-fade 1s ease-in-out;
+  pointer-events: none;
+}
+
+@keyframes refresh-fade {
+  0% { opacity: 1; }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
+}

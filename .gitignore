@@ -1,0 +1,82 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# All user data (created on first run)
+data/*
+!data/personas/
+!data/skills/
+!data/.gitkeep
+
+# Config files (contain API keys)
+config/openace.config.json
+config/google-credentials.json
+config/zoom-credentials.json
+.env
+.env.local
+
+# Keep example configs
+!config/openace.config.example.json
+!config/google-credentials.example.json
+
+# User projects (created by users)
+projects/
+!projects/.gitkeep
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build output
+dist/
+build/
+*.tgz
+
+# Dashboard build (rebuilt on install)
+src/desktop/dashboard-ui/dist/
+src/desktop/dashboard-ui/node_modules/
+src/studio/dist/
+src/studio/node_modules/
+
+# Internal docs and plans (not for public repo)
+plans/
+screenshots/
+DESKTOP_APP.md
+GETTING_STARTED.md
+IMPROVEMENT_PLAN.md
+INSTALL.sh
+PROJECT_OVERVIEW.md
+QUICKSTART.md
+TELEGRAM_SETUP.md
+ace-local.sh
+docs/
+ecosystem.config.cjs
+
+# Test/demo scripts (keep start-dashboard, setup, event-monitor, update)
+scripts/ace-browser-demo.js
+scripts/ace-email.js
+scripts/ace-work.js
+scripts/import-media.js
+scripts/run-desktop.cjs
+scripts/social-login.js
+scripts/test-*.js
+
+# Dead code (old Electron renderer, departments barrel)
+src/desktop/renderer/
+src/core/agents/departments/index.js
+src/desktop/dashboard-ui/data/

@@ -1,0 +1,14 @@
+{
+  "id": "weekly-marketing-report",
+  "name": "Weekly Marketing Report",
+  "description": "Generate a comprehensive weekly marketing performance report",
+  "category": "cmo",
+  "prompt": "Analyze marketing data and create a weekly report including:\n    1. Traffic and engagement metrics\n    2. Campaign performance\n    3. Lead generation results\n    4. Social media insights\n    5. Key wins and areas for improvement\n    6. Recommendations for next week",
+  "tools": [],
+  "examples": [
+    "Create my weekly marketing report",
+    "Show me this week's marketing performance"
+  ],
+  "created_at": "2026-02-11T19:55:49.047Z",
+  "enabled": true
+}

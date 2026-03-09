@@ -1,0 +1,144 @@
+/* ============================================
+   CodeViewer — Syntax-highlighted code panel
+   ============================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+.code-viewer-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #1e1e2e;
+  color: #cdd6f4;
+  overflow: hidden;
+}
+
+/* ---- Header tab bar ---- */
+.code-viewer-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid #313244;
+  flex-shrink: 0;
+  min-height: 38px;
+  transition: background 0.2s;
+}
+
+.code-viewer-file-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.code-viewer-filename {
+  font-size: 13px;
+  font-weight: 500;
+  color: #cdd6f4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+.code-viewer-lang-badge {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 8px;
+  background: rgba(102, 126, 234, 0.2);
+  color: #89b4fa;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* ---- Code body (line numbers + code) ---- */
+.code-viewer-body {
+  display: flex;
+  flex: 1;
+  overflow: auto;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* ---- Line number gutter ---- */
+.code-viewer-lines {
+  flex-shrink: 0;
+  padding: 12px 0;
+  background: rgba(0, 0, 0, 0.15);
+  border-right: 1px solid #313244;
+  user-select: none;
+  min-width: 48px;
+  text-align: right;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+
+.code-viewer-line-num {
+  padding: 0 12px 0 8px;
+  color: #585b70;
+  font-size: 12px;
+  line-height: 1.6;
+  transition: color 0.15s;
+}
+
+.code-viewer-line-num:hover {
+  color: #a6adc8;
+}
+
+/* ---- Highlighted code area ---- */
+.code-viewer-code {
+  flex: 1;
+  margin: 0;
+  padding: 12px 16px;
+  overflow-x: auto;
+  background: transparent;
+  tab-size: 2;
+}
+
+.code-viewer-code code {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  background: transparent !important;
+}
+
+/* Override highlight.js background to match our theme */
+.code-viewer-code .hljs {
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+/* ---- Empty state ---- */
+.code-viewer-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 8px;
+  color: #585b70;
+  user-select: none;
+}
+
+.code-viewer-empty-icon {
+  font-size: 48px;
+  margin-bottom: 8px;
+  opacity: 0.5;
+}
+
+.code-viewer-empty p {
+  font-size: 15px;
+  font-weight: 500;
+  color: #6c7086;
+}
+
+.code-viewer-empty-hint {
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  color: #45475a !important;
+}

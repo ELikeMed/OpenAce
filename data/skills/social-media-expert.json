@@ -1,0 +1,238 @@
+{
+  "id": "social-media-expert",
+  "name": "Social Media & Content Expert",
+  "description": "Expert at managing LikeMinded's social media presence across all cities - scrapes events, creates content strategies, schedules posts, and knows exactly who/what to tag",
+  "trigger_phrases": [
+    "create content strategy",
+    "schedule posts",
+    "plan social media",
+    "upcoming meetups",
+    "content calendar",
+    "what to post",
+    "social media plan",
+    "marketing strategy",
+    "post about meetup",
+    "announce event"
+  ],
+  "knowledge": {
+    "company": {
+      "name": "LikeMinded",
+      "website": "https://likemindedpro.com",
+      "description": "Real Estate Investor Networking Platform - connecting investors across major cities",
+      "mission": "Building the largest community of like-minded real estate investors"
+    },
+    "cities": {
+      "Miami": {
+        "slug": "miami",
+        "url": "https://likemindedpro.com/miami/",
+        "hashtags": ["#MiamiRealEstate", "#MiamiInvestors", "#SoFloREI", "#MiamiMeetup", "#LikeMindedMiami"],
+        "accounts_to_tag": ["@LikeMindedMIA", "@MiamiREIA"],
+        "local_hashtags": ["#305", "#MiamiLife", "#BrickellLife"],
+        "best_times": ["Tuesday 6PM", "Thursday 6PM", "Saturday 10AM"]
+      },
+      "Austin": {
+        "slug": "austin",
+        "url": "https://likemindedpro.com/austin/",
+        "hashtags": ["#AustinRealEstate", "#ATXInvestors", "#AustinREI", "#AustinMeetup", "#LikeMindedATX"],
+        "accounts_to_tag": ["@LikeMindedATX", "@AustinREIA"],
+        "local_hashtags": ["#ATX", "#KeepAustinWeird", "#AustinTX"],
+        "best_times": ["Tuesday 6PM", "Thursday 6PM", "Saturday 9AM"]
+      },
+      "NYC": {
+        "slug": "nyc",
+        "url": "https://likemindedpro.com/nyc/",
+        "hashtags": ["#NYCRealEstate", "#NYInvestors", "#NYCREI", "#NYCMeetup", "#LikeMindedNYC"],
+        "accounts_to_tag": ["@LikeMindedNYC", "@NYCREIA"],
+        "local_hashtags": ["#NYC", "#NewYorkCity", "#Manhattan", "#Brooklyn"],
+        "best_times": ["Tuesday 6PM", "Wednesday 6PM", "Saturday 10AM"]
+      },
+      "LA": {
+        "slug": "los-angeles",
+        "url": "https://likemindedpro.com/los-angeles/",
+        "hashtags": ["#LARealEstate", "#LAInvestors", "#LAREI", "#LAMeetup", "#LikeMindedLA"],
+        "accounts_to_tag": ["@LikeMindedLA", "@LAREIA"],
+        "local_hashtags": ["#LA", "#LosAngeles", "#SoCal", "#WeHo"],
+        "best_times": ["Tuesday 6PM", "Thursday 6PM", "Saturday 10AM"]
+      },
+      "Chicago": {
+        "slug": "chicago",
+        "url": "https://likemindedpro.com/chicago/",
+        "hashtags": ["#ChicagoRealEstate", "#ChiTownInvestors", "#ChicagoREI", "#ChicagoMeetup", "#LikeMindedChi"],
+        "accounts_to_tag": ["@LikeMindedCHI", "@ChicagoREIA"],
+        "local_hashtags": ["#Chicago", "#ChiTown", "#Chicagoland"],
+        "best_times": ["Tuesday 6PM", "Thursday 6PM", "Saturday 9AM"]
+      },
+      "Denver": {
+        "slug": "denver",
+        "url": "https://likemindedpro.com/denver/",
+        "hashtags": ["#DenverRealEstate", "#DenverInvestors", "#DenverREI", "#DenverMeetup", "#LikeMindedDenver"],
+        "accounts_to_tag": ["@LikeMindedDEN", "@DenverREIA"],
+        "local_hashtags": ["#Denver", "#MileHighCity", "#Colorado"],
+        "best_times": ["Tuesday 6PM", "Thursday 6PM", "Saturday 9AM"]
+      },
+      "Dallas": {
+        "slug": "dallas",
+        "url": "https://likemindedpro.com/dallas/",
+        "hashtags": ["#DallasRealEstate", "#DFWInvestors", "#DallasREI", "#DallasMeetup", "#LikeMindedDFW"],
+        "accounts_to_tag": ["@LikeMindedDFW", "@DallasREIA"],
+        "local_hashtags": ["#Dallas", "#DFW", "#Texas"],
+        "best_times": ["Tuesday 6PM", "Thursday 6PM", "Saturday 9AM"]
+      },
+      "Atlanta": {
+        "slug": "atlanta",
+        "url": "https://likemindedpro.com/atlanta/",
+        "hashtags": ["#AtlantaRealEstate", "#ATLInvestors", "#AtlantaREI", "#AtlantaMeetup", "#LikeMindedATL"],
+        "accounts_to_tag": ["@LikeMindedATL", "@AtlantaREIA"],
+        "local_hashtags": ["#Atlanta", "#ATL", "#Georgia"],
+        "best_times": ["Tuesday 6PM", "Thursday 6PM", "Saturday 10AM"]
+      },
+      "Phoenix": {
+        "slug": "phoenix",
+        "url": "https://likemindedpro.com/phoenix/",
+        "hashtags": ["#PhoenixRealEstate", "#PHXInvestors", "#PhoenixREI", "#PhoenixMeetup", "#LikeMindedPHX"],
+        "accounts_to_tag": ["@LikeMindedPHX", "@PhoenixREIA"],
+        "local_hashtags": ["#Phoenix", "#PHX", "#Arizona", "#Scottsdale"],
+        "best_times": ["Tuesday 6PM", "Thursday 6PM", "Saturday 8AM"]
+      },
+      "Seattle": {
+        "slug": "seattle",
+        "url": "https://likemindedpro.com/seattle/",
+        "hashtags": ["#SeattleRealEstate", "#SEAInvestors", "#SeattleREI", "#SeattleMeetup", "#LikeMindedSEA"],
+        "accounts_to_tag": ["@LikeMindedSEA", "@SeattleREIA"],
+        "local_hashtags": ["#Seattle", "#PNW", "#Washington"],
+        "best_times": ["Tuesday 6PM", "Thursday 6PM", "Saturday 10AM"]
+      },
+      "WestPalmBeach": {
+        "slug": "west-palm-beach",
+        "url": "https://likemindedpro.com/west-palm-beach/",
+        "hashtags": ["#WPBRealEstate", "#PalmBeachInvestors", "#WPBREI", "#WPBMeetup", "#LikeMindedWPB"],
+        "accounts_to_tag": ["@LikeMindedWPB", "@PalmBeachREIA"],
+        "local_hashtags": ["#WestPalmBeach", "#PalmBeach", "#SouthFlorida", "#561"],
+        "best_times": ["Tuesday 6PM", "Thursday 6PM", "Saturday 10AM"]
+      }
+    },
+    "content_types": {
+      "meetup_announcement": {
+        "days_before": [7, 3, 1, 0],
+        "templates": {
+          "7_days": "🗓️ {city} Meetup in 1 WEEK!\n\n{event_name}\n📅 {date}\n📍 {venue}\n\nJoin fellow real estate investors for an evening of networking & deal-making!\n\nRegister: {url}\n\n{hashtags}",
+          "3_days": "⏰ 3 DAYS until our {city} meetup!\n\n{event_name}\n📅 {date}\n📍 {venue}\n\nDon't miss out - spots are filling up!\n\nRSVP: {url}\n\n{hashtags}",
+          "1_day": "🔥 TOMORROW in {city}!\n\n{event_name}\n📅 {date}\n📍 {venue}\n\nLast chance to RSVP!\n\n{url}\n\n{hashtags}",
+          "0_days": "🚀 TONIGHT in {city}!\n\n{event_name}\n⏰ {time}\n📍 {venue}\n\nSee you there! Walk-ins welcome.\n\n{hashtags}"
+        }
+      },
+      "meetup_recap": {
+        "days_after": [1],
+        "template": "🎉 What an amazing night in {city}!\n\nThank you to everyone who came out to our {event_name}!\n\n{attendee_count}+ investors connected, deals discussed, and relationships built.\n\nMissed it? Don't miss the next one!\n\n{next_event_url}\n\n{hashtags}"
+      },
+      "tool_highlight": {
+        "frequency": "weekly",
+        "day": "Tuesday",
+        "template": "🔧 Tool Tuesday!\n\nDid you know LikeMinded has {feature_name}?\n\n{feature_description}\n\nTry it now: likemindedpro.com\n\n#RealEstateTools #LikeMinded {hashtags}"
+      },
+      "user_spotlight": {
+        "frequency": "weekly", 
+        "day": "Wednesday",
+        "template": "⭐ Member Spotlight!\n\nMeet {user_name} from {city}!\n\n{user_story}\n\nJoin our community of {total_members}+ investors!\n\nlikemindedpro.com\n\n{hashtags}"
+      },
+      "motivation": {
+        "frequency": "weekly",
+        "day": "Monday",
+        "templates": [
+          "💪 New week, new opportunities!\n\nWhat deal are you working on this week?\n\nDrop it in the comments! 👇\n\n#MondayMotivation #RealEstateInvesting {hashtags}",
+          "🏠 Your network = Your net worth\n\nSurrounding yourself with like-minded investors is the fastest path to success.\n\nWho's your investor circle?\n\n#MondayMotivation {hashtags}"
+        ]
+      },
+      "tip_thursday": {
+        "frequency": "weekly",
+        "day": "Thursday",
+        "templates": [
+          "💡 Tip Thursday!\n\n{tip_content}\n\nWhat tips do you have? Share below! 👇\n\n#TipThursday #RealEstateTips {hashtags}",
+          "📚 Quick tip for investors:\n\n{tip_content}\n\nSave this for later! 🔖\n\n#TipThursday {hashtags}"
+        ]
+      },
+      "friday_wins": {
+        "frequency": "weekly",
+        "day": "Friday",
+        "template": "🎯 Friday Wins!\n\nWhat's your win this week?\n\n- Closed a deal?\n- Found a great property?\n- Made a new connection?\n\nShare your wins! 🏆\n\n#FridayWins #RealEstateSuccess {hashtags}"
+      }
+    },
+    "platform_guidelines": {
+      "twitter": {
+        "max_chars": 280,
+        "hashtag_limit": 3,
+        "best_practices": ["Keep it punchy", "Use emojis sparingly", "Include CTA", "Thread for longer content"]
+      },
+      "linkedin": {
+        "max_chars": 3000,
+        "hashtag_limit": 5,
+        "best_practices": ["Professional tone", "Tell stories", "Use line breaks", "Ask questions for engagement"]
+      },
+      "instagram": {
+        "max_chars": 2200,
+        "hashtag_limit": 30,
+        "best_practices": ["Visual first", "Hashtags in first comment or end", "Use Stories for time-sensitive content"]
+      },
+      "facebook": {
+        "max_chars": 63206,
+        "hashtag_limit": 3,
+        "best_practices": ["Longer form OK", "Use Events feature for meetups", "Engage in comments"]
+      }
+    },
+    "scrape_instructions": {
+      "events_page": {
+        "base_url": "https://likemindedpro.com/{city_slug}/",
+        "event_selectors": {
+          "event_card": ".event-card, .meetup-card, article.event",
+          "event_title": "h2, h3, .event-title",
+          "event_date": ".event-date, time, [datetime]",
+          "event_venue": ".event-venue, .location",
+          "event_link": "a[href*='meetup'], a[href*='event']"
+        },
+        "alternative_method": "Look for schema.org Event data in page source"
+      }
+    }
+  },
+  "actions": {
+    "scrape_meetups": {
+      "description": "Scrape upcoming meetups from likemindedpro.com for all cities",
+      "steps": [
+        "Navigate to each city's page on likemindedpro.com",
+        "Find event/meetup listings",
+        "Extract: event name, date, time, venue, registration URL",
+        "Store in content calendar"
+      ]
+    },
+    "create_monthly_strategy": {
+      "description": "Create a full month content strategy based on upcoming events",
+      "steps": [
+        "Scrape all upcoming meetups for the month",
+        "For each meetup, schedule announcement posts at 7, 3, 1, 0 days before",
+        "Add weekly recurring content (Motivation Monday, Tool Tuesday, etc.)",
+        "Schedule recap posts 1 day after each meetup",
+        "Balance content across all active cities",
+        "Ensure 1-3 posts per day across platforms"
+      ]
+    },
+    "generate_post": {
+      "description": "Generate a post for a specific event or content type",
+      "inputs": ["event_details OR content_type", "city", "platform"],
+      "outputs": ["formatted_post_text", "hashtags", "accounts_to_tag", "suggested_media"]
+    }
+  },
+  "execution_context": {
+    "capabilities": [
+      "Browser automation to scrape likemindedpro.com",
+      "Content calendar management",
+      "Post scheduling via SocialMediaScheduler",
+      "AI-powered content generation",
+      "Cross-platform content adaptation"
+    ],
+    "integrations": [
+      "ContentStrategyAgent",
+      "SocialMediaAgent", 
+      "BrowserAgent",
+      "ContentLibraryManager"
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "id": "competitor-analysis",
+  "name": "Competitor Analysis",
+  "description": "Research and analyze competitor activities",
+  "category": "cmo",
+  "prompt": "Research competitors and provide:\n    1. Recent activities and launches\n    2. Marketing strategies\n    3. Pricing changes\n    4. Social media presence\n    5. Customer sentiment\n    6. Opportunities for differentiation",
+  "tools": [],
+  "examples": [
+    "Analyze our competitors",
+    "What are competitors doing?"
+  ],
+  "created_at": "2026-02-11T19:55:49.048Z",
+  "enabled": true
+}

@@ -1,0 +1,14 @@
+{
+  "id": "resource-planning",
+  "name": "Resource Planning",
+  "description": "Plan and optimize resource allocation",
+  "category": "coo",
+  "prompt": "Analyze resource allocation and provide:\n    1. Current resource distribution\n    2. Capacity vs demand analysis\n    3. Underutilized resources\n    4. Over-allocated areas\n    5. Hiring recommendations\n    6. Optimization strategy",
+  "tools": [],
+  "examples": [
+    "Help me plan resources",
+    "Are we properly staffed?"
+  ],
+  "created_at": "2026-02-11T19:55:49.048Z",
+  "enabled": true
+}

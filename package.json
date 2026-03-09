@@ -1,0 +1,68 @@
+{
+  "name": "openace",
+  "version": "1.0.0",
+  "description": "OpenAce - Your AI Executive Assistant for CMO, CTO, and COO tasks",
+  "main": "src/core/index.js",
+  "type": "module",
+  "bin": {
+    "ace": "./src/cli/ace.js"
+  },
+  "scripts": {
+    "start": "node scripts/start-dashboard.js",
+    "cli": "node src/cli/ace.js",
+    "setup": "node scripts/setup.js",
+    "setup-google": "node scripts/setup-google.js",
+    "setup-zoom": "node scripts/setup-zoom.js",
+    "setup-gmail": "node scripts/setup-gmail-smtp.js",
+    "dashboard": "node scripts/start-dashboard.js",
+    "browser-demo": "node scripts/ace-browser-demo.js",
+    "telegram": "node scripts/start-telegram-bot.js",
+    "test": "node scripts/test.js",
+    "install-global": "npm link",
+    "work": "node scripts/ace-work.js",
+    "code": "node scripts/ace-work.js --mode=code",
+    "email": "node scripts/ace-email.js",
+    "test-google": "node scripts/test-google.js"
+  },
+  "keywords": [
+    "ai",
+    "assistant",
+    "executive",
+    "cmo",
+    "cto",
+    "coo",
+    "openace"
+  ],
+  "author": "LikemindedPro",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.20.0",
+    "@google/generative-ai": "^0.24.1",
+    "adm-zip": "^0.5.16",
+    "archiver": "^7.0.1",
+    "axios": "^1.6.7",
+    "chalk": "^5.3.0",
+    "commander": "^11.1.0",
+    "dotenv": "^16.4.1",
+    "express": "^5.2.1",
+    "firebase-admin": "^13.6.1",
+    "googleapis": "^134.0.0",
+    "inquirer": "^9.2.12",
+    "jimp": "^1.6.0",
+    "mammoth": "^1.11.0",
+    "node-telegram-bot-api": "^0.66.0",
+    "nodemailer": "^8.0.1",
+    "open": "^10.2.0",
+    "openai": "^4.28.0",
+    "path": "^0.12.7",
+    "pdf-parse": "^2.4.5",
+    "robotjs": "^0.6.0",
+    "ssh2-sftp-client": "^12.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

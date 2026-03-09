@@ -1,0 +1,125 @@
+{
+  "name": "OpenAce",
+  "version": "1.0.0",
+  "code_generation_provider": "gemini",
+  "code_generation_provider_options": "auto | gemini | openai | claude | ollama",
+  "personality": {
+    "name": "Ace",
+    "communication_style": "Clear, concise, and actionable"
+  },
+  "ai_providers": {
+    "active_provider": "gemini",
+    "providers": {
+      "claude": {
+        "enabled": false,
+        "model": "claude-sonnet-4-6",
+        "api_key": "",
+        "subscription_type": "pro"
+      },
+      "openai": {
+        "enabled": false,
+        "model": "gpt-4.1",
+        "vision_model": "gpt-4.1",
+        "api_key": "",
+        "subscription_type": "plus"
+      },
+      "gemini": {
+        "enabled": true,
+        "model": "gemini-2.5-flash",
+        "api_key": "",
+        "subscription_type": "free"
+      },
+      "ollama": {
+        "enabled": false,
+        "model": "qwen2.5-coder:7b",
+        "vision_model": "llava",
+        "base_url": "http://localhost:11434/v1",
+        "subscription_type": "free"
+      }
+    }
+  },
+  "features": {
+    "cmo_tools": true,
+    "cto_tools": true,
+    "coo_tools": true,
+    "knowledge_base": true,
+    "cloud_sync": false,
+    "smart_caching": true
+  },
+  "sync": {
+    "enabled": false,
+    "provider": "icloud",
+    "path": ""
+  },
+  "heartbeat": {
+    "enabled": true,
+    "interval_minutes": 60,
+    "check_health": true
+  },
+  "telegram": {
+    "enabled": false,
+    "bot_token": "",
+    "bot_username": "",
+    "authorized_users": [],
+    "notifications": {
+      "task_complete": true,
+      "pipeline_updates": true,
+      "errors": true
+    }
+  },
+  "external_apis": {
+    "google": {
+      "places_api_key": "",
+      "maps_api_key": ""
+    },
+    "serper": {
+      "api_key": ""
+    },
+    "twitter": {
+      "api_key": "",
+      "api_secret": ""
+    },
+    "linkedin": {
+      "client_id": "",
+      "client_secret": ""
+    }
+  },
+  "integrations": {
+    "google": {
+      "enabled": false,
+      "credentials_path": "config/google-credentials.json",
+      "scopes": [
+        "calendar",
+        "drive",
+        "gmail",
+        "contacts"
+      ]
+    },
+    "zoom": {
+      "enabled": false,
+      "credentials_path": "config/zoom-credentials.json"
+    },
+    "meetings": {
+      "default_provider": "google_meet",
+      "default_duration_minutes": 60,
+      "default_timezone": "America/New_York",
+      "auto_add_meet_link": true
+    }
+  },
+  "server": {
+    "url": "http://localhost:3333",
+    "public_url": ""
+  },
+  "deploy": {
+    "firebase": {
+      "defaultProjectId": ""
+    },
+    "sftp": {
+      "host": "",
+      "port": 22,
+      "username": "",
+      "password": "",
+      "basePath": "/var/www/html"
+    }
+  }
+}

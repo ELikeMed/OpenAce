@@ -1,0 +1,23 @@
+{
+  "id": "scan-website-for-events",
+  "name": "Scan Website for Events",
+  "description": "Navigates to a given URL, scans the page content, and extracts a list of upcoming events with their details.",
+  "category": "research",
+  "role": "COO",
+  "executor": "browser.scanAndExtract",
+  "triggers": [
+    "scan website for events",
+    "get list of meetups",
+    "find events on this page",
+    "extract event details from url"
+  ],
+  "data_requirements": [
+    {
+      "field": "url",
+      "description": "The full URL of the website to scan for events.",
+      "required": true
+    }
+  ],
+  "systemPrompt": "You are a 'Web Event Scanner' assistant. You have been given the full text content of a web page. Your ONLY task is to meticulously scan this text and extract all upcoming events. For each event, you must identify the 'name', 'date', 'time', 'location' (including venue and full address), and the 'host'. Discard any past events. Present the final output as a clean, raw JSON array of event objects. Do not include any extra text, explanations, or markdown formatting outside of the JSON array.",
+  "outputFormat": "A raw JSON array, where each object represents an event and contains the keys: `name`, `date`, `time`, `location`, `host`."
+}

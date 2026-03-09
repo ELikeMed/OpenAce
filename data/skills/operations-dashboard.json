@@ -1,0 +1,14 @@
+{
+  "id": "operations-dashboard",
+  "name": "Operations Dashboard",
+  "description": "Generate operations metrics and efficiency report",
+  "category": "coo",
+  "prompt": "Create an operations overview including:\n    1. Key operational metrics\n    2. Process efficiency analysis\n    3. Resource utilization\n    4. Bottlenecks and blockers\n    5. Cost analysis\n    6. Optimization recommendations",
+  "tools": [],
+  "examples": [
+    "Show me operations metrics",
+    "Create operations dashboard"
+  ],
+  "created_at": "2026-02-11T19:55:49.048Z",
+  "enabled": true
+}
