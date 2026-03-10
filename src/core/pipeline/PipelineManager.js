@@ -16,6 +16,10 @@ export class PipelineManager {
 
   async initialize() {
     await this.loadPipeline();
+    // Ensure required arrays exist (older/seeded pipelines may lack items or leads)
+    if (!this.pipeline.items) this.pipeline.items = [];
+    if (!this.pipeline.leads) this.pipeline.leads = [];
+    if (!this.pipeline.stages) this.pipeline.stages = this.getDefaultPipeline().stages;
     console.log(`✅ Pipeline loaded (${this.pipeline.items.length} tasks, ${this.pipeline.leads.length} leads)`);
     return this;
   }

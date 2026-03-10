@@ -25,6 +25,8 @@ const app = express();
 const PORT = process.env.PORT || 3333;
 
 // Middleware
+// Stripe webhook needs raw body for signature verification — must come BEFORE json parsing
+app.use('/api/billing/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '50mb' }));
 app.use('/api/projects/import/zip', express.raw({ limit: '100mb', type: ['application/zip', 'application/octet-stream'] }));
 
@@ -92,6 +94,20 @@ process.on('SIGINT', async () => {
 process.on('unhandledRejection', (reason, promise) => {
   console.error('⚠️ Unhandled Rejection:', reason);
   eventBus.emit(EVENTS.SYSTEM_ERROR, { type: 'unhandledRejection', error: String(reason) });
+  // Save crash report if available
+  if (aceInstance?.crashReporter) {
+    aceInstance.crashReporter.reportCrash(reason instanceof Error ? reason : new Error(String(reason)), { fatal: false }).catch(() => {});
+  }
+});
+
+// Uncaught exceptions — save crash report then exit
+process.on('uncaughtException', async (error) => {
+  console.error('💀 Uncaught Exception:', error);
+  eventBus.emit(EVENTS.SYSTEM_ERROR, { type: 'uncaughtException', error: String(error) });
+  if (aceInstance?.crashReporter) {
+    try { await aceInstance.crashReporter.reportCrash(error, { fatal: true }); } catch { /* best effort */ }
+  }
+  process.exit(1);
 });
 
 // Start server

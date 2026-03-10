@@ -154,6 +154,8 @@ export class SOPManager {
     const normalizeVar = (varName) => queryAliases.has(varName) ? 'query' : varName;
 
     return steps.map(step => {
+      // Guard: skip non-object steps (strings, numbers, etc.) — don't spread them
+      if (typeof step !== 'object' || step === null) return step;
       const normalized = { ...step };
       for (const [key, value] of Object.entries(normalized)) {
         if (typeof value === 'string' && value.includes('{{')) {

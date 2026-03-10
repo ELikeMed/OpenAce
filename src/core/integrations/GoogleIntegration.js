@@ -423,18 +423,71 @@ class GoogleIntegration {
      */
     parseDateTime(input) {
         if (!input) return new Date().toISOString();
-        
+
         // Already ISO format
         if (input.includes('T') || input.includes('Z')) {
-            return new Date(input).toISOString();
+            const d = new Date(input);
+            if (!isNaN(d)) return d.toISOString();
         }
 
-        // Try to parse natural formats
+        // Try to parse standard date formats (e.g., "2026-03-15 10:00 AM", "March 15, 2026 3:20pm")
         const parsed = new Date(input);
-        if (!isNaN(parsed)) {
+        if (!isNaN(parsed) && parsed.getFullYear() > 2020) {
             return parsed.toISOString();
         }
 
+        // Handle relative natural language as a safety net
+        const lower = input.toLowerCase().trim();
+        const now = new Date();
+
+        // "tomorrow at 2pm", "tomorrow at 14:00"
+        const tomorrowMatch = lower.match(/tomorrow\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+        if (tomorrowMatch) {
+            const d = new Date(now);
+            d.setDate(d.getDate() + 1);
+            let hour = parseInt(tomorrowMatch[1]);
+            const min = parseInt(tomorrowMatch[2] || '0');
+            const ampm = (tomorrowMatch[3] || '').toLowerCase();
+            if (ampm === 'pm' && hour < 12) hour += 12;
+            if (ampm === 'am' && hour === 12) hour = 0;
+            d.setHours(hour, min, 0, 0);
+            return d.toISOString();
+        }
+
+        // "today at 3pm"
+        const todayMatch = lower.match(/today\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+        if (todayMatch) {
+            const d = new Date(now);
+            let hour = parseInt(todayMatch[1]);
+            const min = parseInt(todayMatch[2] || '0');
+            const ampm = (todayMatch[3] || '').toLowerCase();
+            if (ampm === 'pm' && hour < 12) hour += 12;
+            if (ampm === 'am' && hour === 12) hour = 0;
+            d.setHours(hour, min, 0, 0);
+            return d.toISOString();
+        }
+
+        // "this friday at 3:20pm", "next monday at 10am"
+        const dayNames = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+        const dayMatch = lower.match(/(?:this|next)\s+(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+        if (dayMatch) {
+            const targetDay = dayNames[dayMatch[1].toLowerCase()];
+            const d = new Date(now);
+            let daysUntil = targetDay - d.getDay();
+            if (daysUntil <= 0) daysUntil += 7; // Next occurrence
+            if (lower.startsWith('next') && daysUntil <= 7) daysUntil += 7; // "next" means the week after
+            d.setDate(d.getDate() + daysUntil);
+            let hour = parseInt(dayMatch[2]);
+            const min = parseInt(dayMatch[3] || '0');
+            const ampm = (dayMatch[4] || '').toLowerCase();
+            if (ampm === 'pm' && hour < 12) hour += 12;
+            if (ampm === 'am' && hour === 12) hour = 0;
+            d.setHours(hour, min, 0, 0);
+            return d.toISOString();
+        }
+
+        // Last resort: log warning and return current time (caller should notice)
+        console.warn(`[GoogleIntegration] Could not parse datetime: "${input}" — falling back to now`);
         return new Date().toISOString();
     }
 

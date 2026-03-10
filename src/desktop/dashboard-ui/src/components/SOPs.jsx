@@ -28,38 +28,48 @@ import VideocamIcon from '@mui/icons-material/Videocam';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 import LoginIcon from '@mui/icons-material/Login';
 import SearchIcon from '@mui/icons-material/Search';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import NavigateNextIcon from '@mui/icons-material/NavigateNext';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import TabIcon from '@mui/icons-material/Tab';
+import TouchAppIcon from '@mui/icons-material/TouchApp';
+import MenuOpenIcon from '@mui/icons-material/MenuOpen';
 import BugReportIcon from '@mui/icons-material/BugReport';
 import DesktopWindowsIcon from '@mui/icons-material/DesktopWindows';
 import TagIcon from '@mui/icons-material/Tag';
 import GroupWorkIcon from '@mui/icons-material/GroupWork';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import AutoModeIcon from '@mui/icons-material/AutoMode';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import { BRAND } from '../theme';
+
+const SCHEDULE_DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const STEP_ICONS = {
   navigate: <LanguageIcon sx={{ fontSize: 16 }} />,
   click_text: <MouseIcon sx={{ fontSize: 16 }} />,
   click: <MouseIcon sx={{ fontSize: 16 }} />,
   click_submit: <MouseIcon sx={{ fontSize: 16 }} />,
+  smart_click: <SearchIcon sx={{ fontSize: 16 }} />,
   type: <KeyboardIcon sx={{ fontSize: 16 }} />,
+  press: <KeyboardIcon sx={{ fontSize: 16 }} />,
+  edit_field: <EditIcon sx={{ fontSize: 16 }} />,
   wait: <TimerIcon sx={{ fontSize: 16 }} />,
   wait_navigation: <TimerIcon sx={{ fontSize: 16 }} />,
+  scroll: <NavigateNextIcon sx={{ fontSize: 16, transform: 'rotate(90deg)' }} />,
+  right_click: <TouchAppIcon sx={{ fontSize: 16 }} />,
+  select_option: <MenuOpenIcon sx={{ fontSize: 16 }} />,
+  hover: <MouseIcon sx={{ fontSize: 16 }} />,
+  switch_tab: <TabIcon sx={{ fontSize: 16 }} />,
+  go_back: <ArrowBackIcon sx={{ fontSize: 16 }} />,
+  copy_text: <ContentCopyIcon sx={{ fontSize: 16 }} />,
+  // Legacy action icons (for backward compat with old SOPs)
+  goto: <LanguageIcon sx={{ fontSize: 16 }} />,
+  key: <KeyboardIcon sx={{ fontSize: 16 }} />,
+  doubleClick: <MouseIcon sx={{ fontSize: 16 }} />,
   screenshot: <CameraAltIcon sx={{ fontSize: 16 }} />,
   fill_credentials: <LoginIcon sx={{ fontSize: 16 }} />,
-  explore_page: <SearchIcon sx={{ fontSize: 16 }} />,
-  copy: <ContentCopyIcon sx={{ fontSize: 16 }} />,
-  extract: <ContentCopyIcon sx={{ fontSize: 16 }} />,
-  scroll: <NavigateNextIcon sx={{ fontSize: 16, transform: 'rotate(90deg)' }} />,
-  edit_field: <EditIcon sx={{ fontSize: 16 }} />,
-  set_date: <TimerIcon sx={{ fontSize: 16 }} />,
-  smart_click: <MouseIcon sx={{ fontSize: 16 }} />,
-  smart_fill: <KeyboardIcon sx={{ fontSize: 16 }} />,
-  decide: <AutoAwesomeIcon sx={{ fontSize: 16 }} />,
-  extract_text: <ContentCopyIcon sx={{ fontSize: 16 }} />,
-  search_google: <SearchIcon sx={{ fontSize: 16 }} />,
-  goto: <LanguageIcon sx={{ fontSize: 16 }} />,
 };
 
 const STEP_COLORS = {
@@ -79,6 +89,12 @@ const STEP_COLORS = {
   edit_field: BRAND.success,
   set_date: BRAND.warning,
   smart_click: BRAND.accent,
+  right_click: BRAND.accent,
+  select_option: BRAND.info,
+  hover: BRAND.secondary,
+  switch_tab: BRAND.primaryLight,
+  go_back: BRAND.warning,
+  copy_text: BRAND.secondary,
   smart_fill: BRAND.success,
   decide: BRAND.primaryLight,
   extract_text: BRAND.secondary,
@@ -87,11 +103,22 @@ const STEP_COLORS = {
 };
 
 const ACTION_OPTIONS = [
-  'navigate', 'goto', 'click_text', 'click', 'click_submit', 'type',
-  'edit_field', 'set_date', 'smart_click', 'smart_fill',
-  'wait', 'wait_navigation', 'screenshot', 'fill_credentials',
-  'explore_page', 'copy', 'extract', 'extract_text', 'scroll',
-  'decide', 'search_google'
+  'navigate',        // Go to a URL
+  'click_text',      // Click element by visible text
+  'click_submit',    // Click submit/sign-in/save button
+  'smart_click',     // Click via AI vision (describe what to click)
+  'right_click',     // Right-click for context menus
+  'select_option',   // Click dropdown + select an option
+  'hover',           // Hover over an element (for menus/tooltips)
+  'edit_field',      // Click a field + type text into it
+  'type',            // Type text into focused element
+  'press',           // Press a key (Enter, Tab, Escape, etc.)
+  'scroll',          // Scroll the page up or down
+  'switch_tab',      // Switch Chrome tabs
+  'go_back',         // Go back to previous page
+  'copy_text',       // Copy text from the page
+  'wait',            // Wait a set number of milliseconds
+  'wait_navigation', // Wait for page to fully load
 ];
 
 /** Live recording panel — shows elapsed time, screenshot counter, and instructions */
@@ -169,6 +196,14 @@ function SOPs() {
   const [testRunResult, setTestRunResult] = useState(null);
   const [testRunning, setTestRunning] = useState(false);
 
+  // Add to Routines state
+  const [scheduleDialog, setScheduleDialog] = useState(null); // SOP object or null
+  const [scheduleTime, setScheduleTime] = useState('09:00');
+  const [scheduleDays, setScheduleDays] = useState([1, 2, 3, 4, 5]);
+  const [scheduleDelivery, setScheduleDelivery] = useState('both');
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [scheduleSuccess, setScheduleSuccess] = useState(false);
+
   // Expand state for SOP cards
   const [expandedSop, setExpandedSop] = useState(null);
 
@@ -216,6 +251,38 @@ function SOPs() {
       await fetch(`/api/sops/${sop.id}/run`, { method: 'POST' });
     } catch (e) { console.error(e); }
     finally { setRunning(null); }
+  };
+
+  const handleAddToRoutines = async () => {
+    if (!scheduleDialog) return;
+    setScheduleSaving(true);
+    try {
+      const res = await fetch('/api/scheduler/routines', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: scheduleDialog.name,
+          type: 'sop',
+          sopIds: [scheduleDialog.id],
+          time: scheduleTime,
+          days: scheduleDays,
+          delivery: scheduleDelivery,
+          enabled: true,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setScheduleSuccess(true);
+        setTimeout(() => {
+          setScheduleDialog(null);
+          setScheduleSuccess(false);
+          setScheduleTime('09:00');
+          setScheduleDays([1, 2, 3, 4, 5]);
+          setScheduleDelivery('both');
+        }, 1200);
+      }
+    } catch (e) { console.error(e); }
+    finally { setScheduleSaving(false); }
   };
 
   const handleDelete = async (id) => {
@@ -417,10 +484,10 @@ function SOPs() {
           </Avatar>
           <Box>
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              Playbooks
+              Processes
             </Typography>
             <Typography variant="body2" sx={{ color: BRAND.textSecondary }}>
-              Automated workflows Ace can execute • Teach Ace new ones
+              Teach Ace step-by-step processes you do repeatedly — like logging into a site, posting content, or checking a dashboard. Ace learns and runs them for you.
             </Typography>
           </Box>
           {sopTab === 0 && (
@@ -467,7 +534,7 @@ function SOPs() {
             '& .MuiTabs-indicator': { backgroundColor: BRAND.primary },
           }}
         >
-          <Tab label="My SOPs" />
+          <Tab label="My Processes" />
           <Tab label="Teach Ace" />
         </Tabs>
       </Paper>
@@ -632,6 +699,12 @@ function SOPs() {
                         }} />
                     )}
                     <Box sx={{ flex: 1 }} />
+                    <Tooltip title="Add to Routines">
+                      <IconButton size="small" onClick={(e) => { e.stopPropagation(); setScheduleDialog(sop); }}
+                        sx={{ color: BRAND.textMuted, '&:hover': { color: BRAND.warning, background: alpha(BRAND.warning, 0.08) } }}>
+                        <AutoModeIcon sx={{ fontSize: 18 }} />
+                      </IconButton>
+                    </Tooltip>
                     <Tooltip title="Edit SOP">
                       <IconButton size="small" onClick={(e) => { e.stopPropagation(); openEditor(sop); }}
                         sx={{ color: BRAND.textMuted, '&:hover': { color: BRAND.info, background: alpha(BRAND.info, 0.08) } }}>
@@ -728,26 +801,26 @@ function SOPs() {
         <Paper sx={{ p: 4, maxWidth: 520, mx: 'auto' }}>
           <AssignmentIcon sx={{ fontSize: 48, color: BRAND.textMuted, mb: 2, display: 'block', mx: 'auto' }} />
           <Typography variant="h6" sx={{ color: BRAND.textSecondary, mb: 1, textAlign: 'center' }}>
-            No Playbooks Yet
+            No Processes Yet
           </Typography>
           <Typography variant="body2" sx={{ color: BRAND.textMuted, mb: 2, textAlign: 'center' }}>
-            Teach Ace your processes so it can follow them step-by-step.
+            Teach Ace the things you do over and over — he'll learn the steps and do them for you.
           </Typography>
           <Box sx={{ pl: 2 }}>
             <Typography variant="body2" sx={{ color: BRAND.textSecondary, mb: 0.5 }}>
               <strong>1.</strong> In chat, say: <em>"Let me teach you how to [task]"</em>
             </Typography>
             <Typography variant="body2" sx={{ color: BRAND.textSecondary, mb: 0.5 }}>
-              <strong>2.</strong> Describe the steps in plain English
+              <strong>2.</strong> Walk Ace through the steps in plain English
             </Typography>
             <Typography variant="body2" sx={{ color: BRAND.textSecondary, mb: 2 }}>
-              <strong>3.</strong> Ace saves it as a playbook and follows your process next time
+              <strong>3.</strong> Ace saves it as a process you can run anytime or add to a routine
             </Typography>
           </Box>
           <Box sx={{ bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1, p: 1.5 }}>
             <Typography variant="caption" sx={{ color: BRAND.textMuted }}>
-              <strong>Example:</strong> "Let me teach you how to repost our meetup on Eventbrite"
-              <br />→ Ace asks you to walk through the steps → Saves as a playbook you can run anytime
+              <strong>Example:</strong> "Teach you how to log into Eventbrite and repost our meetup"
+              <br />→ Ace asks you to walk through each step → Saves the process → You can run it or schedule it
             </Typography>
           </Box>
         </Paper>
@@ -950,26 +1023,65 @@ function SOPs() {
                         onChange={(e) => updateStep(i, 'description', e.target.value)}
                         sx={{ flex: 1 }} />
                     </Box>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                       {(step.action === 'navigate') && (
-                        <TextField size="small" placeholder="URL" value={step.url || ''}
+                        <TextField size="small" placeholder="URL (e.g. https://example.com)" value={step.url || ''}
                           onChange={(e) => updateStep(i, 'url', e.target.value)} sx={{ flex: 1 }} />
                       )}
-                      {(step.action === 'click_text' || step.action === 'type') && (
-                        <TextField size="small" placeholder="Text" value={step.text || ''}
+                      {(step.action === 'click_text' || step.action === 'click_submit') && (
+                        <TextField size="small" placeholder="Button/link text to click" value={step.text || ''}
                           onChange={(e) => updateStep(i, 'text', e.target.value)} sx={{ flex: 1 }} />
+                      )}
+                      {(step.action === 'smart_click') && (
+                        <TextField size="small" placeholder="Describe what to click (AI will find it)" value={step.target || ''}
+                          onChange={(e) => updateStep(i, 'target', e.target.value)} sx={{ flex: 1 }} />
+                      )}
+                      {(step.action === 'type') && (
+                        <TextField size="small" placeholder="Text to type" value={step.text || ''}
+                          onChange={(e) => updateStep(i, 'text', e.target.value)} sx={{ flex: 1 }} />
+                      )}
+                      {(step.action === 'edit_field') && (<>
+                        <TextField size="small" placeholder="Field name (e.g. Email input)" value={step.target || ''}
+                          onChange={(e) => updateStep(i, 'target', e.target.value)} sx={{ flex: 1 }} />
+                        <TextField size="small" placeholder="Text to enter" value={step.text || ''}
+                          onChange={(e) => updateStep(i, 'text', e.target.value)} sx={{ flex: 1 }} />
+                      </>)}
+                      {(step.action === 'right_click') && (
+                        <TextField size="small" placeholder="Element to right-click" value={step.target || ''}
+                          onChange={(e) => updateStep(i, 'target', e.target.value)} sx={{ flex: 1 }} />
+                      )}
+                      {(step.action === 'select_option') && (<>
+                        <TextField size="small" placeholder="Dropdown/select element" value={step.target || ''}
+                          onChange={(e) => updateStep(i, 'target', e.target.value)} sx={{ flex: 1 }} />
+                        <TextField size="small" placeholder="Option to select" value={step.text || ''}
+                          onChange={(e) => updateStep(i, 'text', e.target.value)} sx={{ flex: 1 }} />
+                      </>)}
+                      {(step.action === 'hover') && (
+                        <TextField size="small" placeholder="Element to hover over" value={step.target || ''}
+                          onChange={(e) => updateStep(i, 'target', e.target.value)} sx={{ flex: 1 }} />
+                      )}
+                      {(step.action === 'switch_tab') && (
+                        <TextField size="small" placeholder="Tab # or next/previous" value={step.target || ''}
+                          onChange={(e) => updateStep(i, 'target', e.target.value)} sx={{ width: 200 }} />
+                      )}
+                      {(step.action === 'copy_text') && (
+                        <TextField size="small" placeholder="Element text to copy (or leave empty for selection)" value={step.target || ''}
+                          onChange={(e) => updateStep(i, 'target', e.target.value)} sx={{ flex: 1 }} />
+                      )}
+                      {(step.action === 'press') && (
+                        <TextField size="small" placeholder="Key (e.g. enter, tab, escape)" value={step.key || ''}
+                          onChange={(e) => updateStep(i, 'key', e.target.value)} sx={{ width: 200 }} />
                       )}
                       {(step.action === 'wait') && (
                         <TextField size="small" placeholder="ms" type="number" value={step.ms || ''}
                           onChange={(e) => updateStep(i, 'ms', parseInt(e.target.value) || 0)} sx={{ width: 120 }} />
                       )}
-                      {(step.action === 'fill_credentials') && (
-                        <TextField size="small" placeholder="Credential ID" value={step.credentialId || ''}
-                          onChange={(e) => updateStep(i, 'credentialId', e.target.value)} sx={{ flex: 1 }} />
-                      )}
-                      {(step.action === 'copy' || step.action === 'extract') && (
-                        <TextField size="small" placeholder="Target" value={step.target || ''}
-                          onChange={(e) => updateStep(i, 'target', e.target.value)} sx={{ flex: 1 }} />
+                      {(step.action === 'scroll') && (
+                        <Select size="small" value={step.direction || 'down'}
+                          onChange={(e) => updateStep(i, 'direction', e.target.value)} sx={{ width: 120 }}>
+                          <MenuItem value="down">Down</MenuItem>
+                          <MenuItem value="up">Up</MenuItem>
+                        </Select>
                       )}
                     </Box>
                   </Box>
@@ -1099,6 +1211,106 @@ function SOPs() {
         <DialogActions>
           <Button onClick={() => { setTestRunDialog(null); setTestRunResult(null); }}>Close</Button>
         </DialogActions>
+      </Dialog>
+
+      {/* Add to Routines Dialog */}
+      <Dialog open={!!scheduleDialog} onClose={() => { setScheduleDialog(null); setScheduleSuccess(false); }} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          Add to Routines
+          <IconButton size="small" onClick={() => { setScheduleDialog(null); setScheduleSuccess(false); }}><CloseIcon /></IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
+          {scheduleSuccess ? (
+            <Box sx={{ textAlign: 'center', py: 3 }}>
+              <CheckCircleIcon sx={{ fontSize: 48, color: BRAND.success, mb: 1 }} />
+              <Typography variant="body1" sx={{ fontWeight: 600, color: BRAND.textPrimary }}>Added to Routines!</Typography>
+              <Typography variant="body2" sx={{ color: BRAND.textMuted }}>
+                {scheduleDialog?.name} will run at {scheduleTime} on selected days.
+              </Typography>
+            </Box>
+          ) : (
+            <>
+              <Box sx={{ background: alpha(BRAND.warning, 0.06), borderRadius: 2, p: 1.5, border: `1px solid ${alpha(BRAND.warning, 0.12)}` }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, color: BRAND.textPrimary }}>
+                  {scheduleDialog?.name}
+                </Typography>
+                <Typography variant="caption" sx={{ color: BRAND.textMuted }}>
+                  {scheduleDialog?.steps?.length || 0} steps — will run automatically on schedule
+                </Typography>
+              </Box>
+
+              <TextField
+                label="Run at"
+                type="time"
+                value={scheduleTime}
+                onChange={(e) => setScheduleTime(e.target.value)}
+                fullWidth
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+
+              <Box>
+                <Typography variant="body2" sx={{ color: BRAND.textSecondary, mb: 1, fontWeight: 600 }}>Active Days</Typography>
+                <Box sx={{ display: 'flex', gap: 0.5 }}>
+                  {SCHEDULE_DAY_LABELS.map((label, i) => (
+                    <Chip
+                      key={i}
+                      label={label}
+                      size="small"
+                      onClick={() => {
+                        const days = scheduleDays.includes(i)
+                          ? scheduleDays.filter(d => d !== i)
+                          : [...scheduleDays, i].sort();
+                        setScheduleDays(days);
+                      }}
+                      sx={{
+                        cursor: 'pointer', fontWeight: 600,
+                        background: scheduleDays.includes(i) ? alpha(BRAND.primary, 0.15) : alpha(BRAND.textMuted, 0.08),
+                        color: scheduleDays.includes(i) ? BRAND.primary : BRAND.textMuted,
+                        border: `1px solid ${scheduleDays.includes(i) ? alpha(BRAND.primary, 0.3) : 'transparent'}`,
+                      }}
+                    />
+                  ))}
+                </Box>
+              </Box>
+
+              <Box>
+                <Typography variant="body2" sx={{ color: BRAND.textSecondary, mb: 1, fontWeight: 600 }}>Deliver Results To</Typography>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  {[
+                    { value: 'both', label: 'Dashboard & Telegram' },
+                    { value: 'dashboard', label: 'Dashboard Only' },
+                    { value: 'telegram', label: 'Telegram Only' },
+                  ].map(opt => (
+                    <Box
+                      key={opt.value}
+                      onClick={() => setScheduleDelivery(opt.value)}
+                      sx={{
+                        flex: 1, p: 1, borderRadius: 2, cursor: 'pointer', textAlign: 'center',
+                        border: `1px solid ${scheduleDelivery === opt.value ? alpha(BRAND.primary, 0.5) : alpha(BRAND.border, 0.5)}`,
+                        background: scheduleDelivery === opt.value ? alpha(BRAND.primary, 0.06) : 'transparent',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      <Typography variant="caption" sx={{ fontWeight: 600, color: BRAND.textPrimary }}>{opt.label}</Typography>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+            </>
+          )}
+        </DialogContent>
+        {!scheduleSuccess && (
+          <DialogActions>
+            <Button onClick={() => setScheduleDialog(null)}>Cancel</Button>
+            <Button
+              variant="contained"
+              onClick={handleAddToRoutines}
+              disabled={scheduleSaving || scheduleDays.length === 0}
+            >
+              {scheduleSaving ? 'Adding...' : 'Add to Routines'}
+            </Button>
+          </DialogActions>
+        )}
       </Dialog>
     </Box>
   );

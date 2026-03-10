@@ -10,8 +10,40 @@
  *   "Type 'search query'" → { action: 'type', text: 'search query' }
  *   "Click on the search button" → { action: 'click_text', text: 'search button' }
  *   "Wait 3 seconds" → { action: 'wait', ms: 3000 }
- *   "Take a screenshot" → { action: 'screenshot' }
+ *
+ * Outputs ONLY the 16 unified action types that DesktopTaskRunner can replay.
+ * Legacy actions from AI are normalized via _normalizeStep().
  */
+
+// ═══════════════════════════════════════════════════════
+// UNIFIED ACTION TYPES — the 16 actions DesktopTaskRunner can replay
+// ═══════════════════════════════════════════════════════
+const UNIFIED_ACTIONS = [
+  'navigate', 'click_text', 'click_submit', 'smart_click', 'right_click',
+  'select_option', 'hover', 'edit_field', 'type', 'press', 'scroll',
+  'switch_tab', 'go_back', 'copy_text', 'wait', 'wait_navigation',
+];
+
+// Map legacy/old action names to their unified equivalents
+const ACTION_ALIASES = {
+  navigate_to: 'click_text',     // "go to settings page" → click "settings"
+  click:       'click_text',     // CSS selector clicks → text-based
+  smart_fill:  'edit_field',     // fill field → edit_field
+  fill_form:   'edit_field',     // fill form → edit_field
+  fill_credentials: 'edit_field',// auto-fill → edit_field (target: "username/password")
+  copy:        'copy_text',      // old copy → copy_text
+  search_google: 'navigate',    // google search → navigate to google + type
+  wait_for:    'wait',           // wait for element → just wait
+  goBack:      'go_back',        // camelCase alias
+  goto:        'navigate',       // legacy navigate
+  key:         'press',          // raw key event → press
+  input:       'type',           // legacy type alias
+  delay:       'wait',           // legacy wait alias
+  extract_results: 'copy_text', // extract → copy_text
+};
+
+// Actions that exist but have no replay handler — strip these out
+const DEAD_ACTIONS = ['screenshot', 'explore_page', 'extract', 'set_date', 'decide', 'fill_form'];
 
 export class SOPParser {
   constructor(options = {}) {
@@ -67,7 +99,7 @@ export class SOPParser {
         expanded.push(cleanStep);
         expanded.push({ action: 'press', key: 'enter', description: 'Press Enter to submit', _implicit: true });
         // Only add wait if next step isn't already a wait
-        const isNextWait = next && (next.action === 'wait' || next.action === 'wait_navigation' || next.action === 'wait_for');
+        const isNextWait = next && (next.action === 'wait' || next.action === 'wait_navigation');
         if (!isNextWait) {
           expanded.push({ action: 'wait', ms: 2000, description: 'Wait for results to load', _implicit: true });
         }
@@ -78,7 +110,7 @@ export class SOPParser {
 
       // After navigate, add implicit wait_navigation if next step isn't a wait
       if (step.action === 'navigate') {
-        const isNextWait = next && (next.action === 'wait' || next.action === 'wait_navigation' || next.action === 'wait_for');
+        const isNextWait = next && (next.action === 'wait' || next.action === 'wait_navigation');
         if (!isNextWait) {
           expanded.push({ action: 'wait_navigation', description: 'Wait for page to load', _implicit: true });
         }
@@ -134,42 +166,34 @@ INSTRUCTIONS:
 ${text}
 """
 
-ACTION REFERENCE (27 supported actions):
+ACTION REFERENCE (16 supported actions — use ONLY these):
 | Action | Use when | Required fields |
 |--------|----------|-----------------|
 | navigate | Opening a URL | url |
-| go_back | Going back to previous page | (none) |
-| navigate_to | Going to a section/page by name (not a URL) | section |
 | click_text | Clicking a button, link, tab, menu item by visible text | text |
-| click | Clicking an element by CSS selector | selector |
-| click_submit | Clicking submit/sign in/log in/sign up buttons | (none) |
+| click_submit | Clicking submit/sign in/log in/sign up/save buttons | (none) |
+| smart_click | Clicking something hard to describe by text (AI vision finds it) | target |
+| right_click | Right-clicking for context menus | target |
+| select_option | Clicking a dropdown then selecting an option | target, text |
+| hover | Hovering over an element (for menus/tooltips) | target |
+| edit_field | Clicking a field, clearing it, and typing new text | target, text |
 | type | Typing text into the currently focused field | text |
-| smart_fill | Filling a specific field with a value | context, value |
 | press | Pressing a keyboard key (Enter, Tab, Escape, etc.) | key |
+| scroll | Scrolling the page | direction (up/down) |
+| switch_tab | Switching browser tabs | target (tab # or "next"/"previous") |
+| go_back | Going back to previous page | (none) |
+| copy_text | Copying text from the page | target |
 | wait | Pausing for a set time | ms (milliseconds) |
 | wait_navigation | Waiting for a full page load | (none) |
-| wait_for | Waiting for a specific element to appear | target |
-| screenshot | Capturing the current screen | (none) |
-| fill_credentials | Auto-filling saved login credentials | (none) |
-| explore_page | AI analyzes what's on the page | (none), optional: lookFor |
-| copy | Copying text from the page | target |
-| extract | Pulling data from the page | target |
-| scroll | Scrolling the page | direction (up/down) |
-| set_date | Setting a date in a date picker | value |
-| edit_field | Clearing and replacing field content | target, value |
-| fill_form | Filling multiple form fields at once | fields (array) |
-| search_google | Searching on Google | query |
-| smart_click | Clicking with AI vision assistance | target |
-| decide | AI decides next action based on page state | (none) |
 
 RULES:
 1. After every "navigate" step, add a "wait_navigation" step
 2. After a "type" step used for search, add a "press" step with key "enter", then a "wait" step
-3. "Go to X" where X looks like a URL → navigate. Where X is NOT a URL → navigate_to
+3. "Go to X" where X looks like a URL → navigate. Where X is NOT a URL → click_text
 4. "Search for X" → type the query, then press Enter, then wait
 5. "Go back" → go_back (NOT click_text)
-6. "Fill in X with Y" → smart_fill
-7. "Look for a contact form/button" → explore_page with lookFor
+6. "Fill in X with Y" or "enter X in the Y field" → edit_field with target and text
+7. "Log in with credentials" → edit_field for username + edit_field for password + click_submit
 8. If instructions mention typing/pasting user-provided content, use: { "action": "type", "text": "{{content}}", "contentInjection": true }
 9. Short phrases like "Continue", "Next", "Publish" → click_text
 10. Each step MUST have a "description" field
@@ -215,28 +239,81 @@ Return ONLY valid JSON:
   }
 
   /**
-   * Validate and fix AI-generated steps — filter out invalid actions, fix missing fields
+   * Normalize a single step's action to the unified 16 types.
+   * Maps legacy actions to their modern equivalents and adapts fields.
+   */
+  _normalizeStep(step) {
+    if (!step || !step.action) return null;
+
+    // Already a unified action — pass through
+    if (UNIFIED_ACTIONS.includes(step.action)) return step;
+
+    // Dead actions with no replay handler — remove entirely
+    if (DEAD_ACTIONS.includes(step.action)) return null;
+
+    // Check alias map
+    const mapped = ACTION_ALIASES[step.action];
+    if (!mapped) return null; // Unknown action — drop it
+
+    const normalized = { ...step, action: mapped };
+
+    // Adapt fields for specific mappings
+    switch (step.action) {
+      case 'navigate_to':
+        // "go to settings" → click_text with the section name
+        normalized.text = step.section || step.target || step.description || '';
+        break;
+      case 'click':
+        // CSS selector click → text-based (use selector as description, target as text)
+        normalized.text = step.text || step.target || step.selector || '';
+        break;
+      case 'smart_fill':
+        // fill field with value → edit_field
+        normalized.target = step.context || step.target || '';
+        normalized.text = step.value || step.text || '';
+        break;
+      case 'fill_credentials':
+        // Auto-fill credentials → edit_field with placeholder
+        normalized.target = step.credentialId || 'login credentials';
+        normalized.text = '{{credentials}}';
+        break;
+      case 'copy':
+        // old copy → copy_text
+        normalized.target = step.target || '';
+        break;
+      case 'search_google':
+        // google search → navigate to google.com
+        normalized.url = `https://www.google.com/search?q=${encodeURIComponent(step.query || '')}`;
+        break;
+      case 'wait_for':
+        // wait for element → wait with reasonable timeout
+        normalized.ms = step.ms || 3000;
+        break;
+      case 'extract_results':
+        // extract → copy_text
+        normalized.target = step.target || 'results';
+        break;
+    }
+
+    return normalized;
+  }
+
+  /**
+   * Validate and fix AI-generated steps — normalize to unified actions, filter invalid
    */
   _validateAndFixSteps(steps) {
-    const validActions = [
-      'navigate', 'go_back', 'navigate_to', 'click_text', 'click', 'click_submit',
-      'type', 'smart_fill', 'press', 'wait', 'wait_navigation', 'wait_for',
-      'screenshot', 'fill_credentials', 'fill_form', 'explore_page', 'copy',
-      'extract', 'scroll', 'set_date', 'edit_field', 'search_google',
-      'smart_click', 'decide'
-    ];
-
-    return steps.filter(step => {
-      if (!step || !step.action) return false;
-      if (!validActions.includes(step.action)) return false;
-      // Check required fields
-      if (step.action === 'navigate' && !step.url) return false;
-      if (step.action === 'type' && !step.text) return false;
-      if (step.action === 'click_text' && !step.text) return false;
-      if (step.action === 'press' && !step.key) return false;
-      if (step.action === 'smart_fill' && (!step.context || !step.value)) return false;
-      return true;
-    });
+    return steps
+      .map(step => this._normalizeStep(step))
+      .filter(step => {
+        if (!step) return false;
+        // Check required fields after normalization
+        if (step.action === 'navigate' && !step.url) return false;
+        if (step.action === 'type' && !step.text) return false;
+        if (step.action === 'click_text' && !step.text) return false;
+        if (step.action === 'press' && !step.key) return false;
+        if (step.action === 'edit_field' && !step.target && !step.text) return false;
+        return true;
+      });
   }
 
   /**
@@ -305,9 +382,9 @@ Return ONLY valid JSON:
     const searchForMatch = line.match(/^(?:search\s+for|search|look\s+up|find)\s+(.+)/i);
     if (searchForMatch) {
       const query = searchForMatch[1].replace(/['"]/g, '').trim();
-      // Don't match "look for a contact form" — that's explore_page (P21)
+      // Don't match "look for a contact form" — that's smart_click (P20)
       if (/^(?:a\s+)?(?:contact|submit|sign\s*up|subscribe|login|log\s*in)\s+(?:form|button|field|link)/i.test(query)) {
-        return { action: 'explore_page', lookFor: query };
+        return { action: 'smart_click', target: query };
       }
       return { action: 'type', text: query, _pressEnterAfter: true };
     }
@@ -324,18 +401,18 @@ Return ONLY valid JSON:
         return { action: 'navigate', url };
       }
       // Not a URL — it's a section/page navigation ("go to our pipeline", "go to settings")
-      return { action: 'navigate_to', section: target };
+      return { action: 'click_text', text: target };
     }
 
-    // ═══ P6: Smart fill — "fill in X with Y" / "enter X in Y field" ═══
+    // ═══ P6: Edit field — "fill in X with Y" / "enter X in Y field" ═══
     const fillMatch = line.match(/(?:fill\s+(?:in|out)\s+(?:the\s+)?(.+?)\s+(?:with|as|to)\s+(.+))/i);
     if (fillMatch) {
-      return { action: 'smart_fill', context: fillMatch[1].trim(), value: fillMatch[2].trim() };
+      return { action: 'edit_field', target: fillMatch[1].trim(), text: fillMatch[2].trim() };
     }
     // "enter X in the Y field" / "put X in the Y box"
     const enterInFieldMatch = line.match(/(?:enter|put|input|write)\s+(.+?)\s+(?:in|into|on)\s+(?:the\s+)?(.+?)\s*(?:field|input|box|area|textbox|bar|form)\s*$/i);
     if (enterInFieldMatch) {
-      return { action: 'smart_fill', value: enterInFieldMatch[1].trim(), context: enterInFieldMatch[2].trim() };
+      return { action: 'edit_field', target: enterInFieldMatch[2].trim(), text: enterInFieldMatch[1].trim() };
     }
 
     // ═══ P7: Type quoted text — type "hello world" ═══
@@ -399,7 +476,7 @@ Return ONLY valid JSON:
     }
     const waitForMatch = line.match(/wait\s+(?:for\s+)?(?:the\s+)?(.+?)(?:\s+to\s+(?:load|appear|show|display|render))?\s*$/i);
     if (waitForMatch && /wait\s+for/i.test(lower)) {
-      return { action: 'wait_for', target: waitForMatch[1].trim() };
+      return { action: 'wait', ms: 3000 };
     }
 
     // ═══ P14: Generic wait — just "wait" or "pause" ═══
@@ -407,22 +484,17 @@ Return ONLY valid JSON:
       return { action: 'wait', ms: 2000 };
     }
 
-    // ═══ P15: Screenshot ═══
-    if (/(?:take|capture|grab|save|get)\s+(?:a\s+)?screenshot/i.test(lower)) {
-      return { action: 'screenshot' };
-    }
-
-    // ═══ P16: Copy — "copy the email address" ═══
+    // ═══ P15: Copy — "copy the email address" ═══
     const copyMatch = line.match(/copy\s+(?:the\s+)?(.+)/i);
     if (copyMatch && !/copy\s+event/i.test(lower)) {
       // Don't match "copy event" — that's a click action (Eventbrite)
-      return { action: 'copy', target: copyMatch[1].trim() };
+      return { action: 'copy_text', target: copyMatch[1].trim() };
     }
 
-    // ═══ P17: Extract / Scrape — "extract all phone numbers", "scrape the results" ═══
+    // ═══ P16: Extract / Scrape — "extract all phone numbers", "scrape the results" ═══
     const extractMatch = line.match(/(?:extract|scrape|grab|collect|pull)\s+(?:the\s+)?(?:all\s+)?(.+)/i);
     if (extractMatch) {
-      return { action: 'extract', target: extractMatch[1].trim() };
+      return { action: 'copy_text', target: extractMatch[1].trim() };
     }
 
     // ═══ P18: Scroll — "scroll down", "scroll up 500px" ═══
@@ -434,24 +506,19 @@ Return ONLY valid JSON:
 
     // ═══ P19: Log in with credentials — "log in with credentials", "sign in with saved password" ═══
     if (/(?:log\s*in|sign\s*in)\s+(?:to\s+)?(?:with\s+)?(?:my\s+)?(?:saved\s+)?(?:credentials|password|account)/i.test(lower)) {
-      return { action: 'fill_credentials' };
+      return { action: 'edit_field', target: 'login credentials', text: '{{credentials}}' };
     }
 
-    // ═══ P20: Explore page — "explore the page", "examine the page", "read the page" ═══
-    if (/(?:explore|examine|inspect|read|analyze|review|check)\s+(?:the\s+)?(?:current\s+)?(?:page|screen|results|content)/i.test(lower)) {
-      return { action: 'explore_page' };
-    }
-
-    // ═══ P21: Look for element — "look for a contact form", "find a submit button" ═══
+    // ═══ P20: Look for element — "look for a contact form", "find a submit button" ═══
     if (/(?:look\s+for|find|locate|spot)\s+(?:a\s+)?(?:contact|submit|sign\s*up|subscribe|login|log\s*in|search|email|phone|newsletter)?\s*(?:form|button|field|link|input|box|area)/i.test(lower)) {
       const lookMatch = line.match(/(?:look\s+for|find|locate|spot)\s+(.+)/i);
-      return { action: 'explore_page', lookFor: lookMatch ? lookMatch[1].trim() : 'interactive element' };
+      return { action: 'smart_click', target: lookMatch ? lookMatch[1].trim() : 'interactive element' };
     }
 
-    // ═══ P22: Set date — "set date to March 15", "change the date", "update the date" ═══
+    // ═══ P21: Set date — "set date to March 15", "change the date", "update the date" ═══
     const dateMatch = line.match(/(?:set|change|update|modify|pick|select)\s+(?:the\s+)?date\s+(?:to\s+)?(.+)?/i);
     if (dateMatch) {
-      return { action: 'set_date', value: dateMatch[1]?.trim() || null };
+      return { action: 'edit_field', target: 'date field', text: dateMatch[1]?.trim() || '' };
     }
 
     // ═══ P23: No catch-all — return null if nothing matched ═══
@@ -494,32 +561,24 @@ Return ONLY valid JSON:
   describeStep(step) {
     switch (step.action) {
       case 'navigate': return `Go to ${step.url}`;
-      case 'go_back': return 'Go back to previous page';
-      case 'navigate_to': return `Navigate to ${step.section || 'section'}`;
       case 'click_text': return `Click on "${step.text}"`;
-      case 'click': return `Click at ${step.selector || step.target || 'element'}`;
       case 'click_submit': return 'Click the submit/login button';
+      case 'smart_click': return `Click on ${step.target || 'element'} (AI vision)`;
+      case 'right_click': return `Right-click on ${step.target || 'element'}`;
+      case 'select_option': return `Select "${step.text || 'option'}" from ${step.target || 'dropdown'}`;
+      case 'hover': return `Hover over ${step.target || 'element'}`;
+      case 'edit_field': return `Type "${step.text || '...'}" in ${step.target || 'field'}`;
       case 'type': {
         if (step.contentInjection) return 'Type the provided content';
         return `Type "${step.text}"${step.target ? ` in ${step.target}` : ''}`;
       }
-      case 'smart_fill': return `Fill ${step.context || 'field'} with "${step.value || '...'}"`;
       case 'press': return `Press ${(step.key || 'key').charAt(0).toUpperCase() + (step.key || 'key').slice(1)}`;
+      case 'scroll': return `Scroll ${step.direction || 'down'}`;
+      case 'switch_tab': return `Switch to ${step.target || 'next'} tab`;
+      case 'go_back': return 'Go back to previous page';
+      case 'copy_text': return `Copy ${step.target || 'text'}`;
       case 'wait': return `Wait ${(step.ms || 2000) / 1000} seconds`;
       case 'wait_navigation': return 'Wait for page to load';
-      case 'wait_for': return `Wait for ${step.target || 'element'} to appear`;
-      case 'screenshot': return 'Take a screenshot';
-      case 'fill_credentials': return `Fill in credentials${step.credentialId ? ` for ${step.credentialId}` : ''}`;
-      case 'fill_form': return 'Fill in form fields';
-      case 'explore_page': return step.lookFor ? `Look for ${step.lookFor}` : 'Explore the current page';
-      case 'copy': return `Copy ${step.target || 'content'}`;
-      case 'extract': return `Extract ${step.target || 'data'}`;
-      case 'scroll': return `Scroll ${step.direction || 'down'}`;
-      case 'set_date': return `Set date${step.value ? ` to ${step.value}` : ''}`;
-      case 'edit_field': return `Edit ${step.target || 'field'}${step.value ? ` to "${step.value}"` : ''}`;
-      case 'search_google': return `Search Google for "${step.query || '...'}"`;
-      case 'smart_click': return `Smart click on ${step.target || 'element'}`;
-      case 'decide': return 'AI decides next action';
       default: return step.action;
     }
   }
@@ -616,33 +675,30 @@ YOUR APPROACH:
    - KEEP the document's wording in descriptions where it's helpful — the user wrote it that way for a reason
 4. The final sequence should flow smoothly from start to finish when a bot executes it
 
-ACTION REFERENCE:
+ACTION REFERENCE (16 supported actions — use ONLY these):
 | Action | Use when | Required fields |
 |--------|----------|-----------------|
 | navigate | Opening a URL | url |
-| go_back | Going back to previous page | (none) |
-| navigate_to | Going to a section/page by name (not a URL) | section |
 | click_text | Clicking a button, link, tab, or menu item by its visible text | text |
 | click_submit | Clicking a submit/login/save/send button | (none) |
+| smart_click | Clicking something hard to describe by text (AI vision finds it) | target |
+| right_click | Right-clicking for context menus | target |
+| select_option | Clicking a dropdown then selecting an option | target, text |
+| hover | Hovering over an element (for menus/tooltips) | target |
+| edit_field | Clicking a field, clearing it, and typing new text | target, text |
 | type | Typing text into a field | text |
-| smart_fill | Filling a specific named field with a value | context, value |
 | press | Pressing a keyboard key (Enter, Tab, Escape) | key |
-| fill_credentials | Entering saved username/password | (none) |
+| scroll | Scrolling the page | direction (up/down) |
+| switch_tab | Switching browser tabs | target (tab # or "next"/"previous") |
+| go_back | Going back to previous page | (none) |
+| copy_text | Copying text from the page | target |
 | wait | Pausing for a set time | ms (milliseconds) |
 | wait_navigation | Waiting for a full page load after clicking a link | (none) |
-| wait_for | Waiting for a specific element to appear | target |
-| screenshot | Capturing the current screen | (none) |
-| extract | Pulling data from the page (prices, names, results) | target |
-| explore_page | AI analyzes what's on the page — use for vague or complex steps | (none), optional: lookFor |
-| scroll | Scrolling the page | direction (up/down) |
-| copy | Copying text from the page | target |
-| set_date | Setting a date in a date picker | value |
-| edit_field | Clearing and replacing field content | target, value |
 
 SPECIAL CASES:
 - If the document mentions typing/entering data that will vary each time (user-provided content), use: { "action": "type", "text": "{{content}}", "contentInjection": true }
-- If a step says "log in" or "sign in", use fill_credentials (which auto-fills saved credentials)
-- If a step is vague like "review the results" or "verify the information", use explore_page — Ace's AI vision will handle it
+- If a step says "log in" or "sign in", use edit_field for username + edit_field for password + click_submit
+- If a step is vague like "review the results", use smart_click — Ace's AI vision will handle it
 
 Return ONLY valid JSON:
 {
@@ -666,15 +722,8 @@ Return ONLY valid JSON:
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]);
           if (parsed.steps && Array.isArray(parsed.steps) && parsed.steps.length > 0) {
-            const validActions = [
-              'navigate', 'go_back', 'navigate_to', 'click_text', 'click', 'click_submit',
-              'type', 'smart_fill', 'press', 'wait', 'wait_navigation', 'wait_for',
-              'screenshot', 'fill_credentials', 'fill_form', 'explore_page', 'copy',
-              'extract', 'scroll', 'set_date', 'edit_field', 'search_google',
-              'smart_click', 'decide'
-            ];
-            const validSteps = parsed.steps
-              .filter(s => s.action && validActions.includes(s.action))
+            // Normalize AI-generated steps to unified action types
+            const validSteps = this._validateAndFixSteps(parsed.steps)
               .map(s => ({ ...s, description: s.description || this.describeStep(s) }));
 
             if (validSteps.length > 0) {
@@ -711,20 +760,12 @@ Return ONLY valid JSON:
    * Validate SOP steps structure
    */
   validateSteps(steps) {
-    const validActions = [
-      'navigate', 'go_back', 'navigate_to', 'click_text', 'click', 'click_submit',
-      'type', 'smart_fill', 'press', 'wait', 'wait_navigation', 'wait_for',
-      'screenshot', 'fill_credentials', 'fill_form', 'explore_page', 'copy',
-      'extract', 'scroll', 'set_date', 'edit_field', 'search_google',
-      'smart_click', 'decide'
-    ];
-
     const errors = [];
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
       if (!step.action) {
         errors.push(`Step ${i + 1}: missing action`);
-      } else if (!validActions.includes(step.action)) {
+      } else if (!UNIFIED_ACTIONS.includes(step.action) && !ACTION_ALIASES[step.action]) {
         errors.push(`Step ${i + 1}: unknown action "${step.action}"`);
       }
       // Required field checks
@@ -740,11 +781,8 @@ Return ONLY valid JSON:
       if (step.action === 'press' && !step.key) {
         errors.push(`Step ${i + 1}: press requires key`);
       }
-      if (step.action === 'smart_fill' && (!step.context || !step.value)) {
-        errors.push(`Step ${i + 1}: smart_fill requires context and value`);
-      }
-      if (step.action === 'navigate_to' && !step.section) {
-        errors.push(`Step ${i + 1}: navigate_to requires section`);
+      if (step.action === 'edit_field' && !step.target && !step.text) {
+        errors.push(`Step ${i + 1}: edit_field requires target or text`);
       }
     }
     return { valid: errors.length === 0, errors };

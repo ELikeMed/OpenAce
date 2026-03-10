@@ -100,6 +100,7 @@ export class UnifiedAgent {
       browser:   { name: 'Browser Control',    tools: ['open_browser', 'browser_click', 'browser_type', 'take_screenshot', 'scroll_page', 'read_screen', 'extract_page_data', 'go_back', 'browse_and_extract'], description: 'Control Chrome browser with AI vision' },
       pipeline:  { name: 'Pipeline / CRM',     tools: ['save_leads', 'get_pipeline', 'move_lead'], description: 'Manage leads and sales pipeline' },
       email:     { name: 'Email',              tools: ['send_email'], description: 'Send emails via Gmail' },
+      phone:     { name: 'Phone / SMS',        tools: ['send_sms', 'make_call', 'dispatch_phone_call'], description: 'Send SMS and make phone calls via Twilio or AI agents' },
       contacts:  { name: 'Contacts',           tools: ['manage_contacts'], description: 'Manage contact book' },
       calendar:  { name: 'Calendar',           tools: ['list_calendar_events', 'create_calendar_event', 'delete_calendar_event'], description: 'Google Calendar events' },
       social:    { name: 'Social Media',       tools: ['post_social_media', 'schedule_social_post', 'create_content_plan', 'select_media_for_content'], description: 'Post and schedule on social platforms' },
@@ -302,6 +303,48 @@ export class UnifiedAgent {
       }
     });
 
+    // Phone / SMS (Twilio)
+    if (this.subsystems.twilioService) {
+      declarations.push({
+        name: 'send_sms',
+        description: 'Send an SMS text message via Twilio. Use when the user asks to text someone, send an SMS, or send a text message.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            to: { type: 'STRING', description: 'Recipient phone number in E.164 format (e.g. +15551234567)' },
+            body: { type: 'STRING', description: 'The text message content (max 1600 chars)' }
+          },
+          required: ['to', 'body']
+        }
+      });
+
+      declarations.push({
+        name: 'make_call',
+        description: 'Make a phone call via Twilio and speak a message using text-to-speech. Use when the user asks to call someone with a specific message.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            to: { type: 'STRING', description: 'Phone number to call in E.164 format (e.g. +15551234567)' },
+            message: { type: 'STRING', description: 'The message to speak to the recipient via TTS' }
+          },
+          required: ['to', 'message']
+        }
+      });
+
+      declarations.push({
+        name: 'dispatch_phone_call',
+        description: 'Dispatch a phone call to a BYO AI phone agent (Vapi, Bland, Retell). The AI agent handles the conversation. Use when the user wants an AI agent to make a call on their behalf.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            to: { type: 'STRING', description: 'Phone number to call in E.164 format' },
+            task: { type: 'STRING', description: 'What the AI agent should accomplish on the call (e.g. "Schedule a property viewing for 123 Main St")' }
+          },
+          required: ['to', 'task']
+        }
+      });
+    }
+
     // Pipeline / Leads
     if (this.subsystems.pipelineManager) {
       declarations.push({
@@ -391,7 +434,8 @@ export class UnifiedAgent {
             days: { type: 'STRING', description: 'Comma-separated day names or shortcuts. Examples: "mon,tue,wed,thu,fri" for weekdays, "every day" for all days, "mon,wed,fri" for specific days. Default: weekdays.' },
             type: { type: 'STRING', description: 'Type of routine: "briefing" (AI generates a report/summary) or "sop" (run a saved procedure). Default: "briefing"' },
             action: { type: 'STRING', description: 'For briefing: the prompt/instruction for what to research or report on. For sop: the name or ID of the SOP to run.' },
-            send_to_telegram: { type: 'BOOLEAN', description: 'Whether to send briefing results to Telegram. Default: true' }
+            send_to_telegram: { type: 'BOOLEAN', description: 'Whether to send briefing results to Telegram. Default: true' },
+            delivery: { type: 'STRING', description: 'Where to deliver results: "dashboard" (chat only), "telegram" (Telegram only), or "both" (default). Use "both" unless user specifies otherwise.' }
           },
           required: ['name', 'action']
         }
@@ -570,7 +614,7 @@ export class UnifiedAgent {
           type: 'OBJECT',
           properties: {
             name: { type: 'STRING', description: 'Name for the new SOP' },
-            steps: { type: 'STRING', description: 'JSON array of steps. Each step: {"action":"click|type|navigate|wait|scroll","target":"description","value":"optional value"}' },
+            steps: { type: 'STRING', description: 'JSON array of step objects. Each step MUST be an object: [{"action":"navigate","description":"Go to https://example.com"},{"action":"click_text","description":"Click the Submit button"},{"action":"type","description":"Type the search query","value":"{{query}}"}]. Valid actions: navigate, click_text, click_submit, smart_click, type, scroll, wait. Do NOT pass plain strings — always use objects with action and description.' },
             triggers: { type: 'STRING', description: 'JSON array of trigger phrases that should activate this SOP' },
             keywords: { type: 'STRING', description: 'JSON array of keywords for matching' },
             category: { type: 'STRING', description: 'Category: "general", "custom", "lead_generation", "email", "meetups". Default "custom".' }
@@ -775,8 +819,8 @@ export class UnifiedAgent {
           type: 'OBJECT',
           properties: {
             title: { type: 'STRING', description: 'Event title/name' },
-            start_time: { type: 'STRING', description: 'Start time — ISO string like "2026-03-15T10:00:00" or natural language like "tomorrow at 2pm"' },
-            end_time: { type: 'STRING', description: 'End time — ISO string or natural language. If not provided, defaults to 1 hour after start.' },
+            start_time: { type: 'STRING', description: 'Start time as ISO 8601 string. MUST be a specific date and time like "2026-03-14T15:20:00". Calculate the correct date from the current date provided in the system prompt. NEVER pass natural language.' },
+            end_time: { type: 'STRING', description: 'End time as ISO 8601 string like "2026-03-14T16:20:00". If not provided, defaults to 1 hour after start.' },
             duration_minutes: { type: 'NUMBER', description: 'Duration in minutes (alternative to end_time). Default 60.' },
             description: { type: 'STRING', description: 'Event description or notes' },
             attendees: { type: 'STRING', description: 'Comma-separated email addresses of attendees' },
@@ -883,7 +927,7 @@ export class UnifiedAgent {
           properties: {
             content: { type: 'STRING', description: 'The post text/content' },
             platforms: { type: 'STRING', description: 'Comma-separated platforms: "twitter", "linkedin", "facebook", "instagram", "tiktok". Default "twitter".' },
-            scheduled_time: { type: 'STRING', description: 'When to post (ISO string or natural language like "tomorrow at 9am")' },
+            scheduled_time: { type: 'STRING', description: 'When to post as ISO 8601 string (e.g., "2026-03-14T09:00:00"). Calculate the exact date from today\'s date in the system prompt. NEVER pass natural language.' },
             media_path: { type: 'STRING', description: 'Optional: absolute path to an image or video file to attach' }
           },
           required: ['content', 'scheduled_time']
@@ -896,7 +940,7 @@ export class UnifiedAgent {
         parameters: {
           type: 'OBJECT',
           properties: {
-            posts_json: { type: 'STRING', description: 'JSON array of posts. Each post: { "content": "caption text", "platform": "facebook", "scheduled_time": "2026-03-03T09:00:00", "media_path": "/path/to/file.jpg" (optional), "hashtags": "#tag1 #tag2" (optional) }' }
+            posts_json: { type: 'STRING', description: 'JSON array of posts. Each post: { "content": "caption text", "platform": "facebook", "scheduled_time": "2026-03-14T09:00:00" (MUST be ISO 8601 — compute exact date from today), "media_path": "/path/to/file.jpg" (optional), "hashtags": "#tag1 #tag2" (optional) }' }
           },
           required: ['posts_json']
         }
@@ -927,6 +971,7 @@ export class UnifiedAgent {
       browser:   ['open_browser', 'browser_click', 'browser_type', 'take_screenshot', 'scroll_page', 'read_screen', 'extract_page_data', 'go_back', 'browse_and_extract'],
       pipeline:  ['save_leads', 'get_pipeline', 'move_lead'],
       email:     ['send_email'],
+      phone:     ['send_sms', 'make_call', 'dispatch_phone_call'],
       contacts:  ['manage_contacts'],
       calendar:  ['list_calendar_events', 'create_calendar_event', 'delete_calendar_event'],
       social:    ['post_social_media', 'schedule_social_post', 'create_content_plan', 'select_media_for_content'],
@@ -945,9 +990,10 @@ export class UnifiedAgent {
       { group: 'browser',   patterns: [/\bgo to\b/, /\bopen\b/, /\bvisit\b/, /\bbrowse\b/, /\bclick\b/, /\bnavigate\b/, /\bpull up\b/, /https?:\/\//, /\.com\b/, /\.org\b/, /\.io\b/] },
       { group: 'research',  patterns: [/\bsearch\b/, /\bfind\b/, /\blook\s*up\b/, /\bresearch\b/, /\bgoogle\b/, /\binvestigate\b/, /\blook into\b/] },
       { group: 'pipeline',  patterns: [/\blead/i, /\bpipeline\b/, /\bprospect/i, /\bcrm\b/, /\bsave.*lead/i] },
-      { group: 'email',     patterns: [/\bemail\b/, /\bsend\b.*\b(message|note|mail)\b/, /\breach out\b/, /\bcontact.*@/] },
+      { group: 'email',     patterns: [/\bemail\b/, /\bsend\b.*\b(message|note|mail)\b/, /\breach out\b/, /\bcontact.*@/, /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/] },
+      { group: 'phone',     patterns: [/\bsms\b/, /\btext\b/, /\bcall\b/, /\bphone\b/, /\btwilio\b/, /\bdial\b/, /\bring\b/, /\bvoice\b/, /\bvapi\b/, /\bbland\b/, /\bretell\b/] },
       { group: 'contacts',  patterns: [/\bcontact/i] },
-      { group: 'calendar',  patterns: [/\bcalendar\b/, /\bmeeting\b/, /\bevent\b/, /\bschedule\s*(a|an|the)?\s*meeting/i, /\bappointment\b/] },
+      { group: 'calendar',  patterns: [/\bcalendar\b/, /\bmeeting\b/, /\bevent\b/, /\bschedule\b/, /\bappointment\b/, /\bblock\s*time\b/, /\bset\s*up\s*(a|an)?\s*(call|meeting|sync)\b/i] },
       { group: 'social',    patterns: [/\bpost\b/, /\bsocial\b/, /\btwitter\b/, /\blinkedin\b/, /\bfacebook\b/, /\binstagram\b/, /\btiktok\b/, /\bcontent\s*plan\b/] },
       { group: 'sops',      patterns: [/\bsop\b/i, /\bprocedure\b/, /\bplaybook\b/, /\btrain\b/, /\bteach\b/, /\bshow me how\b/] },
       { group: 'projects',  patterns: [/\bproject\b/, /\bcode\b/, /\bbuild\b/, /\bcreate\s*(an?\s*)?(app|website|page|site)\b/, /\[Studio Project:/] },
@@ -955,7 +1001,7 @@ export class UnifiedAgent {
       { group: 'workload',  patterns: [/\bworkload\b/, /\bfile\b/, /\bdocument\b/, /\bmedia\b/, /\bupload\b/, /\bingest/i] },
       { group: 'deploy',    patterns: [/\bdeploy\b/, /\bpublish\b/, /\blaunch\b/, /\bship\b/, /\bnetlify\b/, /\bfirebase\b/] },
       { group: 'gdrive',    patterns: [/\bdrive\b/, /\bgoogle\s*doc\b/, /\bupload.*drive\b/] },
-      { group: 'goals',     patterns: [/\bgoal/i, /\btarget\b/, /\bmission\b/, /\bobjective\b/] },
+      { group: 'goals',     patterns: [/\bgoal/i, /\btarget\b/, /\bmission\b/, /\bobjective\b/, /\bper\s*(day|week|month)\b/, /\b\d+\s*(leads?|emails?|contacts?|calls?)\s*(a|per)\b/i, /\bevery\s*(day|week|morning|evening)\b/] },
       { group: 'scheduler', patterns: [/\bschedule\b/, /\broutine\b/, /\bdaily\b/, /\bweekly\b/, /\bautomate\b/] },
     ];
 
@@ -991,6 +1037,27 @@ export class UnifiedAgent {
     // If email triggered, include contacts
     if (selectedGroups.has('email')) {
       selectedGroups.add('contacts');
+    }
+
+    // If phone triggered, include contacts (to look up numbers)
+    if (selectedGroups.has('phone')) {
+      selectedGroups.add('contacts');
+    }
+
+    // If scheduler triggered, include calendar (users often mean calendar events)
+    if (selectedGroups.has('scheduler')) {
+      selectedGroups.add('calendar');
+    }
+
+    // If user mentions an enabled integration service, include browser (Ace may navigate there)
+    if (this.subsystems.integrationManager) {
+      const integrationKeywords = this.subsystems.integrationManager.getEnabledKeywords();
+      for (const kw of integrationKeywords) {
+        if (lower.includes(kw)) {
+          selectedGroups.add('browser');
+          break;
+        }
+      }
     }
 
     // Fallback: if only memory matched (ambiguous message), include common tools
@@ -1109,10 +1176,33 @@ User: "Make Net Profits purple" → search="Net Profits" → finds line 52 → r
 
 `;
 
+    // Current date/time — critical for Gemini to resolve "today", "tomorrow", "this friday", etc.
+    const now = new Date();
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const dayName = days[now.getDay()];
+    const monthName = months[now.getMonth()];
+    const dateStr = `${dayName}, ${monthName} ${now.getDate()}, ${now.getFullYear()}`;
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'America/New_York' });
+    const tzName = 'Eastern Time (ET)';
+    prompt += `# CURRENT DATE & TIME
+Today is **${dateStr}** and the current time is **${timeStr} ${tzName}**.
+When the user says "today", "tomorrow", "this Friday", "next week", etc., calculate the correct date relative to today.
+When calling create_calendar_event, you MUST pass start_time as an ISO 8601 string (e.g., "2026-03-14T15:20:00"). NEVER pass natural language like "this friday" — always compute the actual date.
+
+`;
 
     // Business context
     if (this.businessContext && this.businessContext !== 'No business profile configured yet.') {
       prompt += `# BUSINESS CONTEXT\n${this.businessContext}\n\n`;
+    }
+
+    // User's tech stack (from Integration Manager)
+    if (this.subsystems.integrationManager) {
+      const techStack = this.subsystems.integrationManager.getContextSummary();
+      if (techStack) {
+        prompt += `# USER'S TECH STACK\n${techStack}\n\n`;
+      }
     }
 
     // Active goals/missions — injected so Ace always knows what it's working toward
@@ -1425,10 +1515,11 @@ When the user asks to create a form, quiz, survey, or feedback collector:
 
 When the user asks about their schedule, meetings, or events:
 1. Use **list_calendar_events** to check their calendar first before saying "I don't know your schedule."
-2. When creating events, use **create_calendar_event** with a specific start_time. If the user says "tomorrow at 2pm", pass that as the start_time — the system handles parsing.
-3. Always include a Google Meet link for meetings with other people (add_meet_link defaults to true).
-4. After creating an event, tell the user the event details including any Meet link.
-5. To cancel/delete, first list events to get the event_id, then call delete_calendar_event.
+2. When creating events, you MUST calculate the exact ISO date from the current date shown above. Example: if today is Wednesday March 12, 2026 and the user says "this Friday at 3pm", compute that Friday is March 14 and pass start_time="2026-03-14T15:00:00".
+3. ALWAYS pass start_time as ISO 8601 format like "2026-03-14T15:20:00". NEVER pass "tomorrow" or "this friday" — compute the real date.
+4. Always include a Google Meet link for meetings with other people (add_meet_link defaults to true).
+5. After creating an event, tell the user the event details including the date, time, and any Meet link.
+6. To cancel/delete, first list events to get the event_id, then call delete_calendar_event.
 
 NEVER say "I can't access your calendar" — you CAN. Use the tools.
 
@@ -1741,16 +1832,25 @@ When you're struggling with a task and can't figure it out after multiple attemp
             }
           }
 
-          // Cap tool results to prevent conversation history bloat
-          const summarized = typeof toolResult === 'object'
-            ? JSON.stringify(toolResult).slice(0, 300) + (JSON.stringify(toolResult).length > 300 ? '...' : '')
-            : String(toolResult || '').slice(0, 300) + (String(toolResult || '').length > 300 ? '...' : '');
+          // Cap tool results — smart truncation that preserves valid JSON
+          const summarized = this._truncateToolResult(toolResult, 4000);
           toolResults.push({
             functionResponse: {
               name: call.name,
               response: { result: summarized }
             }
           });
+
+          // Deduct credit for successful tool use
+          if (this.subsystems.creditManager) {
+            this.subsystems.creditManager.deductCredit(call.name);
+            // Check if out of credits after deduction — stop loop gracefully
+            if (!this.subsystems.creditManager.canUseTool()) {
+              console.log(`[UnifiedAgent] ⛔ Out of credits — pausing tool execution`);
+              result.functionCalls = [];
+              break;
+            }
+          }
         } catch (toolError) {
           console.error(`[UnifiedAgent] ❌ Tool ${call.name} failed:`, toolError.message);
 
@@ -1898,8 +1998,67 @@ When you're struggling with a task and can't figure it out after multiple attemp
       }
 
       // Log tool call diagnostics
-      const callCount = result.functionCalls?.length || 0;
+      let callCount = result.functionCalls?.length || 0;
       console.log(`[UnifiedAgent] Gemini returned: ${callCount} function calls, text: ${result.text ? result.text.substring(0, 100) + '...' : '(none)'}${isStudioProject ? ' [Studio project]' : ''}`);
+
+      // ═══ DIRECT PREFIX HANDLING — guaranteed tool execution ═══
+      // When the user clicks an action button (Search, Browse, etc.), the prefix IS the command.
+      // Don't leave it to the AI — call the tool directly if Gemini didn't.
+      if (callCount === 0) {
+        const prefixMatch = message.match(/^\[(WEB SEARCH|OPEN BROWSER|RUN SOP|SEND EMAIL)\]\s*(.*)/i);
+        if (prefixMatch) {
+          const prefix = prefixMatch[1].toUpperCase();
+          const query = prefixMatch[2].replace(/^(for|about|of)\s+/i, '').trim(); // Strip leading prepositions
+          console.log(`[UnifiedAgent] ⚡ Direct prefix handler: [${prefix}] → "${query}"`);
+
+          if (prefix === 'WEB SEARCH' && query) {
+            this.onProgress(`Searching: ${query}`);
+            const searchResult = await this._toolWebSearch({ query });
+            // Inject as if Gemini called the tool — send result to AI for summarization
+            const toolResults = [{ functionResponse: { name: 'web_search', response: { result: this._truncateToolResult(searchResult, 4000) } } }];
+            try {
+              const followUp = await result.chat.sendMessage(toolResults);
+              const response = followUp.response;
+              let text = '';
+              try { text = typeof response.text === 'function' ? response.text() : String(response.text || ''); } catch {}
+              result = { ...result, response, text, functionCalls: response.functionCalls?.() || [] };
+              // Mark that we called the tool
+              result._directToolCalled = 'web_search';
+            } catch (e) {
+              console.error('[UnifiedAgent] Direct search follow-up failed:', e.message);
+              // Still have search results — format them directly
+              try {
+                const parsed = JSON.parse(searchResult);
+                if (parsed.results?.length > 0) {
+                  const summary = parsed.results.slice(0, 5).map((r, i) => `${i + 1}. **${r.title}**\n   ${r.url}\n   ${r.snippet}`).join('\n\n');
+                  result.text = `Here's what I found for "${query}":\n\n${summary}`;
+                }
+              } catch {}
+            }
+            callCount = 1; // Prevent nudge system from firing
+          }
+          else if (prefix === 'OPEN BROWSER' && query) {
+            this.onProgress(`Opening browser`);
+            let url = query;
+            if (!/^https?:\/\//i.test(url)) {
+              url = url.includes('.') ? `https://${url}` : `https://www.google.com/search?q=${encodeURIComponent(url)}`;
+            }
+            const browseResult = await this._toolOpenBrowser({ url });
+            const toolResults = [{ functionResponse: { name: 'open_browser', response: { result: browseResult } } }];
+            try {
+              const followUp = await result.chat.sendMessage(toolResults);
+              const response = followUp.response;
+              let text = '';
+              try { text = typeof response.text === 'function' ? response.text() : String(response.text || ''); } catch {}
+              result = { ...result, response, text, functionCalls: response.functionCalls?.() || [] };
+              result._directToolCalled = 'open_browser';
+            } catch (e) {
+              result.text = `Opened ${url} in Chrome. Use the browser tools to interact with the page.`;
+            }
+            callCount = 1;
+          }
+        }
+      }
 
       // Studio project nudge — if Gemini narrates instead of calling tools for code tasks
       if (callCount === 0 && isStudioProject && result.text && result.chat) {
@@ -1921,11 +2080,98 @@ When you're struggling with a task and can't figure it out after multiple attemp
         }
       }
 
+      // Action nudge — if Gemini returns 0 tool calls for clear action requests
+      // Fires even when result.text is empty (Gemini sometimes returns nothing)
+      if (callCount === 0 && !isStudioProject && result.chat) {
+        const lowerMsg = message.toLowerCase();
+        let actionNudge = null;
+
+        // Calendar/scheduling actions
+        if (/\b(schedule|calendar|meeting|appointment|block\s*time)\b/.test(lowerMsg) &&
+            /\b(for|at|on|this|next|tomorrow|today)\b/.test(lowerMsg)) {
+          actionNudge = 'STOP. The user is asking you to create a calendar event. You MUST call create_calendar_event NOW with the correct title and start_time in ISO 8601 format (e.g., "2026-03-14T15:20:00"). Calculate the exact date from today\'s date shown in the system prompt. Do NOT describe what you would do — CALL THE TOOL.';
+        }
+        // Email actions
+        else if (/\b(send|email|mail)\b/.test(lowerMsg) && /\b(to|@)\b/.test(lowerMsg) &&
+                 !/\bwhat\b/.test(lowerMsg)) {
+          actionNudge = 'STOP. The user is asking you to send an email. You MUST call send_email NOW. Do NOT describe — CALL THE TOOL.';
+        }
+        // SMS actions
+        else if (/\b(text|sms)\b/.test(lowerMsg) && /\b(send|to)\b/.test(lowerMsg)) {
+          actionNudge = 'STOP. The user is asking you to send a text message. You MUST call send_sms NOW. Do NOT describe — CALL THE TOOL.';
+        }
+        // Social media actions
+        else if (/\b(post|tweet|share)\b/.test(lowerMsg) && /\b(on|to|social|twitter|linkedin|facebook|instagram|tiktok)\b/.test(lowerMsg)) {
+          actionNudge = 'STOP. The user is asking you to post to social media. You MUST call post_social_media or schedule_social_post NOW. Do NOT describe — CALL THE TOOL.';
+        }
+        // Lead save actions
+        else if (/\b(save|add)\b/.test(lowerMsg) && /\b(lead|pipeline|prospect)\b/.test(lowerMsg)) {
+          actionNudge = 'STOP. The user is asking you to save leads. You MUST call save_leads NOW with the lead data. Do NOT describe — CALL THE TOOL.';
+        }
+        // Search/research actions (not questions)
+        else if (/\b(search|find|look\s*up|research)\b/.test(lowerMsg) && /\b(for|about|on)\b/.test(lowerMsg) &&
+                 !/\b(how|what|why|when)\b.*\b(do|does|is|are|can)\b/.test(lowerMsg)) {
+          actionNudge = 'STOP. The user is asking you to search. You MUST call web_search NOW. Do NOT describe — CALL THE TOOL.';
+        }
+        // Goal setting actions
+        else if (/\b(set|create|track)\b/.test(lowerMsg) && /\b(goal|target|objective|mission)\b/.test(lowerMsg)) {
+          actionNudge = 'STOP. The user is asking you to set a goal. You MUST call manage_goals with action "add" NOW. Do NOT describe — CALL THE TOOL.';
+        }
+        // Form/quiz creation actions
+        else if (/\b(create|make|build)\b/.test(lowerMsg) && /\b(form|quiz|survey)\b/.test(lowerMsg)) {
+          actionNudge = 'STOP. The user is asking you to create a form/quiz. You MUST call create_form NOW. Do NOT describe — CALL THE TOOL.';
+        }
+        // Deploy actions
+        else if (/\b(deploy|publish|launch|ship)\b/.test(lowerMsg) && /\b(project|site|app|page)\b/.test(lowerMsg)) {
+          actionNudge = 'STOP. The user is asking you to deploy. You MUST call deploy_project NOW. Do NOT describe — CALL THE TOOL.';
+        }
+        // Generic catch-all — imperative action request with short narration response
+        else if (/\b(do|go|run|execute|start|open|send|create|make|build|write|get|set\s*up)\b/.test(lowerMsg) &&
+                 !/\b(how|what|why|when|explain|tell me about|describe|can you)\b/.test(lowerMsg) &&
+                 result.text.length < 500) {
+          actionNudge = 'STOP. The user asked you to take an action. You MUST call the appropriate tool NOW. Do NOT narrate or describe what you would do — CALL THE TOOL FUNCTION.';
+        }
+
+        if (actionNudge) {
+          console.warn(`[UnifiedAgent] ⚠️ Action nudge: Gemini returned 0 tool calls for action request — nudging...`);
+          this.onProgress('Executing action');
+          try {
+            const nudge = await result.chat.sendMessage(actionNudge);
+            const nudgeResponse = nudge.response;
+            let nudgeText = '';
+            try { nudgeText = typeof nudgeResponse.text === 'function' ? nudgeResponse.text() : String(nudgeResponse.text || ''); } catch {}
+            const nudgeCalls = nudgeResponse.functionCalls?.() || [];
+            if (nudgeCalls.length > 0) {
+              result = { ...result, response: nudgeResponse, text: nudgeText, functionCalls: nudgeCalls };
+              console.log(`[UnifiedAgent] ✅ Action nudge worked — ${nudgeCalls.length} tool calls now`);
+            } else {
+              console.warn(`[UnifiedAgent] ⚠️ Action nudge failed — Gemini still returned 0 tool calls`);
+            }
+          } catch (nudgeErr) {
+            console.error('[UnifiedAgent] Action nudge failed:', nudgeErr.message);
+          }
+        }
+      }
+
+      // ═══ Credit check — can user execute tools? ═══
+      if (this.subsystems.creditManager && !this.subsystems.creditManager.canUseTool()) {
+        return {
+          text: "I'd love to help with that, but you're out of credits. You can reload at Settings → Billing or click the credit badge in the header. Chat is always free — feel free to keep talking!",
+          toolsUsed: [],
+        };
+      }
+
       // ═══ Tool calling loop (phase 1) ═══
       const MAX_ITERATIONS = 25;
       const MAX_PHASES = 3; // Auto-continuation phases (code-enforced follow-through)
       const toolsCalled = []; // Track which tools were called (shared across all phases)
       const failedToolCounts = new Map(); // Track failures by category for struggle detection
+
+      // If direct prefix handler already called a tool, track it
+      if (result._directToolCalled) {
+        toolsCalled.push(result._directToolCalled);
+        thinking.push(`Tool: ${result._directToolCalled}`);
+      }
 
       const phase1 = await this._runToolLoop(result, toolsCalled, thinking, MAX_ITERATIONS, 1, failedToolCounts);
       result = phase1.result;
@@ -1951,13 +2197,13 @@ When you're struggling with a task and can't figure it out after multiple attemp
 
         if (incompleteGoals.length === 0) break;
 
-        // Only auto-continue if the user's message is related to the goals
-        // (don't auto-continue for unrelated questions like "what's the weather")
-        const goalRelated = incompleteGoals.some(g => {
-          const gWords = g.description.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-          const mLower = message.toLowerCase();
-          return gWords.some(w => mLower.includes(w));
-        });
+        // Only auto-continue if the user EXPLICITLY asked to work on goals
+        // Never auto-continue for prefixed actions (Search, Browse, etc.) or general messages
+        const hasPrefixAction = /^\[(WEB SEARCH|OPEN BROWSER|RUN SOP|SEND EMAIL)\]/i.test(message);
+        if (hasPrefixAction) break; // User clicked an action button — do what THEY asked, not goals
+
+        const mLower = message.toLowerCase();
+        const goalRelated = /\b(goal|mission|continue|keep going|more leads|keep working|finish)\b/i.test(mLower);
         if (!goalRelated) break;
 
         phasesCompleted++;
@@ -2020,12 +2266,22 @@ When you're struggling with a task and can't figure it out after multiple attemp
             : 'Briefly summarize what you actually did. Only mention actions you called tools for. Do not claim anything you did not do.';
           const summary = await result.chat.sendMessage(summaryPrompt);
           finalText = typeof summary.response.text === 'function' ? summary.response.text() : String(summary.response.text || '');
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+          console.warn('[UnifiedAgent] Summary generation failed:', e.message);
+        }
       }
-      finalText = finalText || 'Done.';
+      // Context-aware fallback instead of bare "Done."
+      if (!finalText) {
+        if (toolsCalled.length > 0) {
+          const uniqueTools = [...new Set(toolsCalled)].map(t => t.replace(/_/g, ' ')).join(', ');
+          finalText = `I used these tools: ${uniqueTools}. But I wasn't able to generate a summary. Could you ask me about the results?`;
+        } else {
+          finalText = "I wasn't able to complete that action. Could you rephrase your request or give me more details?";
+        }
+      }
 
       // ═══ Response validation — catch hallucinated claims ═══
-      finalText = this._validateResponse(finalText, thinking);
+      finalText = this._validateResponse(finalText, thinking, toolsCalled);
 
       const parsed = ResponseParser.parse(finalText);
 
@@ -2100,6 +2356,9 @@ When you're struggling with a task and can't figure it out after multiple attemp
       case 'browser_type': return await this._toolBrowserType(args);
       case 'take_screenshot': return await this._toolTakeScreenshot(args);
       case 'send_email': return await this._toolSendEmail(args);
+      case 'send_sms': return await this._toolSendSMS(args);
+      case 'make_call': return await this._toolMakeCall(args);
+      case 'dispatch_phone_call': return await this._toolDispatchPhoneCall(args);
       case 'save_leads': return await this._toolSaveLeads(args);
       case 'get_pipeline': return await this._toolGetPipeline(args);
       case 'move_lead': return await this._toolMoveLead(args);
@@ -2387,6 +2646,12 @@ When you're struggling with a task and can't figure it out after multiple attemp
           await new Promise(r => setTimeout(r, 300));
         } else {
           this.onProgress(`Could not find "${target}", typing into current focus`);
+          // Warn Gemini that the target was missed — text may go to wrong field
+          if (browser) {
+            await browser._pasteFromClipboard(text);
+            if (pressEnter) await browser.pressKey('return');
+            return JSON.stringify({ success: true, typed: text, target, target_found: false, warning: `Could not find "${target}" on screen — typed into whatever field had focus. The text may have gone to the wrong place. Use take_screenshot to verify.` });
+          }
         }
       }
 
@@ -2470,6 +2735,78 @@ When you're struggling with a task and can't figure it out after multiple attemp
     }
   }
 
+  // ── Send SMS ──
+  async _toolSendSMS(args) {
+    const { to, body } = args;
+    this.onProgress(`Sending SMS to ${to}`);
+
+    try {
+      const twilio = this.subsystems.twilioService;
+      if (!twilio?.isConfigured()) {
+        return JSON.stringify({ error: 'Twilio not configured. Set up in Settings → Integrations → Twilio.' });
+      }
+
+      const result = await twilio.sendSMS({ to, body });
+
+      // Auto-move matching lead to "contacted" (same pattern as email)
+      let leadMoved = null;
+      const pm = this.subsystems.pipelineManager;
+      if (pm?.pipeline?.leads) {
+        const normalTo = to.replace(/\D/g, '');
+        const matchingLead = pm.pipeline.leads.find(l =>
+          l.phone && l.phone.replace(/\D/g, '') === normalTo && l.stage === 'new'
+        );
+        if (matchingLead) {
+          try {
+            await pm.moveLead(matchingLead.id, 'contacted');
+            leadMoved = matchingLead.company;
+            this.onProgress(`Lead "${matchingLead.company}" moved to Contacted`);
+          } catch { /* ignore move errors */ }
+        }
+      }
+
+      return JSON.stringify({ success: true, to, messageSid: result.messageSid, leadMoved });
+    } catch (e) {
+      return JSON.stringify({ error: `SMS failed: ${e.message}` });
+    }
+  }
+
+  // ── Make Call ──
+  async _toolMakeCall(args) {
+    const { to, message } = args;
+    this.onProgress(`Calling ${to} via Twilio`);
+
+    try {
+      const twilio = this.subsystems.twilioService;
+      if (!twilio?.isConfigured()) {
+        return JSON.stringify({ error: 'Twilio not configured. Set up in Settings → Integrations → Twilio.' });
+      }
+
+      const result = await twilio.makeCall({ to, message });
+      return JSON.stringify({ success: true, to, callSid: result.callSid, message: 'Call initiated — message will be spoken via TTS' });
+    } catch (e) {
+      return JSON.stringify({ error: `Call failed: ${e.message}` });
+    }
+  }
+
+  // ── Dispatch Phone Call (BYO Agent) ──
+  async _toolDispatchPhoneCall(args) {
+    const { to, task } = args;
+    this.onProgress(`Dispatching AI phone call to ${to}`);
+
+    try {
+      const twilio = this.subsystems.twilioService;
+      if (!twilio?.isByoConfigured()) {
+        return JSON.stringify({ error: 'BYO Phone Agent not configured. Set up in Settings → Integrations → Twilio → AI Phone Agent.' });
+      }
+
+      const result = await twilio.dispatchPhoneCall({ to, task });
+      return JSON.stringify({ success: true, to, callId: result.callId, provider: result.provider, message: 'AI agent call dispatched' });
+    } catch (e) {
+      return JSON.stringify({ error: `Dispatch failed: ${e.message}` });
+    }
+  }
+
   // ── Save Leads ──
   async _toolSaveLeads(args) {
     const pm = this.subsystems.pipelineManager;
@@ -2520,7 +2857,7 @@ When you're struggling with a task and can't figure it out after multiple attemp
 
     // Check if there's an active goal covering this work — hint to Gemini
     const gt = this.subsystems.goalTracker;
-    const actualSaved = saved.filter(s => !s.startsWith('Skipped') && !s.startsWith('Failed')).length;
+    const actualSaved = saved.filter(s => !s.startsWith('Skipped') && !s.startsWith('Failed') && !s.startsWith('Rejected')).length;
     let goalHint = null;
 
     if (gt && actualSaved > 0) {
@@ -2537,7 +2874,18 @@ When you're struggling with a task and can't figure it out after multiple attemp
       }
     }
 
-    const result = { success: true, savedCount: saved.length, leads: saved };
+    const rejected = saved.filter(s => s.startsWith('Rejected')).length;
+    const skipped = saved.filter(s => s.startsWith('Skipped')).length;
+    const failed = saved.filter(s => s.startsWith('Failed')).length;
+    const result = {
+      success: actualSaved > 0,
+      savedCount: actualSaved,
+      rejected,
+      skipped,
+      failed,
+      total: leads.length,
+      leads: saved,
+    };
     if (goalHint) result.goal_hint = goalHint;
     return JSON.stringify(result);
   }
@@ -2628,8 +2976,11 @@ When you're struggling with a task and can't figure it out after multiple attemp
     if (!scheduler) return JSON.stringify({ error: 'Scheduler not available' });
 
     try {
-      // Parse time — default to 09:00
+      // Parse time — default to 09:00, validate HH:MM format
       const time = args.time || '09:00';
+      if (args.time && !/^\d{1,2}:\d{2}$/.test(args.time)) {
+        return JSON.stringify({ error: `Invalid time format "${args.time}". Must be HH:MM 24-hour format like "09:00" or "14:30".` });
+      }
 
       // Parse days — convert day names to numbers (0=Sun, 1=Mon, ... 6=Sat)
       const dayMap = { sun: 0, sunday: 0, mon: 1, monday: 1, tue: 2, tuesday: 2, wed: 3, wednesday: 3, thu: 4, thursday: 4, fri: 5, friday: 5, sat: 6, saturday: 6 };
@@ -2657,6 +3008,7 @@ When you're struggling with a task and can't figure it out after multiple attemp
         type: routineType === 'sop' ? 'sop' : 'briefing',
         enabled: true,
         sendToTelegram: args.send_to_telegram !== false,
+        delivery: args.delivery || (args.send_to_telegram === false ? 'dashboard' : 'both'),
       };
 
       if (routineType === 'sop') {
@@ -2679,12 +3031,16 @@ When you're struggling with a task and can't figure it out after multiple attemp
 
       const routine = await scheduler.addRoutine(routineConfig);
 
+      if (!routine?.id) {
+        return JSON.stringify({ success: false, error: 'Routine was not saved — scheduler returned no ID. Please try again.' });
+      }
+
       const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
       const dayDisplay = days.map(d => dayNames[d]).join(', ');
 
       return JSON.stringify({
         success: true,
-        id: routine?.id,
+        id: routine.id,
         name: args.name,
         type: routineConfig.type,
         time,
@@ -3116,8 +3472,27 @@ When you're struggling with a task and can't figure it out after multiple attemp
 
       if (args.steps) {
         try {
-          const newSteps = JSON.parse(args.steps);
+          let newSteps = typeof args.steps === 'string' ? JSON.parse(args.steps) : args.steps;
           if (Array.isArray(newSteps)) {
+            // Normalize string elements to proper step objects
+            newSteps = newSteps.map((step, i) => {
+              if (typeof step === 'string') {
+                const text = step.trim();
+                let action = 'smart_click';
+                if (/^(go to|open|navigate|visit|browse)\b/i.test(text)) action = 'navigate';
+                else if (/^(type|enter|input|fill|write|paste)\b/i.test(text)) action = 'type';
+                else if (/^(click|press|tap|hit|select)\b/i.test(text)) action = 'click_text';
+                else if (/^(wait|pause|delay)\b/i.test(text)) action = 'wait';
+                else if (/^(scroll)\b/i.test(text)) action = 'scroll';
+                return { action, description: text };
+              }
+              if (typeof step === 'object' && step !== null) {
+                if (!step.action) step.action = 'smart_click';
+                if (!step.description && step.target) step.description = step.target;
+                return step;
+              }
+              return { action: 'smart_click', description: `Step ${i + 1}` };
+            });
             sop.steps = newSteps;
             changes.push(`steps updated (${newSteps.length} steps)`);
           }
@@ -3175,10 +3550,36 @@ When you're struggling with a task and can't figure it out after multiple attemp
     let steps = [];
     if (args.steps) {
       try {
-        steps = JSON.parse(args.steps);
+        // Handle both JSON string and already-parsed array from Gemini
+        steps = typeof args.steps === 'string' ? JSON.parse(args.steps) : args.steps;
       } catch (e) {
         return JSON.stringify({ error: `Invalid steps JSON: ${e.message}` });
       }
+    }
+
+    // Ensure each step is a proper object with action/description — Gemini sometimes
+    // sends steps as plain strings like ["Go to facebook", "Click button"] instead of objects
+    if (Array.isArray(steps)) {
+      steps = steps.map((step, i) => {
+        if (typeof step === 'string') {
+          // Convert plain text to a step object
+          const text = step.trim();
+          let action = 'smart_click';
+          if (/^(go to|open|navigate|visit|browse)\b/i.test(text)) action = 'navigate';
+          else if (/^(type|enter|input|fill|write|paste)\b/i.test(text)) action = 'type';
+          else if (/^(click|press|tap|hit|select)\b/i.test(text)) action = 'click_text';
+          else if (/^(wait|pause|delay)\b/i.test(text)) action = 'wait';
+          else if (/^(scroll)\b/i.test(text)) action = 'scroll';
+          return { action, description: text };
+        }
+        // Already an object — ensure it has action and description
+        if (typeof step === 'object' && step !== null) {
+          if (!step.action) step.action = 'smart_click';
+          if (!step.description && step.target) step.description = step.target;
+          return step;
+        }
+        return { action: 'smart_click', description: `Step ${i + 1}` };
+      });
     }
 
     let triggers = [];
@@ -4399,13 +4800,18 @@ When you're struggling with a task and can't figure it out after multiple attemp
         summary[platform] = res.success ? 'posted' : `failed: ${res.error || 'unknown'}`;
       }
 
+      const succeeded = Object.keys(summary).filter(k => summary[k] === 'posted');
+      const failed = Object.keys(summary).filter(k => summary[k] !== 'posted');
       this.onProgress('Post complete');
       return JSON.stringify({
-        success: true,
+        success: succeeded.length > 0,
+        partial: succeeded.length > 0 && failed.length > 0,
         content: content.substring(0, 100),
         platforms: summary,
         media: media_path || null,
-        message: `Posted to ${Object.keys(summary).filter(k => summary[k] === 'posted').join(', ')}`
+        message: failed.length > 0
+          ? `Posted to ${succeeded.join(', ') || 'none'}. Failed on: ${failed.join(', ')}.`
+          : `Posted to ${succeeded.join(', ')}.`
       });
     } catch (e) {
       return JSON.stringify({ error: `Social post failed: ${e.message}` });
@@ -4418,6 +4824,15 @@ When you're struggling with a task and can't figure it out after multiple attemp
 
     const { content, scheduled_time, media_path } = args;
     const platforms = (args.platforms || 'twitter').split(',').map(p => p.trim());
+
+    // Validate scheduled_time is a valid ISO date — reject natural language
+    const parsedDate = new Date(scheduled_time);
+    if (isNaN(parsedDate.getTime())) {
+      return JSON.stringify({ error: `Invalid scheduled_time "${scheduled_time}". Must be ISO 8601 format like "2026-03-14T09:00:00". Calculate the exact date from today's date.` });
+    }
+    if (parsedDate < new Date()) {
+      return JSON.stringify({ error: `scheduled_time "${scheduled_time}" is in the past. Use a future date.` });
+    }
 
     this.onProgress(`Scheduling post for ${scheduled_time}${media_path ? ' with media' : ''}`);
 
@@ -4480,6 +4895,13 @@ When you're struggling with a task and can't figure it out after multiple attemp
           continue;
         }
 
+        // Validate ISO date
+        const postDate = new Date(post.scheduled_time);
+        if (isNaN(postDate.getTime())) {
+          results.push({ error: `Invalid scheduled_time "${post.scheduled_time}" — must be ISO 8601`, post: post.content?.substring(0, 50) });
+          continue;
+        }
+
         const scheduled = await social.schedulePost({
           content: post.content,
           platform: post.platform,
@@ -4508,12 +4930,17 @@ When you're struggling with a task and can't figure it out after multiple attemp
 
     this.onProgress(`Content plan created: ${successCount}/${posts.length} posts scheduled`);
 
+    const allSucceeded = successCount === posts.length;
     return JSON.stringify({
-      success: true,
+      success: allSucceeded,
+      partial: !allSucceeded && successCount > 0,
       total_requested: posts.length,
       total_scheduled: successCount,
+      total_failed: posts.length - successCount,
       posts: results,
-      message: `Content plan created! ${successCount} posts scheduled across platforms.`
+      message: allSucceeded
+        ? `Content plan created! ${successCount} posts scheduled across platforms.`
+        : `Content plan partially created: ${successCount}/${posts.length} posts scheduled. ${posts.length - successCount} failed — check the posts array for error details.`
     });
   }
 
@@ -4706,6 +5133,55 @@ When you're struggling with a task and can't figure it out after multiple attemp
   }
 
   /**
+   * Smart truncation of tool results — preserves valid JSON by trimming array items
+   * instead of slicing bytes. Falls back to character-level truncation for non-JSON.
+   */
+  _truncateToolResult(toolResult, maxLen = 4000) {
+    if (toolResult == null) return '{}';
+
+    // If it's already a string, handle directly
+    if (typeof toolResult === 'string') {
+      if (toolResult.length <= maxLen) return toolResult;
+      // Try to parse as JSON for smart truncation
+      try {
+        const parsed = JSON.parse(toolResult);
+        return this._truncateToolResult(parsed, maxLen);
+      } catch {
+        return toolResult.slice(0, maxLen) + '... (truncated)';
+      }
+    }
+
+    // Object — try smart JSON truncation
+    const full = JSON.stringify(toolResult);
+    if (full.length <= maxLen) return full;
+
+    // Find the largest array in the result and trim its items
+    const obj = typeof toolResult === 'object' ? { ...toolResult } : toolResult;
+    const arrayKeys = Object.keys(obj).filter(k => Array.isArray(obj[k]));
+
+    if (arrayKeys.length > 0) {
+      // Sort by array size descending — trim the biggest first
+      arrayKeys.sort((a, b) => JSON.stringify(obj[b]).length - JSON.stringify(obj[a]).length);
+      for (const key of arrayKeys) {
+        while (obj[key].length > 1 && JSON.stringify(obj).length > maxLen) {
+          obj[key] = obj[key].slice(0, -1); // Remove last item
+        }
+      }
+      const trimmed = JSON.stringify(obj);
+      if (trimmed.length <= maxLen) {
+        // Add note about truncation
+        if (typeof obj === 'object' && arrayKeys.length > 0) {
+          obj._note = `Results trimmed to fit. Original had more items.`;
+        }
+        return JSON.stringify(obj);
+      }
+    }
+
+    // Fallback: character-level truncation
+    return full.slice(0, maxLen) + '... (truncated)';
+  }
+
+  /**
    * Map tool names to failure categories for struggle detection.
    */
   _getToolCategory(toolName) {
@@ -4722,11 +5198,16 @@ When you're struggling with a task and can't figure it out after multiple attemp
     return map[toolName] || 'other';
   }
 
-  _validateResponse(text, thinking) {
-    if (!text || text === 'Done.') return text;
+  _validateResponse(text, thinking, toolsCalled = []) {
+    if (!text) return text;
+    // "Done." is only valid if tools were actually called
+    if (text === 'Done.' && toolsCalled.length === 0) {
+      return "I wasn't able to complete that action. Could you try rephrasing your request, or tell me more specifically what you'd like me to do?";
+    }
+    if (text === 'Done.' && toolsCalled.length > 0) return text;
 
     const lower = text.toLowerCase();
-    const toolsUsed = thinking.filter(t => t.startsWith('🔧 Tool:')).map(t => t.replace('🔧 Tool: ', ''));
+    const toolsUsed = [...new Set(toolsCalled)];
 
     // Check: claims of sending email without send_email tool
     if ((lower.includes('sent the email') || lower.includes('email has been sent') || lower.includes('i emailed'))
@@ -4764,8 +5245,91 @@ When you're struggling with a task and can't figure it out after multiple attemp
       text += '\n\n⚠️ *Note: I described scheduling something, but I didn\'t actually use the scheduling tool. Want me to schedule it for real?*';
     }
 
+    // Check: claims of calendar actions without create_calendar_event tool
+    if ((lower.includes('added to your calendar') || lower.includes('added it to your calendar') ||
+         lower.includes('created the event') || lower.includes('event has been created') ||
+         lower.includes('meeting has been') || lower.includes('i\'ve set up the') ||
+         lower.includes('i created a calendar') || lower.includes('on your calendar') ||
+         lower.includes('event is set') || lower.includes('booked for'))
+        && !toolsUsed.includes('create_calendar_event') && !toolsUsed.includes('list_calendar_events')) {
+      console.warn('[UnifiedAgent] ⚠️ HALLUCINATION CAUGHT: Claimed calendar action without calendar tool');
+      text += '\n\n⚠️ *Note: I described adding something to your calendar, but I didn\'t actually use the calendar tool. Want me to create the event for real?*';
+    }
+
+    // Check: claims of sending SMS/text without send_sms tool
+    if ((lower.includes('sent the text') || lower.includes('text has been sent') || lower.includes('i texted') || lower.includes('sms has been sent') || lower.includes('message has been sent'))
+        && !toolsUsed.includes('send_sms')) {
+      console.warn('[UnifiedAgent] ⚠️ HALLUCINATION CAUGHT: Claimed SMS sent without send_sms tool');
+      text += '\n\n⚠️ *Note: I described sending a text message, but I didn\'t actually use the SMS tool. Want me to send it for real?*';
+    }
+
+    // Check: claims of making phone calls without call tools
+    if ((lower.includes('called them') || lower.includes('i called') || lower.includes('call has been') || lower.includes('call was made') || lower.includes('phone call to'))
+        && !toolsUsed.includes('make_call') && !toolsUsed.includes('dispatch_phone_call')) {
+      console.warn('[UnifiedAgent] ⚠️ HALLUCINATION CAUGHT: Claimed phone call without call tool');
+      text += '\n\n⚠️ *Note: I described making a phone call, but I didn\'t actually use the call tool. Want me to call for real?*';
+    }
+
+    // Check: claims of saving leads without save_leads tool
+    if ((lower.includes('saved to your pipeline') || lower.includes('added to your pipeline') || lower.includes('leads have been saved') || lower.includes('saved the lead') || lower.includes('added to the pipeline'))
+        && !toolsUsed.includes('save_leads')) {
+      console.warn('[UnifiedAgent] ⚠️ HALLUCINATION CAUGHT: Claimed lead save without save_leads tool');
+      text += '\n\n⚠️ *Note: I described saving leads to your pipeline, but I didn\'t actually use the save tool. Want me to save them for real?*';
+    }
+
+    // Check: claims of creating forms/quizzes without create_form tool
+    if ((lower.includes('form has been created') || lower.includes('quiz is live') || lower.includes('created your form') || lower.includes('form is ready') || lower.includes('your quiz is live at'))
+        && !toolsUsed.includes('create_form') && !toolsUsed.includes('update_form')) {
+      console.warn('[UnifiedAgent] ⚠️ HALLUCINATION CAUGHT: Claimed form creation without form tool');
+      text += '\n\n⚠️ *Note: I described creating a form, but I didn\'t actually use the form tool. Want me to create it for real?*';
+    }
+
+    // Check: claims of deploying without deploy_project tool
+    if ((lower.includes('deployed to') || lower.includes('site is live') || lower.includes('project has been deployed') || lower.includes('published to netlify') || lower.includes('deployed successfully'))
+        && !toolsUsed.includes('deploy_project')) {
+      console.warn('[UnifiedAgent] ⚠️ HALLUCINATION CAUGHT: Claimed deployment without deploy tool');
+      text += '\n\n⚠️ *Note: I described deploying a project, but I didn\'t actually use the deploy tool. Want me to deploy for real?*';
+    }
+
+    // Check: claims of SOP execution without run_sop tool
+    if ((lower.includes('ran the procedure') || lower.includes('executed the sop') || lower.includes('procedure has been run') || lower.includes('sop completed') || lower.includes('playbook has been'))
+        && !toolsUsed.includes('run_sop')) {
+      console.warn('[UnifiedAgent] ⚠️ HALLUCINATION CAUGHT: Claimed SOP execution without run_sop tool');
+      text += '\n\n⚠️ *Note: I described running a procedure, but I didn\'t actually use the SOP tool. Want me to run it for real?*';
+    }
+
+    // Check: claims of adding/updating contacts without manage_contacts tool
+    if ((lower.includes('added to your contacts') || lower.includes('contact has been saved') || lower.includes('saved the contact') || lower.includes('updated your contacts'))
+        && !toolsUsed.includes('manage_contacts')) {
+      console.warn('[UnifiedAgent] ⚠️ HALLUCINATION CAUGHT: Claimed contact management without contacts tool');
+      text += '\n\n⚠️ *Note: I described updating your contacts, but I didn\'t actually use the contacts tool. Want me to save them for real?*';
+    }
+
+    // Check: claims of setting goals without manage_goals tool
+    if ((lower.includes('goal has been set') || lower.includes('added your goal') || lower.includes('tracking your goal') || lower.includes('goal is set') || lower.includes('mission has been'))
+        && !toolsUsed.includes('manage_goals')) {
+      console.warn('[UnifiedAgent] ⚠️ HALLUCINATION CAUGHT: Claimed goal creation without goals tool');
+      text += '\n\n⚠️ *Note: I described setting a goal, but I didn\'t actually use the goals tool. Want me to set it up for real?*';
+    }
+
+    // Check: claims of creating Google Docs without tool
+    if ((lower.includes('created the document') || lower.includes('document has been saved') || lower.includes('saved to your drive') || lower.includes('doc is ready'))
+        && !toolsUsed.includes('create_google_doc') && !toolsUsed.includes('upload_to_google_drive')) {
+      console.warn('[UnifiedAgent] ⚠️ HALLUCINATION CAUGHT: Claimed Google Doc creation without drive tool');
+      text += '\n\n⚠️ *Note: I described creating a document in Drive, but I didn\'t actually use the Drive tool. Want me to create it for real?*';
+    }
+
+    // Check: response describes taking multiple actions but zero tools were used
+    if (toolsUsed.length === 0 && text.length > 200) {
+      const actionClaims = (text.match(/\b(i (have |'ve )?(sent|posted|created|scheduled|saved|deployed|called|texted|added|updated|emailed|searched|found|built|set up))\b/gi) || []).length;
+      if (actionClaims >= 2) {
+        console.warn(`[UnifiedAgent] ⚠️ HALLUCINATION CAUGHT: ${actionClaims} action claims with 0 tools used`);
+        text += '\n\n⚠️ *Note: I described taking several actions, but I didn\'t actually call any tools. Nothing was done for real. Want me to actually do these things?*';
+      }
+    }
+
     // Check: fabricated specific numbers with no tool backing (e.g. "I found 7 properties at $450,000")
-    if (toolsUsed.length === 0 && /\$[\d,]+/.test(text) && /\d+ (properties|listings|results|deals|leads|garages|locations)/.test(lower)) {
+    if (toolsUsed.length === 0 && text.length > 150 && /\$[\d,]+/.test(text) && /\d+ (properties|listings|results|deals|leads|garages|locations)/.test(lower)) {
       console.warn('[UnifiedAgent] ⚠️ HALLUCINATION CAUGHT: Specific data claims with no tools used');
       text += '\n\n⚠️ *Note: I provided specific data, but I didn\'t use any tools to look it up. This information may not be accurate. Want me to search for real data?*';
     }

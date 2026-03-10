@@ -138,7 +138,6 @@ export class DesktopTaskRunner {
     }
 
     // ── PRE-FLIGHT: Verify robotjs can actually control the mouse ──
-    // If this check fails, every step would silently "succeed" without moving the mouse.
     try {
       const robot = require('robotjs');
       const before = robot.getMousePos();
@@ -147,12 +146,13 @@ export class DesktopTaskRunner {
       robot.moveMouse(testX, testY);
       await this._wait(50);
       const after = robot.getMousePos();
-      // Move mouse back
       robot.moveMouse(before.x, before.y);
       const moved = Math.abs(after.x - testX) < 10;
       if (!moved) {
-        console.error('[SOP Replay] CRITICAL: robotjs.moveMouse() did NOT move the mouse. Accessibility permissions may be missing.');
-        this.onProgress('❌ Mouse control not working — check System Settings → Privacy → Accessibility');
+        console.error('[SOP Replay] CRITICAL: robotjs.moveMouse() did NOT move the mouse.');
+        this.onProgress('❌ Mouse control not working.');
+        this.onProgress('   Fix: Open System Settings → Privacy & Security → Accessibility');
+        this.onProgress('   Add Terminal (or VS Code) to the allowed list, then restart OpenAce.');
         return {
           success: false,
           error: 'Cannot control mouse. Grant Accessibility permission to Terminal/VS Code in System Settings → Privacy & Security → Accessibility.',
@@ -161,8 +161,7 @@ export class DesktopTaskRunner {
           steps: 0
         };
       }
-      this.onProgress(`✅ Mouse control verified — starting ${steps.length} step replay of "${sop.name}"`);
-      console.log(`[SOP Replay] Starting ${steps.length}-step replay of "${sop.name}" — mouse control verified`);
+      this.onProgress(`✅ Mouse control verified — starting ${steps.length}-step replay of "${sop.name}"`);
     } catch (e) {
       console.error('[SOP Replay] robotjs pre-flight failed:', e.message);
       return {
@@ -174,26 +173,39 @@ export class DesktopTaskRunner {
       };
     }
 
-    // ── SET UP STARTING STATE: Open the right app/URL before clicking ──
+    // ── SET UP STARTING STATE ──
     if (sop.startingState) {
       await this._setupStartingState(sop.startingState);
     }
 
-    // ── PRE-FLIGHT: Test Chrome JavaScript access for smart element finding ──
+    // ── PRE-FLIGHT: Test Chrome JavaScript access ──
     this._chromeJsDisabled = false;
     try {
       const { execSync } = require('child_process');
       execSync(`osascript -e 'tell application "Google Chrome" to execute front window'"'"'s active tab javascript "1+1"'`, { timeout: 3000 });
-      this.onProgress('✅ Chrome DOM access enabled — will find elements by text (smart mode)');
+      this.onProgress('✅ Chrome DOM access enabled — smart element finding active');
     } catch (e) {
       this._chromeJsDisabled = true;
-      if (e.message && e.message.includes('Executing JavaScript')) {
-        this.onProgress('⚠️ Enable smart clicking: Chrome → View → Developer → Allow JavaScript from Apple Events');
-        this.onProgress('   Without this, Ace uses AI vision + recorded coordinates (less accurate)');
-      }
+      this.onProgress('⚠️ Chrome DOM access disabled — using AI vision + coordinates instead');
+      this.onProgress('   To enable: Chrome → View → Developer → Allow JavaScript from Apple Events');
+    }
+
+    // ── COORDINATE SCALING: Adjust for different screen resolutions ──
+    let scaleX = 1, scaleY = 1;
+    if (sop.recordingResolution) {
+      try {
+        const robot = require('robotjs');
+        const currentRes = robot.getScreenSize();
+        if (currentRes.width !== sop.recordingResolution.width || currentRes.height !== sop.recordingResolution.height) {
+          scaleX = currentRes.width / sop.recordingResolution.width;
+          scaleY = currentRes.height / sop.recordingResolution.height;
+          this.onProgress(`📐 Resolution changed: ${sop.recordingResolution.width}x${sop.recordingResolution.height} → ${currentRes.width}x${currentRes.height} — scaling coordinates`);
+        }
+      } catch (e) { /* Keep scale 1:1 */ }
     }
 
     let completedSteps = 0;
+    const retriedSteps = [];
 
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
@@ -201,171 +213,37 @@ export class DesktopTaskRunner {
       this.onProgress(`🎓 Step ${i + 1}/${steps.length}: ${step.action} — ${stepDesc}`);
       console.log(`[SOP Replay] Step ${i + 1}/${steps.length}: ${step.action} at (${step.x},${step.y}) — ${stepDesc}`);
 
+      const isClickAction = ['click', 'doubleClick', 'click_text', 'click_submit', 'smart_click', 'right_click', 'select_option'].includes(step.action);
       try {
-        switch (step.action) {
-          case 'click': {
-            let clicked = false;
-            const targetLower = (step.target || '').toLowerCase();
+        await this._executeStep(step, steps, i, scaleX, scaleY);
 
-            // ── SMART CHROME UI: Use keyboard shortcuts instead of coordinates ──
-            // Chrome UI elements (tab bar, address bar) move with window position.
-            // Keyboard shortcuts work regardless of where the window is.
-            if (/\b(tab bar|new tab)\b/i.test(targetLower)) {
-              // Tab bar click = new tab (Cmd+T). Always new tab to protect dashboard.
-              const robot = require('robotjs');
-              robot.keyTap('t', ['command']);
-              this.onProgress('⌨️ Cmd+T (new tab) — protects dashboard tab');
-              clicked = true;
-              await this._wait(500);
-            } else if (/\b(address bar|url bar|url input|chrome address|location bar)\b/i.test(targetLower)) {
-              const robot = require('robotjs');
-              robot.keyTap('l', ['command']);
-              this.onProgress('⌨️ Cmd+L (focus address bar) — keyboard shortcut instead of coordinate click');
-              clicked = true;
-              await this._wait(500);
-            }
-
-            // ── Strategy 1: Find element by text in Chrome's DOM ──
-            // Works even when the page layout changes — finds buttons/links by their text content
-            if (!clicked && step.target) {
-              clicked = await this._clickWebElement(step.target);
-              if (clicked) {
-                this.onProgress(`🌐 Clicked via DOM text search: "${step.target}"`);
-              }
-            }
-
-            // ── Strategy 2: AI vision — take screenshot and ask where the element is ──
-            if (!clicked && step.target && this.desktop) {
-              try {
-                this.onProgress(`🔍 DOM search missed, trying AI vision for "${step.target}"...`);
-                const result = await this.desktop.findAndClick(step.target);
-                clicked = result?.success === true;
-                if (clicked) {
-                  this.onProgress(`🎯 Clicked via AI vision: "${step.target}" at (${result.x}, ${result.y})`);
-                }
-              } catch (visionErr) {
-                this.onProgress(`⚠️ AI vision error: ${visionErr.message}`);
-              }
-            }
-
-            // ── Strategy 3: Recorded coordinates (last resort) ──
-            if (!clicked && step.x != null && step.y != null) {
-              const robot = require('robotjs');
-              this.onProgress(`📌 Falling back to recorded coordinates (${step.x}, ${step.y})`);
-              robot.moveMouse(step.x, step.y);
-              await this._wait(100);
-              robot.mouseClick();
-              clicked = true;
-            }
-
-            if (!clicked) {
-              throw new Error(`Could not click: "${step.target}" — all strategies failed`);
-            }
-
-            await this._wait(1500);
-            break;
+        // ── STEP VERIFICATION: Check if the click actually worked ──
+        if (isClickAction && step.url) {
+          const verified = await this._verifyStep(step, steps, i);
+          if (!verified) {
+            this.onProgress(`🔄 Step ${i + 1} may have missed — retrying once...`);
+            retriedSteps.push(i + 1);
+            await this._executeStep(step, steps, i, scaleX, scaleY);
           }
-
-          case 'navigate': {
-            // Open URL in Chrome
-            const url = step.target || step.url || step.value;
-            if (url) {
-              this.onProgress(`🌐 Navigating to: ${url}`);
-              try {
-                const { execSync } = require('child_process');
-                // Open in a new tab to protect dashboard
-                execSync(`osascript -e 'tell application "Google Chrome" to open location "${url}"'`, { timeout: 5000 });
-                await this._wait(3000); // Wait for page to load
-                this.onProgress(`✅ Opened: ${url}`);
-              } catch (navErr) {
-                this.onProgress(`⚠️ Navigate failed, trying open command...`);
-                const { execSync } = require('child_process');
-                execSync(`open -a "Google Chrome" "${url}"`, { timeout: 5000 });
-                await this._wait(3000);
-              }
-            }
-            break;
-          }
-
-          case 'type': {
-            const textToType = step.text || step.value;
-            if (textToType) {
-              // If there's a target field description, try to click it first
-              if (step.target && !step.x) {
-                const clickedField = await this._clickWebElement(step.target);
-                if (clickedField) {
-                  this.onProgress(`🖱️ Clicked field: "${step.target}"`);
-                  await this._wait(300);
-                }
-              }
-              await this._pasteText(textToType);
-            }
-            await this._wait(300);
-            break;
-          }
-
-          case 'key': {
-            const robot = require('robotjs');
-            const keyMap = { return: 'enter', option: 'alt' };
-            const key = keyMap[step.key] || step.key;
-            const mods = (step.modifiers || []).map(m => keyMap[m] || m);
-            if (mods.length > 0) {
-              robot.keyTap(key, mods);
-            } else {
-              robot.keyTap(key);
-            }
-
-            // After pressing Return: if the previous step typed a URL, wait for page load
-            if (step.key === 'return') {
-              const prevStep = i > 0 ? steps[i - 1] : null;
-              const typedUrl = prevStep && prevStep.action === 'type' &&
-                /\.(com|org|net|io|co|dev|ai|app|pro|gov|edu|me)\b/i.test(prevStep.text || '');
-              if (typedUrl) {
-                this.onProgress('⏳ Waiting for page to load...');
-                await this._wait(4000);
-              } else {
-                await this._wait(500);
-              }
-            } else {
-              await this._wait(300);
-            }
-            break;
-          }
-
-          case 'scroll': {
-            const robot = require('robotjs');
-            const multiplier = step._scrollMultiplier || 1;
-            const amount = (step.direction === 'up' ? 5 : -5) * multiplier;
-            robot.scrollMouse(0, amount);
-            if (multiplier > 1) {
-              this.onProgress(`🔄 Scrolled ${step.direction} (${multiplier}x combined)`);
-            }
-            await this._wait(500);
-            break;
-          }
-
-          case 'go_back':
-          case 'goBack': {
-            const robot = require('robotjs');
-            robot.keyTap('[', ['command']);
-            await this._wait(2000);
-            this.onProgress('Navigated back to previous page');
-            break;
-          }
-
-          case 'wait': {
-            await this._wait(step.ms || 1000);
-            break;
-          }
-
-          default:
-            this.onProgress(`⚠️ Unknown step action: ${step.action}`);
         }
 
         completedSteps++;
       } catch (e) {
-        this.onProgress(`⚠️ Step ${i + 1} failed: ${e.message}`);
-        // Try to continue — the next step might still work
+        this.onProgress(`❌ Step ${i + 1} failed: ${e.message}`);
+        if (isClickAction) {
+          this.onProgress(`   Strategies tried: DOM text → AI vision → coordinates. Consider retraining this SOP.`);
+        }
+        // Continue — the next step might still work
+      }
+
+      // ── USE RECORDED DELAY (or sensible default) ──
+      const nextStep = steps[i + 1];
+      if (nextStep) {
+        const delay = Math.max(500, nextStep.delay || 1500);
+        if (delay > 2000) {
+          this.onProgress(`⏳ Waiting ${(delay / 1000).toFixed(1)}s (matching your recorded timing)...`);
+        }
+        await this._wait(delay);
       }
     }
 
@@ -374,16 +252,676 @@ export class DesktopTaskRunner {
       try { await this.sopManager.recordRun(sop.id, completedSteps === steps.length); } catch (e) { /* ignore */ }
     }
 
+    // ── SUMMARY ──
     const allDone = completedSteps === steps.length;
+    const retryNote = retriedSteps.length > 0 ? ` (steps ${retriedSteps.join(', ')} needed retry)` : '';
+    if (allDone) {
+      this.onProgress(`✅ Replay complete: ${completedSteps}/${steps.length} steps succeeded${retryNote}`);
+    } else {
+      const failed = steps.length - completedSteps;
+      this.onProgress(`⚠️ Replay partial: ${completedSteps}/${steps.length} steps succeeded, ${failed} failed${retryNote}`);
+      this.onProgress(`   Consider retraining this SOP if it fails consistently.`);
+    }
+
     return {
       success: allDone,
       summary: allDone
-        ? `Replayed "${sop.name}" — ${completedSteps} steps completed`
-        : `Partially replayed "${sop.name}" — ${completedSteps}/${steps.length} steps`,
+        ? `Replayed "${sop.name}" — ${completedSteps} steps completed${retryNote}`
+        : `Partially replayed "${sop.name}" — ${completedSteps}/${steps.length} steps${retryNote}`,
       app: sop.name,
       steps: completedSteps,
       error: allDone ? null : `${steps.length - completedSteps} steps failed`,
     };
+  }
+
+  /**
+   * Execute a single SOP step. Extracted to allow retry on verification failure.
+   */
+  async _executeStep(step, steps, i, scaleX = 1, scaleY = 1) {
+    switch (step.action) {
+      case 'click':
+      case 'doubleClick': {
+        let clicked = false;
+        const targetLower = (step.target || '').toLowerCase();
+        const isDouble = step.action === 'doubleClick';
+
+        // ── SMART CHROME UI: keyboard shortcuts ──
+        if (/\b(tab bar|new tab)\b/i.test(targetLower)) {
+          const robot = require('robotjs');
+          robot.keyTap('t', ['command']);
+          this.onProgress('⌨️ Cmd+T (new tab)');
+          clicked = true;
+          await this._wait(500);
+        } else if (/\b(address bar|url bar|url input|chrome address|location bar)\b/i.test(targetLower)) {
+          const robot = require('robotjs');
+          robot.keyTap('l', ['command']);
+          this.onProgress('⌨️ Cmd+L (focus address bar)');
+          clicked = true;
+          await this._wait(500);
+        }
+
+        // ── Strategy 1: DOM text search ──
+        if (!clicked && step.target) {
+          clicked = await this._clickWebElement(step.target, isDouble);
+          if (clicked) {
+            this.onProgress(`🌐 Clicked via DOM text search: "${step.target}"${isDouble ? ' (double-click)' : ''}`);
+          }
+        }
+
+        // ── Strategy 2: AI vision ──
+        if (!clicked && step.target && this.desktop) {
+          try {
+            this.onProgress(`🔍 Trying AI vision for "${step.target}"...`);
+            const result = await this.desktop.findAndClick(step.target);
+            if (result?.success === true) {
+              clicked = true;
+              if (isDouble) {
+                // AI vision did single click; add a second click for double
+                const robot = require('robotjs');
+                await this._wait(50);
+                robot.mouseClick();
+              }
+              this.onProgress(`🎯 Clicked via AI vision: "${step.target}" at (${result.x}, ${result.y})`);
+            }
+          } catch (visionErr) {
+            this.onProgress(`⚠️ AI vision error: ${visionErr.message}`);
+          }
+        }
+
+        // ── Strategy 3: Scaled recorded coordinates (last resort) ──
+        if (!clicked && step.x != null && step.y != null) {
+          const robot = require('robotjs');
+          const clickX = Math.round(step.x * scaleX);
+          const clickY = Math.round(step.y * scaleY);
+          const scaled = scaleX !== 1 || scaleY !== 1;
+          this.onProgress(`📌 Coordinates: (${clickX}, ${clickY})${scaled ? ' (scaled from recording)' : ''}`);
+          robot.moveMouse(clickX, clickY);
+          await this._wait(100);
+          if (isDouble) {
+            robot.mouseClick('left', true); // double-click
+          } else {
+            robot.mouseClick();
+          }
+          clicked = true;
+        }
+
+        if (!clicked) {
+          throw new Error(`Could not click: "${step.target}" — all strategies failed`);
+        }
+        break;
+      }
+
+      case 'navigate': {
+        const url = step.target || step.url || step.value;
+        if (url) {
+          this.onProgress(`🌐 Navigating to: ${url}`);
+          try {
+            const { execSync } = require('child_process');
+            // Use set URL for direct navigation (more reliable than open location)
+            const safeUrl = url.replace(/"/g, '\\"');
+            const script = `tell application "Google Chrome"
+              activate
+              if (count of windows) = 0 then make new window
+              set URL of active tab of front window to "${safeUrl}"
+            end tell`;
+            execSync(`osascript -e '${script.replace(/'/g, "'\\''")}'`, { timeout: 5000 });
+            await this._wait(3000);
+            this.onProgress(`✅ Opened: ${url}`);
+          } catch (navErr) {
+            this.onProgress(`⚠️ Navigate failed, trying open command...`);
+            const { execSync } = require('child_process');
+            execSync(`open -a "Google Chrome" "${url}"`, { timeout: 5000 });
+            await this._wait(3000);
+          }
+        }
+        break;
+      }
+
+      // ── SEMANTIC CLICK ACTIONS (from classified Desktop SOPs + Playbooks) ──
+
+      case 'click_text': {
+        // Click an element by its visible text content
+        const text = step.text || step.target || '';
+        let clicked = false;
+
+        // Strategy 1: DOM text search
+        if (text) {
+          clicked = await this._clickWebElement(text);
+          if (clicked) this.onProgress(`🌐 Clicked via DOM text: "${text}"`);
+        }
+
+        // Strategy 2: AI vision
+        if (!clicked && text && this.desktop) {
+          try {
+            const result = await this.desktop.findAndClick(text);
+            clicked = result?.success === true;
+            if (clicked) this.onProgress(`🎯 Clicked via AI vision: "${text}"`);
+          } catch (e) { /* fall through */ }
+        }
+
+        // Strategy 3: Coordinates fallback
+        if (!clicked && step.x != null && step.y != null) {
+          const robot = require('robotjs');
+          const clickX = Math.round(step.x * scaleX);
+          const clickY = Math.round(step.y * scaleY);
+          this.onProgress(`📌 Coordinates fallback: (${clickX}, ${clickY})`);
+          robot.moveMouse(clickX, clickY);
+          await this._wait(100);
+          robot.mouseClick();
+          clicked = true;
+        }
+
+        if (!clicked) throw new Error(`Could not find "${text}" — all strategies failed`);
+        break;
+      }
+
+      case 'click_submit': {
+        // Click a submit/sign-in/save button
+        let clicked = false;
+
+        // Strategy 1: DOM search for submit-type buttons
+        if (!this._chromeJsDisabled) {
+          try {
+            const { execSync } = require('child_process');
+            const fsSyncMod = require('fs');
+            const os = require('os');
+            const jsCode = `(function() {
+              var sels = ['button[type="submit"]', 'input[type="submit"]', 'button.submit',
+                'button.btn-primary', 'button.login-btn', 'form button:last-of-type',
+                '[type="submit"]', 'button.btn-submit'];
+              for (var s = 0; s < sels.length; s++) {
+                var btns = document.querySelectorAll(sels[s]);
+                for (var b = 0; b < btns.length; b++) {
+                  var btn = btns[b];
+                  if (btn.offsetParent || btn.tagName === 'BODY') {
+                    btn.scrollIntoView({block: 'center'});
+                    btn.click();
+                    return 'clicked:' + (btn.textContent || '').trim().substring(0, 80);
+                  }
+                }
+              }
+              return 'not_found';
+            })()`;
+            const tmpFile = path.join(os.tmpdir(), `ace_submit_${Date.now()}.scpt`);
+            const appleScript = `tell application "Google Chrome" to execute front window's active tab javascript ${JSON.stringify(jsCode)}`;
+            fsSyncMod.writeFileSync(tmpFile, appleScript);
+            const result = execSync(`osascript "${tmpFile}"`, { timeout: 8000 }).toString().trim();
+            try { fsSyncMod.unlinkSync(tmpFile); } catch (e) { /* cleanup */ }
+            if (result.startsWith('clicked:')) {
+              this.onProgress(`🌐 Clicked submit button: "${result.substring(8)}"`);
+              clicked = true;
+            }
+          } catch (e) { /* fall through */ }
+        }
+
+        // Strategy 2: DOM text search by label
+        if (!clicked && (step.text || step.target)) {
+          clicked = await this._clickWebElement(step.text || step.target);
+          if (clicked) this.onProgress(`🌐 Clicked via text: "${step.text || step.target}"`);
+        }
+
+        // Strategy 3: Coordinates fallback
+        if (!clicked && step.x != null && step.y != null) {
+          const robot = require('robotjs');
+          const clickX = Math.round(step.x * scaleX);
+          const clickY = Math.round(step.y * scaleY);
+          this.onProgress(`📌 Submit coordinates fallback: (${clickX}, ${clickY})`);
+          robot.moveMouse(clickX, clickY);
+          await this._wait(100);
+          robot.mouseClick();
+          clicked = true;
+        }
+
+        // Strategy 4: Press Enter as last resort
+        if (!clicked) {
+          const robot = require('robotjs');
+          robot.keyTap('enter');
+          this.onProgress('⌨️ Pressed Enter (submit fallback)');
+        }
+        break;
+      }
+
+      case 'edit_field': {
+        // Click a field, then type text into it
+        const target = step.target || '';
+        const text = step.text || step.value || '';
+        let fieldClicked = false;
+
+        // Try DOM text search for the field
+        if (target) {
+          fieldClicked = await this._clickWebElement(target);
+          if (fieldClicked) this.onProgress(`🖱️ Clicked field: "${target}"`);
+        }
+
+        // Fallback to coordinates
+        if (!fieldClicked && step.x != null && step.y != null) {
+          const robot = require('robotjs');
+          const clickX = Math.round(step.x * scaleX);
+          const clickY = Math.round(step.y * scaleY);
+          robot.moveMouse(clickX, clickY);
+          await this._wait(100);
+          robot.mouseClick();
+          fieldClicked = true;
+          this.onProgress(`📌 Clicked field at (${clickX}, ${clickY})`);
+        }
+
+        if (fieldClicked && text) {
+          await this._wait(300);
+          // Select all existing text first, then paste new text
+          const robot = require('robotjs');
+          robot.keyTap('a', ['command']); // Select all
+          await this._wait(100);
+          await this._pasteText(text);
+          this.onProgress(`📝 Typed: "${text.substring(0, 40)}${text.length > 40 ? '...' : ''}"`);
+        }
+        break;
+      }
+
+      case 'smart_click': {
+        // No text label — use AI vision to find the target, coordinates as fallback
+        let clicked = false;
+        const target = step.target || '';
+
+        if (target && this.desktop) {
+          try {
+            const result = await this.desktop.findAndClick(target);
+            clicked = result?.success === true;
+            if (clicked) this.onProgress(`🎯 AI vision found: "${target}" at (${result.x}, ${result.y})`);
+          } catch (e) {
+            this.onProgress(`⚠️ AI vision error: ${e.message}`);
+          }
+        }
+
+        if (!clicked && step.x != null && step.y != null) {
+          const robot = require('robotjs');
+          const clickX = Math.round(step.x * scaleX);
+          const clickY = Math.round(step.y * scaleY);
+          this.onProgress(`📌 Coordinates: (${clickX}, ${clickY})`);
+          robot.moveMouse(clickX, clickY);
+          await this._wait(100);
+          robot.mouseClick();
+          clicked = true;
+        }
+
+        if (!clicked) throw new Error(`Could not click: "${target}" — all strategies failed`);
+        break;
+      }
+
+      case 'press': {
+        // Press a keyboard key (semantic alias for 'key')
+        const robot = require('robotjs');
+        const keyMap = { return: 'enter', option: 'alt', enter: 'enter' };
+        const key = keyMap[step.key] || step.key;
+        const mods = (step.modifiers || []).map(m => keyMap[m] || m);
+        if (mods.length > 0) {
+          robot.keyTap(key, mods);
+        } else {
+          robot.keyTap(key);
+        }
+        this.onProgress(`⌨️ Pressed ${mods.length ? mods.join('+') + '+' : ''}${key}`);
+        await this._wait(300);
+        break;
+      }
+
+      case 'wait_navigation': {
+        // Wait for page navigation to complete
+        this.onProgress('⏳ Waiting for page to load...');
+        await this._wait(step.ms || 3000);
+        break;
+      }
+
+      case 'type': {
+        const textToType = step.text || step.value;
+        if (textToType) {
+          if (step.target && !step.x) {
+            const clickedField = await this._clickWebElement(step.target);
+            if (clickedField) {
+              this.onProgress(`🖱️ Clicked field: "${step.target}"`);
+              await this._wait(300);
+            }
+          }
+          await this._pasteText(textToType);
+        }
+        await this._wait(300);
+        break;
+      }
+
+      case 'key': {
+        const robot = require('robotjs');
+        const keyMap = { return: 'enter', option: 'alt' };
+        const key = keyMap[step.key] || step.key;
+        const mods = (step.modifiers || []).map(m => keyMap[m] || m);
+        if (mods.length > 0) {
+          robot.keyTap(key, mods);
+        } else {
+          robot.keyTap(key);
+        }
+
+        // After Return: if previous step typed a URL, wait for page load
+        if (step.key === 'return') {
+          const prevStep = i > 0 ? steps[i - 1] : null;
+          const typedUrl = prevStep && prevStep.action === 'type' &&
+            /\.(com|org|net|io|co|dev|ai|app|pro|gov|edu|me)\b/i.test(prevStep.text || '');
+          if (typedUrl) {
+            const loadDelay = Math.max(4000, step.delay || 4000);
+            this.onProgress(`⏳ Waiting ${(loadDelay / 1000).toFixed(1)}s for page to load...`);
+            await this._wait(loadDelay);
+          } else {
+            await this._wait(step.delay || 500);
+          }
+        } else {
+          await this._wait(300);
+        }
+        break;
+      }
+
+      case 'scroll': {
+        const robot = require('robotjs');
+        const multiplier = step._scrollMultiplier || 1;
+        const amount = (step.direction === 'up' ? 5 : -5) * multiplier;
+        robot.scrollMouse(0, amount);
+        if (multiplier > 1) {
+          this.onProgress(`🔄 Scrolled ${step.direction} (${multiplier}x combined)`);
+        }
+        await this._wait(500);
+        break;
+      }
+
+      case 'right_click': {
+        // Right-click on an element (for context menus)
+        let clicked = false;
+        const target = step.target || step.text || '';
+
+        // Strategy 1: DOM text search → move mouse to element, then right-click
+        if (target && !this._chromeJsDisabled) {
+          try {
+            const { execSync } = require('child_process');
+            const fsSyncMod = require('fs');
+            const os = require('os');
+            const searchText = this._extractSearchText(target);
+            if (searchText) {
+              const jsCode = `(function() {
+                var target = ${JSON.stringify(searchText.toLowerCase())};
+                var all = document.querySelectorAll('a, button, span, div, td, li, p, img, [role]');
+                for (var i = 0; i < all.length; i++) {
+                  var el = all[i];
+                  var text = (el.textContent || el.getAttribute('aria-label') || '').trim().toLowerCase();
+                  if (text.includes(target) && el.offsetParent) {
+                    el.scrollIntoView({block: 'center'});
+                    var r = el.getBoundingClientRect();
+                    return 'found:' + Math.round(r.left + r.width/2) + ',' + Math.round(r.top + r.height/2);
+                  }
+                }
+                return 'not_found';
+              })()`;
+              const tmpFile = path.join(os.tmpdir(), `ace_rclick_${Date.now()}.scpt`);
+              const appleScript = `tell application "Google Chrome" to execute front window's active tab javascript ${JSON.stringify(jsCode)}`;
+              fsSyncMod.writeFileSync(tmpFile, appleScript);
+              const result = execSync(`osascript "${tmpFile}"`, { timeout: 8000 }).toString().trim();
+              try { fsSyncMod.unlinkSync(tmpFile); } catch (e) { /* cleanup */ }
+              if (result.startsWith('found:')) {
+                const [fx, fy] = result.substring(6).split(',').map(Number);
+                const robot = require('robotjs');
+                robot.moveMouse(fx, fy);
+                await this._wait(100);
+                robot.mouseClick('right');
+                clicked = true;
+                this.onProgress(`🖱️ Right-clicked via DOM: "${target}" at (${fx}, ${fy})`);
+              }
+            }
+          } catch (e) { /* fall through */ }
+        }
+
+        // Strategy 2: AI vision
+        if (!clicked && target && this.desktop) {
+          try {
+            const result = await this.desktop.findAndClick(target);
+            if (result?.success) {
+              const robot = require('robotjs');
+              robot.mouseClick('right');
+              clicked = true;
+              this.onProgress(`🎯 Right-clicked via AI vision: "${target}"`);
+            }
+          } catch (e) { /* fall through */ }
+        }
+
+        // Strategy 3: Coordinates fallback
+        if (!clicked && step.x != null && step.y != null) {
+          const robot = require('robotjs');
+          const clickX = Math.round(step.x * scaleX);
+          const clickY = Math.round(step.y * scaleY);
+          robot.moveMouse(clickX, clickY);
+          await this._wait(100);
+          robot.mouseClick('right');
+          clicked = true;
+          this.onProgress(`📌 Right-clicked at (${clickX}, ${clickY})`);
+        }
+
+        if (!clicked) throw new Error(`Could not right-click: "${target}" — all strategies failed`);
+        break;
+      }
+
+      case 'select_option': {
+        // Click a dropdown/select, then click an option within it
+        const target = step.target || '';
+        const optionText = step.text || step.value || '';
+        let opened = false;
+
+        // Step A: Click the dropdown to open it
+        if (target) {
+          opened = await this._clickWebElement(target);
+          if (opened) this.onProgress(`🖱️ Opened dropdown: "${target}"`);
+        }
+        if (!opened && step.x != null && step.y != null) {
+          const robot = require('robotjs');
+          robot.moveMouse(Math.round(step.x * scaleX), Math.round(step.y * scaleY));
+          await this._wait(100);
+          robot.mouseClick();
+          opened = true;
+          this.onProgress(`📌 Clicked dropdown at (${step.x}, ${step.y})`);
+        }
+
+        // Step B: Wait for dropdown to appear, then click the option
+        if (opened && optionText) {
+          await this._wait(500);
+          const optionClicked = await this._clickWebElement(optionText);
+          if (optionClicked) {
+            this.onProgress(`✅ Selected option: "${optionText}"`);
+          } else {
+            this.onProgress(`⚠️ Could not find option: "${optionText}"`);
+          }
+        }
+        break;
+      }
+
+      case 'hover': {
+        // Move mouse over an element without clicking (for hover menus/tooltips)
+        let hovered = false;
+        const target = step.target || step.text || '';
+
+        // Strategy 1: DOM search → get coordinates → move mouse
+        if (target && !this._chromeJsDisabled) {
+          try {
+            const { execSync } = require('child_process');
+            const fsSyncMod = require('fs');
+            const os = require('os');
+            const searchText = this._extractSearchText(target);
+            if (searchText) {
+              const jsCode = `(function() {
+                var target = ${JSON.stringify(searchText.toLowerCase())};
+                var all = document.querySelectorAll('a, button, span, div, td, li, p, img, [role], nav *');
+                for (var i = 0; i < all.length; i++) {
+                  var el = all[i];
+                  var text = (el.textContent || el.getAttribute('aria-label') || '').trim().toLowerCase();
+                  if (text.includes(target) && el.offsetParent) {
+                    el.scrollIntoView({block: 'center'});
+                    el.dispatchEvent(new MouseEvent('mouseover', {bubbles: true}));
+                    el.dispatchEvent(new MouseEvent('mouseenter', {bubbles: true}));
+                    var r = el.getBoundingClientRect();
+                    return 'found:' + Math.round(r.left + r.width/2) + ',' + Math.round(r.top + r.height/2);
+                  }
+                }
+                return 'not_found';
+              })()`;
+              const tmpFile = path.join(os.tmpdir(), `ace_hover_${Date.now()}.scpt`);
+              const appleScript = `tell application "Google Chrome" to execute front window's active tab javascript ${JSON.stringify(jsCode)}`;
+              fsSyncMod.writeFileSync(tmpFile, appleScript);
+              const result = execSync(`osascript "${tmpFile}"`, { timeout: 8000 }).toString().trim();
+              try { fsSyncMod.unlinkSync(tmpFile); } catch (e) { /* cleanup */ }
+              if (result.startsWith('found:')) {
+                const [fx, fy] = result.substring(6).split(',').map(Number);
+                const robot = require('robotjs');
+                robot.moveMouse(fx, fy);
+                hovered = true;
+                this.onProgress(`🖱️ Hovering over: "${target}" at (${fx}, ${fy})`);
+              }
+            }
+          } catch (e) { /* fall through */ }
+        }
+
+        // Strategy 2: Coordinates fallback
+        if (!hovered && step.x != null && step.y != null) {
+          const robot = require('robotjs');
+          robot.moveMouse(Math.round(step.x * scaleX), Math.round(step.y * scaleY));
+          hovered = true;
+          this.onProgress(`📌 Hovering at (${step.x}, ${step.y})`);
+        }
+
+        await this._wait(800); // Give time for hover effect to appear
+        break;
+      }
+
+      case 'switch_tab': {
+        // Switch to a different Chrome tab
+        const robot = require('robotjs');
+        const target = (step.target || step.text || '').toLowerCase();
+
+        if (/\d+/.test(target)) {
+          // Switch to tab by number (Cmd+1 through Cmd+9)
+          const tabNum = parseInt(target.match(/\d+/)[0]);
+          if (tabNum >= 1 && tabNum <= 9) {
+            robot.keyTap(String(tabNum), ['command']);
+            this.onProgress(`⌨️ Switched to tab ${tabNum}`);
+          }
+        } else if (/next|right|forward/i.test(target)) {
+          robot.keyTap(']', ['command', 'shift']);
+          this.onProgress('⌨️ Switched to next tab');
+        } else if (/prev|previous|left|back/i.test(target)) {
+          robot.keyTap('[', ['command', 'shift']);
+          this.onProgress('⌨️ Switched to previous tab');
+        } else {
+          // Default: next tab
+          robot.keyTap(']', ['command', 'shift']);
+          this.onProgress('⌨️ Switched to next tab');
+        }
+        await this._wait(500);
+        break;
+      }
+
+      case 'go_back':
+      case 'goBack': {
+        const robot = require('robotjs');
+        robot.keyTap('[', ['command']);
+        await this._wait(2000);
+        this.onProgress('⬅️ Navigated back to previous page');
+        break;
+      }
+
+      case 'copy_text': {
+        // Copy text from the page — either selected text or text of a specific element
+        const target = step.target || step.text || '';
+
+        if (target && !this._chromeJsDisabled) {
+          // Try to select the element's text first, then copy
+          try {
+            const { execSync } = require('child_process');
+            const fsSyncMod = require('fs');
+            const os = require('os');
+            const searchText = this._extractSearchText(target);
+            if (searchText) {
+              const jsCode = `(function() {
+                var target = ${JSON.stringify(searchText.toLowerCase())};
+                var all = document.querySelectorAll('*');
+                for (var i = 0; i < all.length; i++) {
+                  var el = all[i];
+                  if (el.children.length > 5) continue;
+                  var text = el.textContent.trim().toLowerCase();
+                  if (text.includes(target) && el.offsetParent) {
+                    var range = document.createRange();
+                    range.selectNodeContents(el);
+                    var sel = window.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                    return 'selected:' + el.textContent.trim().substring(0, 200);
+                  }
+                }
+                return 'not_found';
+              })()`;
+              const tmpFile = path.join(os.tmpdir(), `ace_copy_${Date.now()}.scpt`);
+              const appleScript = `tell application "Google Chrome" to execute front window's active tab javascript ${JSON.stringify(jsCode)}`;
+              fsSyncMod.writeFileSync(tmpFile, appleScript);
+              const result = execSync(`osascript "${tmpFile}"`, { timeout: 8000 }).toString().trim();
+              try { fsSyncMod.unlinkSync(tmpFile); } catch (e) { /* cleanup */ }
+              if (result.startsWith('selected:')) {
+                this.onProgress(`📋 Selected text: "${result.substring(9, 60)}..."`);
+              }
+            }
+          } catch (e) { /* fall through */ }
+        }
+
+        // Copy whatever is selected
+        const robot = require('robotjs');
+        robot.keyTap('c', ['command']);
+        await this._wait(300);
+        this.onProgress(`📋 Copied to clipboard`);
+        break;
+      }
+
+      case 'wait': {
+        await this._wait(step.ms || 1000);
+        break;
+      }
+
+      default:
+        this.onProgress(`⚠️ Unknown step action: ${step.action}`);
+    }
+  }
+
+  /**
+   * Verify a click step actually worked by checking Chrome's URL.
+   * Returns true if verified (or if verification is not possible).
+   */
+  async _verifyStep(step, steps, i) {
+    // Only verify if we have URL data and the URL should have changed
+    if (!step.url) return true; // No URL recorded — can't verify, assume OK
+
+    // Check if next step expects a different URL (meaning navigation should have occurred)
+    const nextStep = steps[i + 1];
+    if (!nextStep || !nextStep.url || nextStep.url === step.url) {
+      return true; // Same URL expected — no navigation to verify
+    }
+
+    // Wait for potential navigation
+    await this._wait(1000);
+
+    // Check current Chrome URL
+    try {
+      const { execSync } = require('child_process');
+      const currentUrl = execSync(
+        `osascript -e 'tell application "Google Chrome" to get URL of active tab of front window'`,
+        { timeout: 3000 }
+      ).toString().trim();
+
+      // URL changed — the click likely worked
+      if (currentUrl !== step.url) {
+        return true;
+      }
+
+      // URL didn't change but should have — click may have missed
+      return false;
+    } catch (e) {
+      return true; // Can't check — assume OK
+    }
   }
 
   // ═══════════════════════════════════════════════════════
@@ -1085,9 +1623,10 @@ end tell
    * This works even when page layout changes — no coordinate dependency.
    *
    * @param {string} target - The element description from the SOP, e.g. "Create Event button"
+   * @param {boolean} isDouble - If true, dispatch a dblclick event instead of click
    * @returns {boolean} true if element was found and clicked
    */
-  async _clickWebElement(target) {
+  async _clickWebElement(target, isDouble = false) {
     // Skip if we already know Chrome JS execution is disabled
     if (this._chromeJsDisabled) return false;
 
@@ -1145,7 +1684,9 @@ end tell
 
       if (best) {
         best.scrollIntoView({block: 'center', behavior: 'instant'});
-        best.click();
+        ${isDouble
+          ? `best.dispatchEvent(new MouseEvent('dblclick', {bubbles: true, cancelable: true}));`
+          : `best.click();`}
         var r = best.getBoundingClientRect();
         return 'clicked:' + Math.round(r.left + r.width/2) + ',' + Math.round(r.top + r.height/2) + ':' + (best.textContent || '').trim().substring(0, 80);
       }

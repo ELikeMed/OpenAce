@@ -137,6 +137,7 @@ export class AutonomousScheduler {
       sopIds: routineConfig.sopIds || [],              // SOPs to execute (type: 'sop')
       prompt: routineConfig.prompt || '',              // Brain prompt (type: 'briefing')
       sendToTelegram: routineConfig.sendToTelegram !== false, // Send briefing to Telegram
+      delivery: routineConfig.delivery || (routineConfig.sendToTelegram === false ? 'dashboard' : 'both'), // 'dashboard' | 'telegram' | 'both'
       actions: routineConfig.actions || [],            // Direct actions
       enabled: routineConfig.enabled !== false,
       createdAt: new Date().toISOString(),
@@ -263,7 +264,7 @@ export class AutonomousScheduler {
     // Pipeline check routines: scan pipeline for leads needing action
     if (routine.type === 'pipeline_check') {
       try {
-        await this.checkPipelineActions();
+        await this.checkPipelineActions(routine);
         results.push({ type: 'pipeline_check', success: true });
       } catch (e) {
         results.push({ type: 'pipeline_check', success: false, error: e.message });
@@ -293,19 +294,22 @@ export class AutonomousScheduler {
           success: true
         });
 
-        // Notify via Telegram
-        if (routine.sendToTelegram !== false && this.telegramBot?.isRunning) {
+        // Deliver results based on per-routine preference
+        const delivery = this._getDeliveryPreference(routine);
+
+        if (delivery !== 'dashboard' && this.telegramBot?.isRunning) {
           await this.telegramBot.notify(`📅 *${routine.name}*\n\n${text}`, 'normal');
           this.onProgress(`📱 Briefing sent to Telegram: "${routine.name}"`);
         }
 
-        // Emit SSE event so dashboard sees it too
-        eventBus.emit(EVENTS.ROUTINE_COMPLETED, {
-          routineId: routine.id,
-          routineName: routine.name,
-          result: text.slice(0, 1000),
-          timestamp: new Date().toISOString()
-        });
+        if (delivery !== 'telegram') {
+          eventBus.emit(EVENTS.ROUTINE_COMPLETED, {
+            routineId: routine.id,
+            routineName: routine.name,
+            result: text.slice(0, 2000),
+            timestamp: new Date().toISOString()
+          });
+        }
 
         results.push({ type: 'briefing', success: true, output: text.slice(0, 300) });
       } catch (e) {
@@ -462,6 +466,16 @@ export class AutonomousScheduler {
     return await this.sopExecutor.executeSOP(sop);
   }
 
+  /**
+   * Resolve delivery preference for a routine. Backward compatible with sendToTelegram boolean.
+   * @returns {'both' | 'dashboard' | 'telegram'}
+   */
+  _getDeliveryPreference(routine) {
+    if (routine.delivery) return routine.delivery;
+    if (routine.sendToTelegram === false) return 'dashboard';
+    return 'both';
+  }
+
   // ═══════════════════════════════════════════════════════
   // EXECUTION MEMORY — Previous results persist to disk
   // ═══════════════════════════════════════════════════════
@@ -587,7 +601,7 @@ export class AutonomousScheduler {
   /**
    * Check pipeline for leads needing action and trigger AI to handle them
    */
-  async checkPipelineActions() {
+  async checkPipelineActions(routine = null) {
     const pm = this.pipelineManager;
     if (!pm || !this.brain) return;
 
@@ -628,17 +642,22 @@ export class AutonomousScheduler {
 
     const text = result?.text || 'Pipeline check completed.';
 
-    // Notify both channels
-    if (this.telegramBot?.isRunning) {
+    // Deliver based on routine preference (default: both)
+    const delivery = routine ? this._getDeliveryPreference(routine) : 'both';
+
+    if (delivery !== 'dashboard' && this.telegramBot?.isRunning) {
       await this.telegramBot.notify(`📋 *Pipeline Grooming*\n\n${text}`, 'normal');
     }
 
-    eventBus.emit(EVENTS.PIPELINE_ACTION, {
-      type: 'grooming',
-      summary: text.slice(0, 500),
-      actionableCount: actionable.length,
-      timestamp: new Date().toISOString()
-    });
+    if (delivery !== 'telegram') {
+      eventBus.emit(EVENTS.PIPELINE_ACTION, {
+        type: 'grooming',
+        routineName: routine?.name || 'Pipeline Grooming',
+        summary: text.slice(0, 2000),
+        actionableCount: actionable.length,
+        timestamp: new Date().toISOString()
+      });
+    }
 
     this.onProgress(`📋 Pipeline check: ${actionable.length} leads needed attention`);
   }

@@ -37,6 +37,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import FilterListIcon from '@mui/icons-material/FilterList';
+import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import { BRAND } from '../theme';
 
 const DEPT_ICONS = {
@@ -999,6 +1000,7 @@ export default function Organization() {
   const [activeId, setActiveId] = useState(null);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [switchingId, setSwitchingId] = useState(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
   const fetchData = async () => {
@@ -1089,6 +1091,25 @@ export default function Organization() {
     }
   };
 
+  const handleSwitchBusiness = async (id) => {
+    if (id === activeId) return;
+    setSwitchingId(id);
+    try {
+      const res = await fetch(`/api/businesses/${id}/switch`, { method: 'POST' });
+      const result = await res.json();
+      if (result.success) {
+        setActiveId(id);
+        setSnackbar({ open: true, message: `Switched to "${businesses.find(b => b.id === id)?.name}"`, severity: 'success' });
+      } else {
+        setSnackbar({ open: true, message: result.error || 'Switch failed', severity: 'error' });
+      }
+    } catch (e) {
+      setSnackbar({ open: true, message: 'Failed to switch business', severity: 'error' });
+    } finally {
+      setSwitchingId(null);
+    }
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
@@ -1155,31 +1176,45 @@ export default function Organization() {
       ) : (
         businesses.map(biz => (
           <Box key={biz.id} sx={{ position: 'relative', mb: 1 }}>
-            {biz.id === activeId && (
-              <Chip
-                icon={<StarIcon sx={{ fontSize: 14 }} />}
-                label="Active"
-                size="small"
-                color="success"
-                sx={{
-                  position: 'absolute', top: 12, right: 12, zIndex: 1,
-                  fontWeight: 700, fontSize: '0.7rem',
-                }}
-              />
-            )}
-            {businesses.length > 1 && biz.id !== activeId && (
-              <IconButton
-                size="small"
-                onClick={() => handleDeleteBusiness(biz.id)}
-                sx={{
-                  position: 'absolute', top: 10, right: 52, zIndex: 1,
-                  color: BRAND.textMuted,
-                  '&:hover': { color: '#ef4444' },
-                }}
-              >
-                <DeleteOutlineIcon fontSize="small" />
-              </IconButton>
-            )}
+            <Box sx={{
+              position: 'absolute', top: 12, right: 12, zIndex: 1,
+              display: 'flex', alignItems: 'center', gap: 1,
+            }}>
+              {biz.id === activeId ? (
+                <Chip
+                  icon={<StarIcon sx={{ fontSize: 14 }} />}
+                  label="Active"
+                  size="small"
+                  color="success"
+                  sx={{ fontWeight: 700, fontSize: '0.7rem' }}
+                />
+              ) : (
+                <>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={switchingId === biz.id ? <CircularProgress size={14} /> : <SwapHorizIcon />}
+                    disabled={switchingId === biz.id}
+                    onClick={() => handleSwitchBusiness(biz.id)}
+                    sx={{ fontSize: '0.72rem', textTransform: 'none', fontWeight: 600 }}
+                  >
+                    {switchingId === biz.id ? 'Switching...' : 'Switch'}
+                  </Button>
+                  {businesses.length > 1 && (
+                    <IconButton
+                      size="small"
+                      onClick={() => handleDeleteBusiness(biz.id)}
+                      sx={{
+                        color: BRAND.textMuted,
+                        '&:hover': { color: '#ef4444' },
+                      }}
+                    >
+                      <DeleteOutlineIcon fontSize="small" />
+                    </IconButton>
+                  )}
+                </>
+              )}
+            </Box>
             <BusinessProfileEditor
               profile={biz}
               onSave={(data) => handleSaveBusiness(biz.id, data)}
@@ -1203,28 +1238,6 @@ export default function Organization() {
 
       {/* Routing History */}
       <RoutingHistorySection />
-
-      {/* Department Grid */}
-      <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-        <GroupsIcon fontSize="small" /> Departments
-      </Typography>
-      
-      <Grid container spacing={2}>
-        {departments.map(dept => (
-          <Grid item xs={12} sm={6} md={4} key={dept.id}>
-            <DepartmentCard dept={dept} onToggle={handleToggle} />
-          </Grid>
-        ))}
-        {departments.length === 0 && (
-          <Grid item xs={12}>
-            <Paper sx={{ p: 4, textAlign: 'center' }}>
-              <Typography variant="body1" sx={{ color: BRAND.textSecondary }}>
-                No departments loaded. The department system may still be initializing...
-              </Typography>
-            </Paper>
-          </Grid>
-        )}
-      </Grid>
 
       <Snackbar
         open={snackbar.open}

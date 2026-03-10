@@ -18,7 +18,54 @@ import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import AceSpadeIcon from './AceSpadeIcon';
 import TelegramIcon from '@mui/icons-material/Telegram';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import WbSunnyIcon from '@mui/icons-material/WbSunny';
+import SearchIcon from '@mui/icons-material/Search';
+import CleaningServicesIcon from '@mui/icons-material/CleaningServices';
+import NightsStayIcon from '@mui/icons-material/NightsStay';
 import { BRAND } from '../theme';
+
+const ROUTINE_TEMPLATES = [
+  {
+    id: 'morning',
+    icon: <WbSunnyIcon />,
+    color: BRAND.warning,
+    name: 'Morning Briefing',
+    desc: 'Daily summary of your pipeline, calendar, and goals',
+    prompt: 'Summarize my day: upcoming calendar events, pipeline leads needing action, and any goals in progress. Keep it concise.',
+    time: '09:00',
+    days: [1, 2, 3, 4, 5],
+  },
+  {
+    id: 'research',
+    icon: <SearchIcon />,
+    color: BRAND.info,
+    name: 'Lead Research',
+    desc: 'Find new leads and save them to your pipeline',
+    prompt: 'Search for new leads in my industry. Find companies that match my ideal client, get their contact info, and save them to my pipeline.',
+    time: '10:30',
+    days: [1, 2, 3, 4, 5],
+  },
+  {
+    id: 'grooming',
+    icon: <CleaningServicesIcon />,
+    color: BRAND.secondary,
+    name: 'Pipeline Grooming',
+    desc: 'Follow up on leads and organize your pipeline',
+    prompt: 'Check my pipeline for leads that need follow-up. Research any that are missing contact info. Draft outreach emails for leads ready to contact.',
+    time: '14:00',
+    days: [1, 2, 3, 4, 5],
+  },
+  {
+    id: 'evening',
+    icon: <NightsStayIcon />,
+    color: BRAND.primaryLight,
+    name: 'Evening Wrap-Up',
+    desc: 'End-of-day summary of what got done',
+    prompt: 'Give me a summary of what was accomplished today: leads found, emails sent, tasks completed, and what needs attention tomorrow.',
+    time: '17:00',
+    days: [1, 2, 3, 4, 5],
+  },
+];
 
 const INSIGHT_ICONS = {
   warning: <WarningAmberIcon />,
@@ -42,7 +89,7 @@ function Automation() {
   const [insights, setInsights] = useState([]);
   const [loading, setLoading] = useState(true);
   const [addDialog, setAddDialog] = useState(false);
-  const [newRoutine, setNewRoutine] = useState({ name: '', time: '09:00', type: 'briefing', prompt: '', sopIds: [], days: [1,2,3,4,5] });
+  const [newRoutine, setNewRoutine] = useState({ name: '', time: '09:00', type: 'briefing', prompt: '', sopIds: [], days: [1,2,3,4,5], delivery: 'both' });
 
   const fetchData = async () => {
     try {
@@ -94,7 +141,7 @@ function Automation() {
         body: JSON.stringify(newRoutine),
       });
       setAddDialog(false);
-      setNewRoutine({ name: '', time: '09:00', sopIds: [], days: [1,2,3,4,5] });
+      setNewRoutine({ name: '', time: '09:00', type: 'briefing', prompt: '', sopIds: [], days: [1,2,3,4,5], delivery: 'both' });
       fetchData();
     } catch (e) { console.error(e); }
   };
@@ -133,10 +180,10 @@ function Automation() {
           </Avatar>
           <Box sx={{ flex: 1 }}>
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              Automation & Insights
+              Routines
             </Typography>
             <Typography variant="body2" sx={{ color: BRAND.textSecondary }}>
-              Scheduled routines, proactive insights, and autonomous actions
+              Scheduled routines and proactive insights
             </Typography>
           </Box>
           <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
@@ -358,14 +405,19 @@ function Automation() {
                               📝 {routine.prompt.slice(0, 80)}{routine.prompt.length > 80 ? '…' : ''}
                             </Typography>
                           )}
-                          {routine.type === 'briefing' && routine.sendToTelegram !== false && (
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
-                              <TelegramIcon sx={{ fontSize: 11, color: BRAND.info }} />
-                              <Typography variant="caption" sx={{ color: BRAND.info, fontSize: '0.6rem' }}>
-                                Sends to Telegram
-                              </Typography>
-                            </Box>
-                          )}
+                          {routine.type === 'briefing' && (() => {
+                            const d = routine.delivery || (routine.sendToTelegram === false ? 'dashboard' : 'both');
+                            const label = d === 'both' ? 'Dashboard & Telegram' : d === 'dashboard' ? 'Dashboard only' : 'Telegram only';
+                            const showTelegram = d !== 'dashboard';
+                            return (
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
+                                {showTelegram ? <TelegramIcon sx={{ fontSize: 11, color: BRAND.info }} /> : <ScheduleIcon sx={{ fontSize: 11, color: BRAND.textMuted }} />}
+                                <Typography variant="caption" sx={{ color: showTelegram ? BRAND.info : BRAND.textMuted, fontSize: '0.6rem' }}>
+                                  {label}
+                                </Typography>
+                              </Box>
+                            );
+                          })()}
                         </Box>
                         <Box sx={{ display: 'flex', gap: 0.5 }}>
                           <IconButton
@@ -447,52 +499,55 @@ function Automation() {
           Add Scheduled Routine
           <IconButton size="small" onClick={() => setAddDialog(false)}><CloseIcon /></IconButton>
         </DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
-          {/* Routine type selector */}
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: '16px !important' }}>
+
+          {/* Quick-start templates */}
           <Box>
-            <Typography variant="body2" sx={{ color: BRAND.textSecondary, mb: 1 }}>Routine Type</Typography>
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              {[
-                { value: 'briefing', label: '🧠 AI Briefing', desc: 'Ask Ace a question on schedule' },
-                { value: 'sop', label: '🖥️ Browser SOP', desc: 'Run a recorded browser automation' },
-              ].map(opt => (
+            <Typography variant="body2" sx={{ color: BRAND.textSecondary, mb: 1, fontWeight: 600 }}>Start from a template</Typography>
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+              {ROUTINE_TEMPLATES.map(t => (
                 <Box
-                  key={opt.value}
-                  onClick={() => setNewRoutine({ ...newRoutine, type: opt.value })}
+                  key={t.id}
+                  onClick={() => setNewRoutine({ ...newRoutine, name: t.name, prompt: t.prompt, time: t.time, days: t.days, type: 'briefing' })}
                   sx={{
-                    flex: 1, p: 1.5, borderRadius: 2, cursor: 'pointer',
-                    border: `1px solid ${newRoutine.type === opt.value ? alpha(BRAND.primary, 0.5) : alpha(BRAND.border, 0.5)}`,
-                    background: newRoutine.type === opt.value ? alpha(BRAND.primary, 0.06) : 'transparent',
+                    p: 1.5, borderRadius: 2, cursor: 'pointer',
+                    border: `1px solid ${newRoutine.name === t.name ? alpha(t.color, 0.5) : alpha(BRAND.border, 0.5)}`,
+                    background: newRoutine.name === t.name ? alpha(t.color, 0.08) : 'transparent',
                     transition: 'all 0.15s',
+                    '&:hover': { background: alpha(t.color, 0.06), borderColor: alpha(t.color, 0.3) },
                   }}
                 >
-                  <Typography variant="body2" sx={{ fontWeight: 600, color: BRAND.textPrimary }}>{opt.label}</Typography>
-                  <Typography variant="caption" sx={{ color: BRAND.textMuted }}>{opt.desc}</Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                    <Box sx={{ color: t.color, display: 'flex', '& svg': { fontSize: 18 } }}>{t.icon}</Box>
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: BRAND.textPrimary, fontSize: '0.85rem' }}>{t.name}</Typography>
+                  </Box>
+                  <Typography variant="caption" sx={{ color: BRAND.textMuted, lineHeight: 1.3 }}>{t.desc}</Typography>
                 </Box>
               ))}
             </Box>
+            <Typography variant="caption" sx={{ color: BRAND.textMuted, mt: 1, display: 'block' }}>
+              Pick a template to get started, then customize below. Or fill in from scratch.
+            </Typography>
           </Box>
 
           <TextField
             label="Routine Name"
-            placeholder={newRoutine.type === 'briefing' ? 'e.g., Morning Briefing' : 'e.g., Morning Login'}
+            placeholder="Give your routine a name, e.g. Morning Briefing"
             value={newRoutine.name}
             onChange={(e) => setNewRoutine({ ...newRoutine, name: e.target.value })}
             fullWidth
           />
 
-          {newRoutine.type === 'briefing' && (
-            <TextField
-              label="What should Ace report on?"
-              placeholder="e.g., Give me a summary of today's top pipeline tasks and any leads that need follow-up."
-              value={newRoutine.prompt}
-              onChange={(e) => setNewRoutine({ ...newRoutine, prompt: e.target.value })}
-              fullWidth
-              multiline
-              rows={3}
-              helperText="Ace will answer this question and send the result to Telegram."
-            />
-          )}
+          <TextField
+            label="Instructions for Ace"
+            placeholder="Tell Ace what to do — e.g. Check my pipeline for leads that need follow-up. Research any missing contact info. Summarize what you find."
+            value={newRoutine.prompt}
+            onChange={(e) => setNewRoutine({ ...newRoutine, prompt: e.target.value })}
+            fullWidth
+            multiline
+            rows={4}
+            helperText="Write like you're giving instructions to an assistant. Be specific about industry, location, or topic."
+          />
 
           <TextField
             label="Time"
@@ -503,7 +558,7 @@ function Automation() {
             slotProps={{ inputLabel: { shrink: true } }}
           />
           <Box>
-            <Typography variant="body2" sx={{ color: BRAND.textSecondary, mb: 1 }}>Active Days</Typography>
+            <Typography variant="body2" sx={{ color: BRAND.textSecondary, mb: 1, fontWeight: 600 }}>Active Days</Typography>
             <Box sx={{ display: 'flex', gap: 0.5 }}>
               {DAY_LABELS.map((label, i) => (
                 <Chip
@@ -527,13 +582,45 @@ function Automation() {
               ))}
             </Box>
           </Box>
+
+          {/* Delivery preference */}
+          <Box>
+            <Typography variant="body2" sx={{ color: BRAND.textSecondary, mb: 1, fontWeight: 600 }}>Deliver Results To</Typography>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              {[
+                { value: 'both', label: 'Dashboard & Telegram' },
+                { value: 'dashboard', label: 'Dashboard Only' },
+                { value: 'telegram', label: 'Telegram Only' },
+              ].map(opt => (
+                <Box
+                  key={opt.value}
+                  onClick={() => setNewRoutine({ ...newRoutine, delivery: opt.value })}
+                  sx={{
+                    flex: 1, p: 1.5, borderRadius: 2, cursor: 'pointer', textAlign: 'center',
+                    border: `1px solid ${newRoutine.delivery === opt.value ? alpha(BRAND.primary, 0.5) : alpha(BRAND.border, 0.5)}`,
+                    background: newRoutine.delivery === opt.value ? alpha(BRAND.primary, 0.06) : 'transparent',
+                    transition: 'all 0.15s',
+                  }}
+                >
+                  <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem', color: BRAND.textPrimary }}>{opt.label}</Typography>
+                </Box>
+              ))}
+            </Box>
+          </Box>
+
+          {/* Chat shortcut hint */}
+          <Box sx={{ background: alpha(BRAND.primary, 0.04), borderRadius: 2, p: 1.5, border: `1px solid ${alpha(BRAND.primary, 0.08)}` }}>
+            <Typography variant="caption" sx={{ color: BRAND.textMuted }}>
+              You can also create routines in chat — just say: <em>"Every morning at 9am, check my pipeline and brief me."</em> To schedule a process, use the <strong>Add to Routines</strong> button on the Processes page.
+            </Typography>
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setAddDialog(false)}>Cancel</Button>
           <Button
             variant="contained"
             onClick={handleAdd}
-            disabled={!newRoutine.name.trim() || (newRoutine.type === 'briefing' && !newRoutine.prompt.trim())}
+            disabled={!newRoutine.name.trim() || !newRoutine.prompt.trim()}
           >
             Add Routine
           </Button>

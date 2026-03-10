@@ -21,10 +21,18 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import MicIcon from '@mui/icons-material/Mic';
 import MicOffIcon from '@mui/icons-material/MicOff';
 import BuildIcon from '@mui/icons-material/Build';
+import CodeIcon from '@mui/icons-material/Code';
+import VolumeUpIcon from '@mui/icons-material/VolumeUp';
+import VolumeOffIcon from '@mui/icons-material/VolumeOff';
 import PublicIcon from '@mui/icons-material/Public';
 import SearchIcon from '@mui/icons-material/Search';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import EmailIcon from '@mui/icons-material/Email';
+import MouseIcon from '@mui/icons-material/Mouse';
+import TrackChangesIcon from '@mui/icons-material/TrackChanges';
+import ScheduleIcon from '@mui/icons-material/Schedule';
+import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import ConversationSidebar from './components/ConversationSidebar';
 import { BRAND } from './theme';
 
@@ -53,6 +61,21 @@ const PRIORITY_COLORS = {
   medium: { bg: 'rgba(245,158,11,0.15)',  text: '#fbbf24' },
   low:    { bg: 'rgba(34,197,94,0.15)',   text: '#4ade80' },
 };
+
+function stripMarkdownForSpeech(text) {
+  if (!text) return '';
+  return text
+    .replace(/```[\s\S]*?```/g, '')                  // code blocks
+    .replace(/`([^`]+)`/g, '$1')                     // inline code
+    .replace(/(\*{1,2}|_{1,2})(.*?)\1/g, '$2')       // bold/italic
+    .replace(/^#{1,6}\s+/gm, '')                     // headers
+    .replace(/^\s*[-*]\s+/gm, '')                    // bullet points
+    .replace(/^\s*\d+\.\s+/gm, '')                   // numbered lists
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')          // links → text only
+    .replace(/https?:\/\/[^\s]+/g, '')                // bare URLs
+    .replace(/\n{3,}/g, '\n\n')                      // collapse whitespace
+    .trim();
+}
 
 function PendingActionsCard({ actions, onConfirm, onCancel }) {
   const [selected, setSelected] = useState(() => actions.map(() => true));
@@ -872,7 +895,7 @@ function SOPHealthCard({ sopHealth, onShowMe }) {
   );
 }
 
-function MessageBubble({ msg, onConfirmActions, onCancelActions, onQuestionAnswer, onShowMeReady, onShowMeStart, onShowMeDone, onShowMeSkip, onHealthShowMe, onStepCorrect }) {
+function MessageBubble({ msg, msgIndex, onConfirmActions, onCancelActions, onQuestionAnswer, onShowMeReady, onShowMeStart, onShowMeDone, onShowMeSkip, onHealthShowMe, onStepCorrect, onSpeak, onStopSpeaking, isSpeakingThis }) {
   const isUser = msg.sender === 'You';
   const isSystem = msg.sender === 'System';
   const isThinking = msg.sender?.includes('Thinking') || msg.sender?.includes('Thought');
@@ -967,7 +990,14 @@ function MessageBubble({ msg, onConfirmActions, onCancelActions, onQuestionAnswe
         }}>
           {msg.sender}
         </Typography>
-        <Box sx={{ px: 2.5, py: 2, ...getBubbleStyle() }}>
+        <Box sx={{
+          px: 2.5, py: 2, ...getBubbleStyle(),
+          ...(isSpeakingThis && {
+            boxShadow: `0 0 12px ${alpha(BRAND.secondary, 0.2)}`,
+            borderColor: alpha(BRAND.secondary, 0.3),
+            transition: 'box-shadow 0.3s ease, border-color 0.3s ease',
+          }),
+        }}>
           {/* Attached images */}
           {msg.images && msg.images.length > 0 && (
             <Box sx={{ display: 'flex', gap: 0.75, mb: msg.text ? 1 : 0, flexWrap: 'wrap' }}>
@@ -1010,6 +1040,31 @@ function MessageBubble({ msg, onConfirmActions, onCancelActions, onQuestionAnswe
                 icon={<BuildIcon />}
               />
             ))}
+          </Box>
+        )}
+
+        {/* Per-message speak button — only on Ace messages with text */}
+        {!isUser && !isSystem && !isThinking && msg.text && onSpeak && (
+          <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5, px: 0.5 }}>
+            <Tooltip title={isSpeakingThis ? 'Stop' : 'Read aloud'} placement="top">
+              <IconButton
+                size="small"
+                onClick={() => isSpeakingThis ? onStopSpeaking() : onSpeak(msg.text, msgIndex)}
+                sx={{
+                  width: 26, height: 26,
+                  color: isSpeakingThis ? BRAND.secondary : alpha(BRAND.textMuted, 0.5),
+                  '&:hover': {
+                    color: isSpeakingThis ? BRAND.secondary : BRAND.primaryLight,
+                    background: alpha(BRAND.primary, 0.08),
+                  },
+                }}
+              >
+                {isSpeakingThis
+                  ? <StopCircleIcon sx={{ fontSize: 16 }} />
+                  : <VolumeUpIcon sx={{ fontSize: 16 }} />
+                }
+              </IconButton>
+            </Tooltip>
           </Box>
         )}
 
@@ -1195,16 +1250,32 @@ function Chat() {
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
   const recognitionRef = useRef(null);
+  // ═══ Text-to-Speech (TTS) state ═══
+  const [ttsEnabled, setTtsEnabled] = useState(() => localStorage.getItem('ace_tts_enabled') === 'true');
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [speakingMsgIdx, setSpeakingMsgIdx] = useState(null);
+  const [ttsSupported, setTtsSupported] = useState(false);
+  const ttsUtteranceRef = useRef(null);
   const [activeAction, setActiveAction] = useState(null);
   const textFieldRef = useRef(null);
   const abortControllerRef = useRef(null);
+  const [bizProfile, setBizProfile] = useState(null);
+
+  // Fetch active business profile for personalized suggestions
+  useEffect(() => {
+    fetch('/api/businesses/active')
+      .then(r => r.json())
+      .then(res => { if (res.success && res.data?.name) setBizProfile(res.data); })
+      .catch(() => {});
+  }, []);
 
   // ═══ Action chips — clear intent shortcuts ═══
   const actionChips = [
-    { id: 'browse', label: 'Browse', icon: <PublicIcon sx={{ fontSize: 16 }} />, prefix: '[OPEN BROWSER] ', placeholder: 'Enter URL or website name...' },
-    { id: 'search', label: 'Search', icon: <SearchIcon sx={{ fontSize: 16 }} />, prefix: '[WEB SEARCH] ', placeholder: 'What do you want to search for?' },
-    { id: 'sop', label: 'Run SOP', icon: <AssignmentIcon sx={{ fontSize: 16 }} />, prefix: '[RUN SOP] ', placeholder: 'Which procedure to run?' },
-    { id: 'email', label: 'Email', icon: <EmailIcon sx={{ fontSize: 16 }} />, prefix: '[SEND EMAIL] ', placeholder: 'Who to email and what to say...' },
+    { id: 'browse', label: 'Browse', icon: <PublicIcon sx={{ fontSize: 16 }} />, prefix: '[OPEN BROWSER] ', placeholder: 'google.com, zillow.com, linkedin.com...' },
+    { id: 'search', label: 'Search', icon: <SearchIcon sx={{ fontSize: 16 }} />, prefix: '[WEB SEARCH] ', placeholder: 'seller financing real estate in Miami...' },
+    { id: 'sop', label: 'Run SOP', icon: <AssignmentIcon sx={{ fontSize: 16 }} />, prefix: '[RUN SOP] ', placeholder: 'login to Facebook, repost meetup...' },
+    { id: 'code', label: 'Code', icon: <CodeIcon sx={{ fontSize: 16 }} />, prefix: '', placeholder: 'Build a landing page, update my website, create a contact form...' },
+    { id: 'email', label: 'Email', icon: <EmailIcon sx={{ fontSize: 16 }} />, prefix: '[SEND EMAIL] ', placeholder: 'john@example.com about the proposal...' },
   ];
 
   // ═══ Cache messages whenever they change ═══
@@ -1227,6 +1298,16 @@ function Chat() {
     };
     window.addEventListener('ace:debug-error', handle);
     return () => window.removeEventListener('ace:debug-error', handle);
+  }, []);
+
+  // Prefill chat input from other pages (e.g., Integrations "Train Ace" button)
+  useEffect(() => {
+    const handle = (e) => {
+      const msg = e.detail?.message;
+      if (msg) setInputText(msg);
+    };
+    window.addEventListener('ace:prefill-chat', handle);
+    return () => window.removeEventListener('ace:prefill-chat', handle);
   }, []);
 
   // Auto-send when pending debug message is set
@@ -1298,6 +1379,84 @@ function Chat() {
       }
     };
   }, []);
+
+  // ═══ Text-to-Speech (TTS) setup ═══
+  useEffect(() => {
+    const supported = 'speechSynthesis' in window;
+    setTtsSupported(supported);
+    if (supported) {
+      window.speechSynthesis.getVoices();
+      window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+    }
+    return () => {
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    };
+  }, []);
+
+  // Persist TTS preference
+  useEffect(() => {
+    localStorage.setItem('ace_tts_enabled', ttsEnabled ? 'true' : 'false');
+  }, [ttsEnabled]);
+
+  // Chrome bug: speech pauses after ~15s. Keep-alive timer resumes it.
+  useEffect(() => {
+    if (!isSpeaking) return;
+    const interval = setInterval(() => {
+      if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+        window.speechSynthesis.pause();
+        window.speechSynthesis.resume();
+      }
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [isSpeaking]);
+
+  // ═══ TTS core functions ═══
+  const stopSpeaking = useCallback(() => {
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+    setSpeakingMsgIdx(null);
+    ttsUtteranceRef.current = null;
+  }, []);
+
+  const speakText = useCallback((text, messageIndex = null) => {
+    if (!ttsSupported) return;
+    window.speechSynthesis.cancel();
+    const cleanText = stripMarkdownForSpeech(text);
+    if (!cleanText) return;
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.rate = 0.95;   // Slightly slower = more natural cadence
+    utterance.pitch = 0.9;   // Slightly deeper = more masculine tone
+
+    // Pick best voice by name priority — browser strips "(Premium)" so match by name directly
+    const voices = window.speechSynthesis.getVoices();
+    const enVoices = voices.filter(v => v.lang.startsWith('en'));
+    const PREFERRED_VOICES = ['Jamie', 'Evan', 'Tom', 'Aaron', 'Nicky', 'Eddy', 'Reed', 'Rocko', 'Daniel'];
+    let preferred = null;
+    for (const name of PREFERRED_VOICES) {
+      preferred = enVoices.find(v => v.name === name || v.name.startsWith(name + ' '));
+      if (preferred) break;
+    }
+    if (!preferred) {
+      preferred = enVoices.find(v => v.name.includes('Google US English'))
+        || enVoices.find(v => v.localService)
+        || enVoices[0] || voices[0];
+    }
+    if (preferred) {
+      utterance.voice = preferred;
+      console.log('[TTS] Using voice:', preferred.name);
+    }
+
+    utterance.onstart = () => { setIsSpeaking(true); setSpeakingMsgIdx(messageIndex); };
+    utterance.onend = () => { setIsSpeaking(false); setSpeakingMsgIdx(null); ttsUtteranceRef.current = null; };
+    utterance.onerror = (e) => {
+      if (e.error !== 'canceled') console.warn('[TTS] Error:', e.error);
+      setIsSpeaking(false); setSpeakingMsgIdx(null); ttsUtteranceRef.current = null;
+    };
+
+    ttsUtteranceRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
+  }, [ttsSupported]);
 
   // ═══ Image helpers ═══
   const handleFileSelect = useCallback((files) => {
@@ -1514,6 +1673,27 @@ function Chat() {
           break;
         }
 
+        // ── Routine/Automation results live in chat ──
+        case 'routine:completed': {
+          const routineMsg = {
+            sender: 'Ace',
+            text: `📅 **${data.routineName || 'Routine'} — Complete**\n\n${data.result || 'Routine finished successfully.'}`,
+            isRoutineResult: true,
+            routineId: data.routineId,
+          };
+          setMessages(prev => [...prev, routineMsg]);
+          break;
+        }
+        case 'pipeline:action': {
+          const pipelineMsg = {
+            sender: 'Ace',
+            text: `📋 **${data.routineName || 'Pipeline Grooming'}**\n\n${data.summary || 'Pipeline check completed.'}${data.actionableCount ? `\n\n${data.actionableCount} lead(s) needed attention.` : ''}`,
+            isRoutineResult: true,
+          };
+          setMessages(prev => [...prev, pipelineMsg]);
+          break;
+        }
+
         case 'connected':
         case 'ping':
           break;
@@ -1542,10 +1722,11 @@ function Chat() {
   }, []);
 
   const handleSelectConversation = useCallback(async (chatId) => {
+    if (isSpeaking) stopSpeaking();
     setActiveConversationId(chatId);
     localStorage.setItem('ace_active_conversation', chatId);
     await loadConversation(chatId);
-  }, [loadConversation]);
+  }, [loadConversation, isSpeaking, stopSpeaking]);
 
   const handleDeleteConversation = useCallback(async (chatId) => {
     try {
@@ -1796,6 +1977,7 @@ function Chat() {
       recognitionRef.current.stop();
       setIsListening(false);
     } else {
+      if (isSpeaking) stopSpeaking();
       recognitionRef.current._baseText = inputText;
       recognitionRef.current._finalTranscript = '';
       recognitionRef.current._shouldRestart = true;
@@ -1819,10 +2001,107 @@ function Chat() {
   }, [activeAction]);
 
   // ═══ Send message (streaming — shows real-time progress) ═══
+  // Direct send — used by setup cards and programmatic sends (bypasses input state)
+  const sendMessageDirect = useCallback(async (text) => {
+    if (!text?.trim()) return;
+    if (isSpeaking) stopSpeaking();
+
+    const rawText = text.trim();
+    setMessages(prev => [...prev, { sender: 'You', text: rawText }]);
+    setInputText('');
+    setIsThinking(true);
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    try {
+      const response = await fetch('/api/chat-stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: rawText,
+          conversationId: activeConversationId,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+            if (event.type === 'thinking' && event.content) {
+              setMessages(prev => {
+                const last = prev[prev.length - 1];
+                if (last?.sender === 'Ace Activity') {
+                  const steps = [...(last.activitySteps || [])];
+                  if (!steps.includes(event.content)) steps.push(event.content);
+                  return [...prev.slice(0, -1), { ...last, activitySteps: steps }];
+                }
+                return [...prev, { sender: 'Ace Activity', activitySteps: [event.content] }];
+              });
+            }
+            if (event.type === 'response') {
+              const data = event.content || {};
+              const botMessage = data.message || data.response || data.data?.message || 'No response from Ace.';
+              const pendingActions = Array.isArray(data.pendingActions) && data.pendingActions.length > 0 ? data.pendingActions : null;
+              const question = data.question || null;
+              const toolsUsed = data.toolsUsed || [];
+              setMessages(prev => {
+                const updated = prev.map(m => m.sender === 'Ace Activity' && !m.complete ? { ...m, complete: true } : m);
+                return [...updated, { sender: 'Ace', text: botMessage, pendingActions, actionsConfirmed: false, question, questionAnswered: false, toolsUsed }];
+              });
+              if (ttsEnabled && botMessage && botMessage !== 'No response from Ace.') {
+                setTimeout(() => speakText(botMessage), 300);
+              }
+              const createdProject = data?.data?.projectName || data?.projectName;
+              if (createdProject) {
+                window.dispatchEvent(new CustomEvent('ace:project-created', { detail: { projectName: createdProject } }));
+              }
+            }
+            if (event.type === 'error') {
+              setMessages(prev => {
+                const updated = prev.map(m => m.sender === 'Ace Activity' && !m.complete ? { ...m, complete: true } : m);
+                return [...updated, { sender: 'System', text: `Error: ${event.content}` }];
+              });
+            }
+          } catch (e) { /* skip */ }
+        }
+      }
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        setMessages(prev => {
+          const updated = prev.map(m => m.sender === 'Ace Activity' && !m.complete ? { ...m, complete: true } : m);
+          return [...updated, { sender: 'Ace', text: 'Stopped.' }];
+        });
+      } else {
+        setMessages(prev => {
+          const updated = prev.map(m => m.sender === 'Ace Activity' && !m.complete ? { ...m, complete: true } : m);
+          return [...updated, { sender: 'System', text: `Error: ${error.message}` }];
+        });
+      }
+    } finally {
+      abortControllerRef.current = null;
+      setIsThinking(false);
+      fetchConversations();
+    }
+  }, [activeConversationId, isSpeaking, ttsEnabled]);
+
   const handleSend = async () => {
     const hasText = inputText.trim().length > 0;
     const hasImages = attachedImages.length > 0;
     if (!hasText && !hasImages) return;
+    if (isSpeaking) stopSpeaking();
 
     // Prepend action prefix if an action chip is active (user doesn't see it)
     const rawText = inputText.trim();
@@ -1922,6 +2201,11 @@ function Chat() {
                 }];
               });
 
+              // Auto-speak: read Ace's response aloud if TTS is enabled
+              if (ttsEnabled && botMessage && botMessage !== 'No response from Ace.') {
+                setTimeout(() => speakText(botMessage), 300);
+              }
+
               const createdProject = data?.data?.projectName || data?.projectName;
               if (createdProject) {
                 window.dispatchEvent(new CustomEvent('ace:project-created', {
@@ -1987,11 +2271,17 @@ function Chat() {
     }
   };
 
-  const quickActions = [
-    'Find me leads in Dallas',
-    'Open google.com in Chrome',
+  // ═══ Welcome Screen — Feature Cards (existing) ═══
+  const quickActions = bizProfile ? [
+    `Find me ${bizProfile.targetAudience || bizProfile.industry || 'potential customers'} leads in ${bizProfile.location || 'my area'}`,
+    'What leads are in my pipeline and who should I contact first?',
+    `Research my competitors${bizProfile.industry ? ' in ' + bizProfile.industry.split(',')[0].trim() : ''} and find opportunities`,
+    `Draft a cold outreach email for ${bizProfile.name || 'my business'} to send to new leads`,
+  ] : [
+    'Find me leads for my business',
     'What leads are in my pipeline?',
-    'Teach me how to repost a meetup on Eventbrite',
+    'Research my competitors and find opportunities',
+    'Draft a cold outreach email to send to new leads',
   ];
 
   const featureCards = [
@@ -2000,6 +2290,72 @@ function Chat() {
     { icon: '📋', title: 'Playbooks', desc: 'Teach Ace step-by-step processes it can repeat for you' },
     { icon: '⏰', title: 'Routines', desc: 'Schedule daily tasks — Ace works even when you\'re away' },
     { icon: '🎯', title: 'Goals', desc: 'Set targets like "find 10 leads/day" and track progress' },
+  ];
+
+  // ═══ Get Ace Running — Guided Setup Steps ═══
+  const [completedSetup, setCompletedSetup] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('ace_setup_completed') || '[]'); }
+    catch { return []; }
+  });
+
+  const markSetupDone = (id) => {
+    setCompletedSetup(prev => {
+      if (prev.includes(id)) return prev;
+      const next = [...prev, id];
+      localStorage.setItem('ace_setup_completed', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const setupSteps = [
+    {
+      id: 'leads',
+      icon: <SearchIcon sx={{ fontSize: 20 }} />,
+      gradient: `linear-gradient(135deg, ${BRAND.secondary}, #00B4D8)`,
+      title: 'Find Your First Leads',
+      desc: 'Tell Ace your target market and watch it research, find, and save quality leads to your pipeline.',
+      cta: 'Find leads',
+      action: () => {
+        markSetupDone('leads');
+        sendMessageDirect('I want you to find leads for my business. Ask me about my ideal customer and then go find them.');
+      },
+    },
+    {
+      id: 'mission',
+      icon: <TrackChangesIcon sx={{ fontSize: 20 }} />,
+      gradient: `linear-gradient(135deg, ${BRAND.primary}, ${BRAND.primaryLight})`,
+      title: 'Set a Revenue Goal',
+      desc: 'Set a target like "10 new leads per week" — Ace tracks progress and works toward it daily.',
+      cta: 'Set a goal',
+      action: () => {
+        markSetupDone('mission');
+        sendMessageDirect('Help me set a revenue goal. Ask me about my targets and create a goal we can track together.');
+      },
+    },
+    {
+      id: 'routine',
+      icon: <ScheduleIcon sx={{ fontSize: 20 }} />,
+      gradient: `linear-gradient(135deg, #F39C12, #E67E22)`,
+      title: 'Automate Your Pipeline',
+      desc: 'Schedule Ace to research leads, send follow-ups, and groom your pipeline every morning — even while you sleep.',
+      cta: 'Create routine',
+      action: () => {
+        markSetupDone('routine');
+        sendMessageDirect('I want to set up daily routines so you work my pipeline automatically. Walk me through what makes sense for my business.');
+      },
+    },
+    {
+      id: 'teach',
+      icon: <SchoolIcon sx={{ fontSize: 20 }} />,
+      gradient: `linear-gradient(135deg, ${BRAND.accent}, #E84393)`,
+      title: 'Teach Ace a Process',
+      desc: 'Show Ace any workflow once — posting on social media, searching a website, filling out forms — and it learns to repeat it.',
+      cta: 'Start teaching',
+      action: () => {
+        markSetupDone('teach');
+        sendMessageDirect('I want to teach you a process I do regularly. Walk me through how teaching works — what kind of things can I teach you and how do we start?');
+      },
+    },
   ];
 
   return (
@@ -2058,29 +2414,129 @@ function Chat() {
                   <AceSpadeIcon sx={{ fontSize: 36 }} />
                 </Avatar>
                 <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
-                  Meet Ace — Your AI Teammate
+                  Ace Is Ready to Close Deals
                 </Typography>
                 <Typography variant="body2" sx={{ color: BRAND.textMuted, mb: 3, fontSize: '0.95rem', maxWidth: 500, mx: 'auto' }}>
-                  Ace can research, email, browse websites, manage your pipeline, and learn your processes.
+                  Tell Ace who your ideal customer is and watch it find leads, reach out, follow up, and move deals through your pipeline — all from this chat.
                 </Typography>
 
-                {/* How Ace Works — Feature Cards */}
-                <Box sx={{ display: 'flex', gap: 1.5, justifyContent: 'center', flexWrap: 'wrap', mb: 3, maxWidth: 680, mx: 'auto' }}>
-                  {featureCards.map((card, i) => (
-                    <Box key={i} sx={{
-                      width: 125, p: 1.5, borderRadius: '12px',
-                      background: alpha(BRAND.bgCard, 0.8),
-                      border: `1px solid ${alpha(BRAND.primary, 0.12)}`,
-                      textAlign: 'center',
-                      transition: 'all 0.2s',
-                      '&:hover': { border: `1px solid ${alpha(BRAND.primary, 0.35)}`, transform: 'translateY(-2px)' },
+                {/* ═══ Get Ace Running — Guided Setup ═══ */}
+                {setupSteps.filter(s => !completedSetup.includes(s.id)).length > 0 && (
+                  <Box sx={{
+                    maxWidth: 680, mx: 'auto', mb: 3,
+                    border: `1px solid ${alpha(BRAND.primary, 0.2)}`,
+                    borderRadius: '16px',
+                    overflow: 'hidden',
+                    background: alpha(BRAND.bgCard, 0.5),
+                    backdropFilter: 'blur(10px)',
+                  }}>
+                    {/* Section header */}
+                    <Box sx={{
+                      px: 2.5, py: 1.5,
+                      background: alpha(BRAND.primary, 0.06),
+                      borderBottom: `1px solid ${alpha(BRAND.primary, 0.12)}`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     }}>
-                      <Typography sx={{ fontSize: '1.5rem', mb: 0.5 }}>{card.icon}</Typography>
-                      <Typography sx={{ fontWeight: 600, fontSize: '0.8rem', mb: 0.3 }}>{card.title}</Typography>
-                      <Typography sx={{ fontSize: '0.7rem', color: BRAND.textMuted, lineHeight: 1.3 }}>{card.desc}</Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <RocketLaunchIcon sx={{ fontSize: 18, color: BRAND.primaryLight }} />
+                        <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', color: BRAND.textPrimary }}>
+                          Start Making Money
+                        </Typography>
+                      </Box>
+                      <Typography sx={{ fontSize: '0.72rem', color: BRAND.textMuted }}>
+                        {completedSetup.length} / {setupSteps.length} complete
+                      </Typography>
                     </Box>
-                  ))}
-                </Box>
+
+                    {/* Progress bar */}
+                    <LinearProgress
+                      variant="determinate"
+                      value={(completedSetup.length / setupSteps.length) * 100}
+                      sx={{
+                        height: 3,
+                        backgroundColor: alpha(BRAND.primary, 0.08),
+                        '& .MuiLinearProgress-bar': {
+                          background: `linear-gradient(90deg, ${BRAND.primary}, ${BRAND.secondary})`,
+                          borderRadius: 0,
+                        },
+                      }}
+                    />
+
+                    {/* Steps */}
+                    <Box sx={{ p: 1 }}>
+                      {setupSteps.map((step) => {
+                        const done = completedSetup.includes(step.id);
+                        return (
+                          <Box
+                            key={step.id}
+                            onClick={() => { if (!done) step.action(); }}
+                            sx={{
+                              display: 'flex', alignItems: 'center', gap: 1.5,
+                              px: 2, py: 1.25,
+                              borderRadius: '10px',
+                              cursor: done ? 'default' : 'pointer',
+                              opacity: done ? 0.5 : 1,
+                              transition: 'all 0.2s ease',
+                              ...(!done && {
+                                '&:hover': {
+                                  background: alpha(BRAND.primary, 0.08),
+                                  '& .step-cta': { opacity: 1 },
+                                },
+                              }),
+                            }}
+                          >
+                            {/* Step icon */}
+                            <Box sx={{
+                              width: 38, height: 38,
+                              borderRadius: '10px',
+                              background: done ? alpha(BRAND.success, 0.15) : step.gradient,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              color: done ? BRAND.success : '#fff',
+                              flexShrink: 0,
+                              boxShadow: done ? 'none' : `0 3px 10px ${alpha('#000', 0.15)}`,
+                              transition: 'all 0.3s ease',
+                            }}>
+                              {done ? <CheckCircleIcon sx={{ fontSize: 20 }} /> : step.icon}
+                            </Box>
+
+                            {/* Text */}
+                            <Box sx={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                              <Typography sx={{
+                                fontWeight: 600, fontSize: '0.82rem',
+                                color: done ? BRAND.textMuted : BRAND.textPrimary,
+                                textDecoration: done ? 'line-through' : 'none',
+                                lineHeight: 1.3,
+                              }}>
+                                {step.title}
+                              </Typography>
+                              <Typography sx={{ fontSize: '0.72rem', color: BRAND.textMuted, lineHeight: 1.4 }}>
+                                {step.desc}
+                              </Typography>
+                            </Box>
+
+                            {/* CTA arrow */}
+                            {!done && (
+                              <Box
+                                className="step-cta"
+                                sx={{
+                                  display: 'flex', alignItems: 'center', gap: 0.5,
+                                  fontSize: '0.72rem', fontWeight: 600,
+                                  color: BRAND.primaryLight,
+                                  opacity: 0.5,
+                                  transition: 'opacity 0.2s',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {step.cta}
+                                <ArrowForwardIcon sx={{ fontSize: 13 }} />
+                              </Box>
+                            )}
+                          </Box>
+                        );
+                      })}
+                    </Box>
+                  </Box>
+                )}
 
                 {/* Quick Start Actions */}
                 <Typography variant="caption" sx={{ color: BRAND.textMuted, display: 'block', mb: 1 }}>
@@ -2120,6 +2576,7 @@ function Chat() {
                 <MessageBubble
                   key={index}
                   msg={msg}
+                  msgIndex={index}
                   onConfirmActions={(confirmed) => handleConfirmActions(index, confirmed)}
                   onCancelActions={() => handleCancelActions(index)}
                   onQuestionAnswer={(optionId, optionLabel) => handleQuestionAnswer(index, optionId, optionLabel)}
@@ -2129,6 +2586,9 @@ function Chat() {
                   onShowMeSkip={() => handleShowMeSkip(index)}
                   onHealthShowMe={handleHealthShowMe}
                   onStepCorrect={handleStepCorrect}
+                  onSpeak={speakText}
+                  onStopSpeaking={stopSpeaking}
+                  isSpeakingThis={speakingMsgIdx === index}
                 />
               )
             ))}
@@ -2279,7 +2739,7 @@ function Chat() {
                 variant="outlined"
                 placeholder={trainPromptMode ? "What do you want to teach me?" : activeAction ? activeAction.placeholder : "Message Ace..."}
                 value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
+                onChange={(e) => { setInputText(e.target.value); if (isSpeaking && e.target.value) stopSpeaking(); }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -2350,6 +2810,49 @@ function Chat() {
                     }}
                   >
                     {isListening ? <MicIcon sx={{ fontSize: 22 }} /> : <MicOffIcon sx={{ fontSize: 22 }} />}
+                  </IconButton>
+                </span>
+              </Tooltip>
+              {/* TTS / Auto-speak toggle */}
+              <Tooltip title={
+                !ttsSupported
+                  ? 'Text-to-speech not supported in this browser'
+                  : isSpeaking ? 'Stop speaking'
+                  : ttsEnabled ? 'Auto-speak ON (click to disable)'
+                  : 'Auto-speak OFF (click to enable)'
+              } placement="top">
+                <span>
+                  <IconButton
+                    onClick={() => isSpeaking ? stopSpeaking() : setTtsEnabled(prev => !prev)}
+                    disabled={!ttsSupported}
+                    sx={{
+                      width: 44, height: 44,
+                      color: isSpeaking
+                        ? BRAND.secondary
+                        : ttsEnabled ? BRAND.primaryLight : BRAND.textMuted,
+                      background: isSpeaking
+                        ? alpha(BRAND.secondary, 0.15)
+                        : ttsEnabled ? alpha(BRAND.primary, 0.08) : 'transparent',
+                      animation: isSpeaking ? 'speakPulse 1.5s infinite' : 'none',
+                      '&:hover': {
+                        color: isSpeaking ? BRAND.secondary : BRAND.primary,
+                        background: isSpeaking
+                          ? alpha(BRAND.secondary, 0.2)
+                          : alpha(BRAND.primary, 0.08),
+                      },
+                      '&.Mui-disabled': { color: alpha(BRAND.textMuted, 0.3) },
+                      '@keyframes speakPulse': {
+                        '0%, 100%': { boxShadow: `0 0 0 0 ${alpha(BRAND.secondary, 0.4)}` },
+                        '50%': { boxShadow: `0 0 0 8px ${alpha(BRAND.secondary, 0)}` },
+                      },
+                    }}
+                  >
+                    {isSpeaking
+                      ? <StopCircleIcon sx={{ fontSize: 22 }} />
+                      : ttsEnabled
+                        ? <VolumeUpIcon sx={{ fontSize: 22 }} />
+                        : <VolumeOffIcon sx={{ fontSize: 22 }} />
+                    }
                   </IconButton>
                 </span>
               </Tooltip>

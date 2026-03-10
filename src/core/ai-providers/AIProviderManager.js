@@ -152,11 +152,10 @@ export class AIProviderManager {
    * Send a message and an image to the Vision AI provider.
    */
   async chatWithVision(prompt, imageBase64, options = {}) {
-    // Vision tasks (finding click targets, reading screens) need the best vision model.
-    // Prefer Gemini for vision — it's far better at coordinate detection than llava.
-    let provider = options.provider || this.activeProvider;
+    // Check task routing first, then fall back to active provider
+    let provider = options.provider || this.getProviderForTask('vision');
+    // If still on Ollama, prefer Gemini for vision (better at coordinate detection)
     if (provider === 'ollama' && this.providers.gemini) {
-      console.log('[AIProviderManager] Vision task — routing to Gemini (better accuracy)');
       provider = 'gemini';
     }
 
@@ -502,7 +501,12 @@ export class AIProviderManager {
     const chat = model.startChat({ history });
 
     const result = await chat.sendMessage(lastText);
-    const response = result.response;
+    const response = result?.response;
+
+    if (!response) {
+      console.error('[AIProvider] Gemini returned null/undefined response');
+      return { response: null, text: '', functionCalls: [], provider: 'gemini', model: config.model, chat };
+    }
 
     // Extract text safely — functionCall responses may not have text()
     let text = '';
@@ -513,7 +517,7 @@ export class AIProviderManager {
     }
 
     // Track usage and emit warnings (never block)
-    this._trackGeminiUsage(response);
+    try { this._trackGeminiUsage(response); } catch (e) { /* usage tracking should never block */ }
 
     return {
       response,
@@ -738,5 +742,127 @@ CRITICAL RULES:
       available: Object.keys(this.providers),
       config: this.config.ai_providers.providers[this.activeProvider]
     };
+  }
+
+  /**
+   * Get UI-friendly status for all providers (for Settings page)
+   */
+  getProvidersStatus() {
+    const providers = this.config.ai_providers?.providers || {};
+    const status = {};
+    for (const [name, cfg] of Object.entries(providers)) {
+      status[name] = {
+        enabled: !!cfg.enabled,
+        active: name === this.activeProvider,
+        connected: !!this.providers[name],
+        model: cfg.model || '',
+        visionModel: cfg.vision_model || '',
+        hasKey: !!(cfg.api_key && cfg.api_key.length > 0),
+        maskedKey: cfg.api_key ? cfg.api_key.slice(0, 6) + '...' + cfg.api_key.slice(-4) : '',
+        baseUrl: cfg.base_url || '',
+      };
+    }
+    return status;
+  }
+
+  /**
+   * Update config for a single provider and reinitialize it at runtime.
+   * Accepts { api_key, model, vision_model, enabled, base_url }.
+   */
+  async updateProviderConfig(providerName, updates) {
+    if (!this.config.ai_providers.providers[providerName]) {
+      throw new Error(`Unknown provider: ${providerName}`);
+    }
+
+    const cfg = this.config.ai_providers.providers[providerName];
+
+    // Merge updates
+    if (updates.api_key !== undefined) cfg.api_key = updates.api_key;
+    if (updates.model !== undefined) cfg.model = updates.model;
+    if (updates.vision_model !== undefined) cfg.vision_model = updates.vision_model;
+    if (updates.enabled !== undefined) cfg.enabled = updates.enabled;
+    if (updates.base_url !== undefined) cfg.base_url = updates.base_url;
+
+    // Remove old SDK client
+    delete this.providers[providerName];
+
+    // Reinitialize if enabled
+    if (cfg.enabled) {
+      try {
+        switch (providerName) {
+          case 'claude':
+            if (cfg.api_key) this.providers.claude = new Anthropic({ apiKey: cfg.api_key });
+            break;
+          case 'openai':
+            if (cfg.api_key) this.providers.openai = new OpenAI({ apiKey: cfg.api_key });
+            break;
+          case 'gemini':
+            if (cfg.api_key) this.providers.gemini = new GoogleGenerativeAI(cfg.api_key);
+            break;
+          case 'ollama':
+            this.providers.ollama = new OpenAI({
+              baseURL: cfg.base_url || 'http://localhost:11434/v1',
+              apiKey: 'ollama',
+            });
+            break;
+        }
+      } catch (e) {
+        console.error(`Failed to reinitialize ${providerName}:`, e.message);
+      }
+    }
+
+    // If active provider was disabled, fall back
+    if (this.activeProvider === providerName && !this.providers[providerName]) {
+      const fallback = Object.keys(this.providers)[0];
+      if (fallback) {
+        this.activeProvider = fallback;
+        this.config.ai_providers.active_provider = fallback;
+        console.log(`Active provider ${providerName} disabled, fell back to ${fallback}`);
+      }
+    }
+
+    // Save config to disk
+    await fs.writeFile(this.configPath, JSON.stringify(this.config, null, 2));
+    console.log(`✅ Updated ${providerName} config`);
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // PER-TASK PROVIDER ROUTING
+  // ═══════════════════════════════════════════════════════
+
+  /**
+   * Get the provider assigned to a specific task type.
+   * Returns the assigned provider if it's connected, otherwise falls back to activeProvider.
+   * Task types: 'code', 'vision', 'research'
+   */
+  getProviderForTask(taskType) {
+    const routing = this.config.ai_providers?.task_routing || {};
+    const assigned = routing[taskType];
+    if (assigned && this.providers[assigned]) return assigned;
+    // Code tasks default to Gemini — Ollama 7B is too weak for quality code generation
+    if (taskType === 'code' && this.providers.gemini) return 'gemini';
+    return this.activeProvider;
+  }
+
+  /**
+   * Get current task routing config (for Settings UI).
+   */
+  getTaskRouting() {
+    return this.config.ai_providers?.task_routing || {};
+  }
+
+  /**
+   * Save per-task provider routing preferences.
+   * Accepts { code: 'claude', vision: 'gemini', research: null }
+   */
+  async setTaskRouting(routing) {
+    if (!this.config.ai_providers.task_routing) {
+      this.config.ai_providers.task_routing = {};
+    }
+    for (const [task, provider] of Object.entries(routing)) {
+      this.config.ai_providers.task_routing[task] = provider || null;
+    }
+    await fs.writeFile(this.configPath, JSON.stringify(this.config, null, 2));
+    console.log('✅ Updated task routing:', this.config.ai_providers.task_routing);
   }
 }

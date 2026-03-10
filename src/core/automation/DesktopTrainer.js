@@ -26,6 +26,16 @@ const require = createRequire(import.meta.url);
 const EVENT_MONITOR_PATH = path.join(process.cwd(), 'scripts', 'event-monitor');
 const EVENT_MONITOR_SRC = path.join(process.cwd(), 'scripts', 'event-monitor.swift');
 
+// Valid element types and contexts for structured AI vision response
+const VALID_ELEMENT_TYPES = new Set([
+  'button', 'input', 'link', 'select', 'tab', 'checkbox', 'radio',
+  'text', 'image', 'icon', 'menu_item', 'nav', 'other'
+]);
+const VALID_CONTEXTS = new Set([
+  'form', 'navbar', 'modal', 'sidebar', 'toolbar', 'header',
+  'footer', 'dropdown_menu', 'page_body', 'dialog', 'tab_bar', 'other'
+]);
+
 export class DesktopTrainer {
   constructor({ desktopAgent, aiManager, sopManager, onProgress }) {
     this.desktop = desktopAgent;
@@ -39,6 +49,8 @@ export class DesktopTrainer {
     this.monitorProcess = null;  // Native event monitor child process
     this.sessionName = '';
     this.startingState = null;   // { app, url } captured when recording starts
+    this.recordingResolution = null; // { width, height } captured when recording starts
+    this.urlSnapshots = [];      // Periodic URL captures: { timestamp, url }
     this.screenshotDir = path.join(process.cwd(), 'data/training/screenshots');
   }
 
@@ -54,10 +66,20 @@ export class DesktopTrainer {
     this.sessionName = sessionName || `session_${Date.now()}`;
     this.events = [];
     this.screenshots = [];
+    this.urlSnapshots = [];
 
     // Ensure screenshot directory exists
     const sessionDir = path.join(this.screenshotDir, this.sessionName.replace(/\s+/g, '_'));
     await fs.mkdir(sessionDir, { recursive: true });
+
+    // ── Capture screen resolution for coordinate scaling during replay ──
+    try {
+      const robot = require('robotjs');
+      this.recordingResolution = robot.getScreenSize();
+      this.onProgress(`📐 Screen resolution: ${this.recordingResolution.width}x${this.recordingResolution.height}`);
+    } catch (e) {
+      this.recordingResolution = { width: 1920, height: 1080 }; // Reasonable default
+    }
 
     // ── Compile event monitor if needed ──
     await this._ensureEventMonitor();
@@ -66,16 +88,27 @@ export class DesktopTrainer {
     this.startingState = await this._captureStartingState();
     this.onProgress(`📍 Starting state: ${this.startingState.app || 'unknown app'}${this.startingState.url ? ' — ' + this.startingState.url : ''}`);
 
-    // ── Start native event monitor ──
+    // ── Start native event monitor — FAIL FAST if Accessibility is missing ──
     try {
       await this._startEventMonitor();
     } catch (e) {
-      this.onProgress(`⚠️ Native event monitor failed: ${e.message} — falling back to polling`);
-      // Fall back to basic polling if event monitor can't start
-      this._startPollingFallback(sessionDir);
+      const isAccessibility = e.message && (e.message.includes('Accessibility') || e.message.includes('event tap') || e.message.includes('permission'));
+      if (isAccessibility) {
+        this.onProgress('❌ Cannot record — Accessibility permission required');
+        return {
+          success: false,
+          error: 'Grant Accessibility permission to Terminal (or VS Code) in System Settings → Privacy & Security → Accessibility, then try again. Without this, Ace cannot see your clicks.'
+        };
+      }
+      // Non-permission errors (e.g. compilation failed)
+      this.onProgress(`❌ Event monitor failed: ${e.message}`);
+      return {
+        success: false,
+        error: `Event monitor failed to start: ${e.message}. Try restarting OpenAce.`
+      };
     }
 
-    // ── Capture screenshots every 3 seconds (for reference/display only) ──
+    // ── Capture screenshots + Chrome URL every 3 seconds ──
     this.isRecording = true;
     this.captureInterval = setInterval(async () => {
       if (!this.isRecording) return;
@@ -90,6 +123,17 @@ export class DesktopTrainer {
         // Save to disk for reference
         const filename = `frame_${timestamp}.png`;
         await jimpImage.write(path.join(sessionDir, filename));
+
+        // Capture Chrome URL for per-step URL tracking
+        try {
+          const url = execSync(
+            `osascript -e 'tell application "Google Chrome" to get URL of active tab of front window'`,
+            { timeout: 2000 }
+          ).toString().trim();
+          if (url && url.startsWith('http')) {
+            this.urlSnapshots.push({ timestamp, url });
+          }
+        } catch (e) { /* Chrome not active or no window — skip */ }
 
         eventBus.emit('desktop:train:frame', { frameCount: this.screenshots.length, eventCount: this.events.length });
       } catch (e) {
@@ -255,29 +299,20 @@ export class DesktopTrainer {
   }
 
   /**
-   * Fallback: basic polling if native monitor fails.
+   * Find the URL snapshot closest in time to a given event timestamp.
    */
-  _startPollingFallback(sessionDir) {
-    this.onProgress('⚠️ Using polling fallback — click positions may be approximate');
-    const robot = require('robotjs');
-    let lastX = 0, lastY = 0;
-    this._pollInterval = setInterval(() => {
-      if (!this.isRecording) return;
-      const pos = robot.getMousePos();
-      // Detect significant mouse movement as a potential click
-      const dist = Math.sqrt((pos.x - lastX) ** 2 + (pos.y - lastY) ** 2);
-      if (dist > 30) {
-        this.events.push({
-          type: 'click',
-          button: 'left',
-          x: pos.x,
-          y: pos.y,
-          ts: Date.now()
-        });
+  _findNearestUrl(ts) {
+    if (this.urlSnapshots.length === 0) return null;
+    let best = this.urlSnapshots[0];
+    let bestDist = Math.abs(ts - best.timestamp);
+    for (const snap of this.urlSnapshots) {
+      const dist = Math.abs(ts - snap.timestamp);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = snap;
       }
-      lastX = pos.x;
-      lastY = pos.y;
-    }, 200);
+    }
+    return bestDist < 5000 ? best.url : null; // Only if within 5 seconds
   }
 
   // ═══════════════════════════════════════════════════════
@@ -318,15 +353,22 @@ export class DesktopTrainer {
   async _buildSOPFromEvents() {
     const sessionDir = path.join(this.screenshotDir, this.sessionName.replace(/\s+/g, '_'));
 
-    // ── Step 1: Deduplicate rapid clicks (double-click within 300ms at same position) ──
+    // ── Step 1: Handle rapid clicks — dedup accidentals (<100ms), detect double-clicks (100-400ms) ──
     const dedupedEvents = [];
     for (let i = 0; i < this.events.length; i++) {
       const evt = this.events[i];
       const prev = dedupedEvents[dedupedEvents.length - 1];
       if (prev && evt.type === 'click' && prev.type === 'click' &&
-          (evt.ts - prev.ts) < 300 &&
           Math.abs(evt.x - prev.x) < 10 && Math.abs(evt.y - prev.y) < 10) {
-        continue; // Skip duplicate click
+        const gap = evt.ts - prev.ts;
+        if (gap < 100) {
+          continue; // Accidental trackpad duplicate — skip
+        }
+        if (gap < 400) {
+          // Intentional double-click — mark the previous event
+          prev.type = 'doubleClick';
+          continue; // Consume the second click
+        }
       }
       dedupedEvents.push(evt);
     }
@@ -418,11 +460,23 @@ export class DesktopTrainer {
 
     // ── Build SOP steps from processed events ──
     const steps = [];
+    let prevTimestamp = null;
     for (const evt of finalEvents) {
       const step = { action: evt.type, timestamp: evt.ts };
 
+      // ── Record delay from previous step (how long user waited) ──
+      if (prevTimestamp !== null) {
+        const rawDelay = evt.ts - prevTimestamp;
+        // Cap: min 200ms, max 10000ms (ignore pauses > 10s — user was thinking)
+        step.delay = Math.max(200, Math.min(10000, rawDelay));
+      } else {
+        step.delay = 0; // First step has no delay
+      }
+      prevTimestamp = evt.ts;
+
       switch (evt.type) {
         case 'click':
+        case 'doubleClick':
           step.x = evt.x;
           step.y = evt.y;
           step.target = ''; // Will be enriched by AI below
@@ -441,6 +495,12 @@ export class DesktopTrainer {
           break;
       }
 
+      // ── Attach Chrome URL for this step (for replay verification) ──
+      const nearestUrl = this._findNearestUrl(evt.ts);
+      if (nearestUrl) {
+        step.url = nearestUrl;
+      }
+
       // Find nearest screenshot for this event (for reference)
       const nearest = this._findNearestScreenshot(evt.ts);
       if (nearest) {
@@ -454,10 +514,15 @@ export class DesktopTrainer {
       steps.push(step);
     }
 
-    this.onProgress(`📊 Built ${steps.length} steps from ${finalEvents.length} events`);
+    this.onProgress(`📊 Built ${steps.length} steps from ${finalEvents.length} events (with timing + URLs)`);
 
     // ── Optional: AI enrichment for click target labels ──
     await this._enrichClickLabels(steps);
+
+    // ── Classify raw events into semantic action types ──
+    // Upgrades click→click_text/click_submit, merges click+type→edit_field, etc.
+    const classifiedSteps = this._classifySteps(steps);
+    this.onProgress(`📊 Classified: ${steps.length} raw steps → ${classifiedSteps.length} semantic steps`);
 
     // ── Auto-generate triggers and keywords ──
     const TRIGGER_STOP = new Set(['how','to','the','a','an','and','or','for','in','on','as','our','my','any']);
@@ -476,7 +541,8 @@ export class DesktopTrainer {
       triggers,
       keywords: nameWords,
       startingState: this.startingState,
-      steps,
+      recordingResolution: this.recordingResolution,
+      steps: classifiedSteps,
       totalEvents: this.events.length,
       totalScreenshots: this.screenshots.length,
       createdAt: new Date().toISOString(),
@@ -525,18 +591,27 @@ export class DesktopTrainer {
   }
 
   /**
-   * Enrich click steps with AI-generated target labels.
-   * Uses the nearest screenshot + click position to ask AI "what's at (x,y)?".
-   * This is OPTIONAL — the SOP works without labels (coordinates are exact).
+   * Validate a string value against a set of allowed values, returning fallback if invalid.
+   */
+  _validateEnumField(value, validSet, fallback) {
+    return validSet.has(value) ? value : fallback;
+  }
+
+  /**
+   * Enrich click steps with AI-generated structured target info.
+   * Groups clicks by nearest screenshot for batched API calls.
+   * Returns { type, text, context, interactive } per click for deterministic classification.
    */
   async _enrichClickLabels(steps) {
     if (!this.aiManager) return;
 
-    const clickSteps = steps.filter(s => s.action === 'click' && s.referenceScreenshot);
+    const clickSteps = steps.filter(s => (s.action === 'click' || s.action === 'doubleClick') && s.referenceScreenshot);
     if (clickSteps.length === 0) return;
 
     this.onProgress(`🏷️ Labeling ${clickSteps.length} click targets with AI vision...`);
 
+    // Group clicks by their nearest screenshot (clicks within ~3s share one)
+    const groups = new Map();
     for (let i = 0; i < clickSteps.length; i++) {
       const step = clickSteps[i];
       const nearest = this._findNearestScreenshot(step.timestamp);
@@ -544,24 +619,386 @@ export class DesktopTrainer {
         step.target = `click at (${step.x}, ${step.y})`;
         continue;
       }
+      const key = nearest.timestamp;
+      if (!groups.has(key)) {
+        groups.set(key, { screenshot: nearest, clicks: [] });
+      }
+      groups.get(key).clicks.push({ step, index: i });
+    }
+
+    const screenWidth = this.desktop?.screenSize?.width || 1920;
+    const screenHeight = this.desktop?.screenSize?.height || 1080;
+
+    // One AI call per screenshot group (8 clicks across 3 screenshots = 3 calls)
+    for (const [, group] of groups) {
+      const { screenshot, clicks } = group;
+
+      const pointsList = clicks.map((c, idx) =>
+        `  ${idx + 1}. (${c.step.x}, ${c.step.y})${c.step.url ? ` — page: ${c.step.url}` : ''}`
+      ).join('\n');
+
+      const prompt = `You are analyzing a UI screenshot (${screenWidth}x${screenHeight} pixels).
+Identify the UI element at EACH of these ${clicks.length} pixel coordinate(s):
+${pointsList}
+
+For EACH point, return a JSON object. Return a JSON array with exactly ${clicks.length} object(s), in order:
+[{"type": "button|input|link|select|tab|checkbox|radio|text|image|icon|menu_item|nav|other", "text": "visible label", "context": "form|navbar|modal|sidebar|toolbar|header|footer|dropdown_menu|page_body|dialog|tab_bar|other", "interactive": true}]
+
+Rules:
+- "type" must be one of the listed values exactly
+- "text" is the visible text ON the element (what it says), 2-6 words max
+- "context" is the surrounding container: form, navbar, modal, dropdown_menu, tab_bar, etc.
+- "interactive" is true if the element does something when clicked (buttons, links, inputs, selects)
+- If the click is on plain text or whitespace, use type "text" and interactive false
+- Return ONLY the JSON array, no markdown, no explanation`;
 
       try {
-        const prompt = `Look at this screenshot (${this.desktop?.screenSize?.width || 1920}x${this.desktop?.screenSize?.height || 1080} pixels).
-What UI element is at pixel coordinates (${step.x}, ${step.y})?
-Return a SHORT description (2-6 words), e.g.: "Sign In button", "search input field", "Chrome tab bar"
-Return ONLY the description text, nothing else.`;
-
         const result = await this.aiManager.chatWithVision(
           prompt,
-          `data:image/png;base64,${nearest.base64}`
+          `data:image/png;base64,${screenshot.base64}`
         );
-        const label = (result.content || result.text || '').trim().replace(/^["']|["']$/g, '');
-        step.target = label || `click at (${step.x}, ${step.y})`;
-        this.onProgress(`  📌 Step ${i + 1}: "${step.target}" at (${step.x}, ${step.y})`);
+        const raw = (result.content || result.text || '').trim();
+        const jsonMatch = raw.match(/\[[\s\S]*\]/);
+
+        if (jsonMatch) {
+          const infos = JSON.parse(jsonMatch[0]);
+          for (let j = 0; j < clicks.length; j++) {
+            const { step, index } = clicks[j];
+            const info = infos[j];
+            if (info && typeof info === 'object') {
+              step.targetInfo = {
+                type: this._validateEnumField(info.type, VALID_ELEMENT_TYPES, 'other'),
+                text: String(info.text || '').substring(0, 60),
+                context: this._validateEnumField(info.context, VALID_CONTEXTS, 'other'),
+                interactive: info.interactive !== false
+              };
+              step.target = step.targetInfo.text || `element at (${step.x}, ${step.y})`;
+            } else {
+              step.target = `click at (${step.x}, ${step.y})`;
+            }
+            this.onProgress(`  📌 Step ${index + 1}: "${step.target}" [${step.targetInfo?.type || '?'}] at (${step.x}, ${step.y})`);
+          }
+        } else {
+          // Couldn't parse JSON array — try fallback to old-style free text for single click
+          if (clicks.length === 1) {
+            const label = raw.replace(/^["']|["']$/g, '').replace(/```[\s\S]*```/g, '').trim();
+            clicks[0].step.target = label || `click at (${clicks[0].step.x}, ${clicks[0].step.y})`;
+          } else {
+            for (const { step } of clicks) {
+              step.target = `click at (${step.x}, ${step.y})`;
+            }
+          }
+        }
       } catch (e) {
-        step.target = `click at (${step.x}, ${step.y})`;
+        for (const { step } of clicks) {
+          step.target = `click at (${step.x}, ${step.y})`;
+        }
       }
     }
+
+    // Retry failed labels with cropped screenshots for better accuracy
+    const failedSteps = clickSteps.filter(s => (s.target || '').startsWith('click at'));
+    if (failedSteps.length > 0 && failedSteps.length <= 5) {
+      this.onProgress(`🔄 Retrying ${failedSteps.length} failed label(s) with cropped view...`);
+      for (const step of failedSteps) {
+        await this._retryFailedLabel(step);
+      }
+    }
+  }
+
+  /**
+   * Retry labeling a single click step using a cropped screenshot for better accuracy.
+   */
+  async _retryFailedLabel(step) {
+    const nearest = this._findNearestScreenshot(step.timestamp);
+    if (!nearest) return;
+
+    try {
+      const cropped = await this._cropAroundClick(nearest.base64, step.x, step.y, 200);
+      if (!cropped) return;
+
+      const prompt = `This is a ${cropped.cropW}x${cropped.cropH} cropped region from a screenshot.
+The user clicked at pixel (${cropped.localX}, ${cropped.localY}) within this crop.
+${step.url ? `Page URL: ${step.url}` : ''}
+
+What UI element is at that position? Return JSON:
+{"type": "button|input|link|select|tab|checkbox|radio|text|image|icon|menu_item|nav|other", "text": "visible label", "context": "form|navbar|modal|sidebar|toolbar|header|footer|dropdown_menu|page_body|dialog|tab_bar|other", "interactive": true}
+
+Return ONLY the JSON, no markdown.`;
+
+      const result = await this.aiManager.chatWithVision(
+        prompt,
+        `data:image/png;base64,${cropped.base64}`
+      );
+      const raw = (result.content || result.text || '').trim();
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const info = JSON.parse(jsonMatch[0]);
+        step.targetInfo = {
+          type: this._validateEnumField(info.type, VALID_ELEMENT_TYPES, 'other'),
+          text: String(info.text || '').substring(0, 60),
+          context: this._validateEnumField(info.context, VALID_CONTEXTS, 'other'),
+          interactive: info.interactive !== false
+        };
+        step.target = step.targetInfo.text || `element at (${step.x}, ${step.y})`;
+        this.onProgress(`  🔄 Retry success: "${step.target}" [${step.targetInfo.type}]`);
+      }
+    } catch (e) {
+      // Leave the fallback label
+    }
+  }
+
+  /**
+   * Crop a region around click coordinates from a screenshot.
+   * Returns { base64, localX, localY, cropW, cropH } or null on failure.
+   */
+  async _cropAroundClick(screenshotBase64, clickX, clickY, padding = 200) {
+    try {
+      const { Jimp } = await import('jimp');
+      const buffer = Buffer.from(screenshotBase64, 'base64');
+      const image = await Jimp.read(buffer);
+
+      const imgW = image.width;
+      const imgH = image.height;
+
+      const cropX = Math.max(0, clickX - padding);
+      const cropY = Math.max(0, clickY - padding);
+      const cropW = Math.min(padding * 2, imgW - cropX);
+      const cropH = Math.min(padding * 2, imgH - cropY);
+
+      const localX = clickX - cropX;
+      const localY = clickY - cropY;
+
+      const cropped = image.crop({ x: cropX, y: cropY, w: cropW, h: cropH });
+      const croppedBuffer = await cropped.getBuffer('image/png');
+
+      return {
+        base64: croppedBuffer.toString('base64'),
+        localX,
+        localY,
+        cropW,
+        cropH
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // STEP CLASSIFICATION — Upgrade raw events to semantic action types
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Classify raw event steps into semantic action types.
+   * Uses targetInfo.type (structured AI data) for direct mapping when available,
+   * with regex fallback for backward compatibility with old SOPs.
+   * No AI calls — purely deterministic pattern matching.
+   */
+  _classifySteps(steps) {
+    const classified = [];
+    let i = 0;
+    const SUBMIT_WORDS = /submit|sign.?in|sign.?up|log.?in|login|send|save|confirm|continue|next|register|create.?account|apply|post|publish|sign.?out|log.?out/i;
+
+    while (i < steps.length) {
+      const step = steps[i];
+      const next = steps[i + 1];
+      const nextNext = steps[i + 2];
+      const label = (step.target || '').toLowerCase();
+      const info = step.targetInfo || null;
+      const elType = info?.type || null;
+      const elContext = info?.context || null;
+      const elText = (info?.text || '').toLowerCase();
+
+      // ── Pattern: address bar click + type URL + return → navigate ──
+      const isAddressBar = (elContext === 'toolbar' && elType === 'input') ||
+                           /address.?bar|url.?bar|location.?bar|chrome.?address/i.test(label);
+      if ((step.action === 'click' || step.action === 'doubleClick') &&
+          isAddressBar &&
+          next?.action === 'type' &&
+          nextNext?.action === 'key' && nextNext.key === 'return') {
+        classified.push({
+          action: 'navigate', url: next.text,
+          description: `Navigate to ${next.text}`,
+          delay: step.delay, timestamp: step.timestamp
+        });
+        classified.push({
+          action: 'wait', ms: 3000,
+          description: 'Wait for page to load', delay: 0
+        });
+        i += 3;
+        continue;
+      }
+
+      // ── Pattern: click on input/field + type → edit_field ──
+      const isInputElement = elType === 'input' ||
+                             /input|field|search|text.?box|email|password|username|form|textarea/i.test(label);
+      if ((step.action === 'click' || step.action === 'doubleClick') &&
+          isInputElement &&
+          next?.action === 'type') {
+        classified.push({
+          action: 'edit_field', target: step.target, text: next.text,
+          x: step.x, y: step.y, url: step.url, delay: step.delay,
+          description: `Type "${(next.text || '').substring(0, 40)}" in ${step.target}`,
+          timestamp: step.timestamp, targetInfo: step.targetInfo
+        });
+        i += 2;
+        continue;
+      }
+
+      // ── Right-click → right_click ──
+      if (step.action === 'click' && step.button === 'right') {
+        classified.push({
+          ...step, action: 'right_click',
+          target: step.target || `element at (${step.x}, ${step.y})`,
+          description: `Right-click ${step.target || `at (${step.x}, ${step.y})`}`
+        });
+        i++;
+        continue;
+      }
+
+      // ── Click on dropdown/select + click on option → select_option ──
+      const isSelectElement = elType === 'select' || elType === 'menu_item' ||
+                              /dropdown|select|menu|combobox|picker|choose|option/i.test(label);
+      if ((step.action === 'click' || step.action === 'doubleClick') &&
+          isSelectElement &&
+          next && (next.action === 'click' || next.action === 'doubleClick')) {
+        classified.push({
+          action: 'select_option',
+          target: step.target,
+          text: next.target || '',
+          x: step.x, y: step.y, url: step.url, delay: step.delay,
+          description: `Select "${next.target || 'option'}" from ${step.target}`,
+          timestamp: step.timestamp, targetInfo: step.targetInfo
+        });
+        i += 2;
+        continue;
+      }
+
+      // ── Click on tab → switch_tab (type-based) ──
+      if ((step.action === 'click' || step.action === 'doubleClick') &&
+          (elType === 'tab' || elContext === 'tab_bar')) {
+        classified.push({
+          ...step, action: 'switch_tab', text: step.target,
+          description: `Switch to tab "${step.target}"`,
+          targetInfo: step.targetInfo
+        });
+        i++;
+        continue;
+      }
+
+      // ── Click on checkbox/radio → click_text (toggle) ──
+      if ((step.action === 'click' || step.action === 'doubleClick') &&
+          (elType === 'checkbox' || elType === 'radio')) {
+        classified.push({
+          ...step, action: 'click_text', text: step.target,
+          description: `Toggle ${step.target}`,
+          targetInfo: step.targetInfo
+        });
+        i++;
+        continue;
+      }
+
+      // ── Click steps: classify by type + text ──
+      if (step.action === 'click' || step.action === 'doubleClick') {
+        const isSubmit = SUBMIT_WORDS.test(elText) || SUBMIT_WORDS.test(label);
+        const isTypedElement = elType === 'button' || elType === 'link' || elType === 'nav';
+
+        if (isTypedElement && isSubmit) {
+          classified.push({
+            ...step, action: 'click_submit', text: step.target,
+            description: `Click ${step.target}`, targetInfo: step.targetInfo
+          });
+          classified.push({ action: 'wait', ms: 2000, description: 'Wait after submit', delay: 0 });
+        } else if (isTypedElement) {
+          classified.push({
+            ...step, action: 'click_text', text: step.target,
+            description: `Click ${step.target}`, targetInfo: step.targetInfo
+          });
+        } else if (isSubmit) {
+          // Regex-only submit match (no targetInfo or unknown type)
+          classified.push({
+            ...step, action: 'click_submit', text: step.target,
+            description: `Click ${step.target}`, targetInfo: step.targetInfo
+          });
+          classified.push({ action: 'wait', ms: 2000, description: 'Wait after submit', delay: 0 });
+        } else if (label && !label.startsWith('click at') && info?.interactive !== false) {
+          // Has a label and is interactive (or no targetInfo)
+          classified.push({
+            ...step, action: 'click_text', text: step.target,
+            description: `Click ${step.target}`, targetInfo: step.targetInfo
+          });
+        } else {
+          // No useful label or not interactive — use AI vision during replay
+          classified.push({
+            ...step, action: 'smart_click',
+            target: step.target || `element at (${step.x}, ${step.y})`,
+            description: step.target || `Click at (${step.x}, ${step.y})`,
+            targetInfo: step.targetInfo
+          });
+        }
+        i++;
+        continue;
+      }
+
+      // ── Key steps: detect special patterns before generic press ──
+      if (step.action === 'key') {
+        const mods = step.modifiers || [];
+        const hasCmd = mods.includes('command');
+
+        // Cmd+[ → go_back (browser back)
+        if (hasCmd && step.key === '[') {
+          classified.push({
+            ...step, action: 'go_back',
+            description: 'Navigate back'
+          });
+          i++;
+          continue;
+        }
+
+        // Cmd+C → copy_text
+        if (hasCmd && step.key === 'c' && !mods.includes('shift')) {
+          classified.push({
+            ...step, action: 'copy_text',
+            description: 'Copy selected text'
+          });
+          i++;
+          continue;
+        }
+
+        // Cmd+1-9 or Cmd+Shift+] or Cmd+Shift+[ → switch_tab
+        if (hasCmd && (/^[1-9]$/.test(step.key) ||
+            (mods.includes('shift') && (step.key === ']' || step.key === '[')))) {
+          const tabDesc = /^[1-9]$/.test(step.key)
+            ? `Switch to tab ${step.key}`
+            : step.key === ']' ? 'Switch to next tab' : 'Switch to previous tab';
+          classified.push({
+            ...step, action: 'switch_tab', tab: step.key,
+            description: tabDesc
+          });
+          i++;
+          continue;
+        }
+
+        // Generic key → press
+        classified.push({
+          ...step, action: 'press',
+          description: `Press ${mods.length ? mods.join('+') + '+' : ''}${step.key}`
+        });
+        i++;
+        continue;
+      }
+
+      // ── Type, scroll, doubleClick, and everything else — keep as-is ──
+      if (!step.description) {
+        if (step.action === 'type') step.description = `Type "${(step.text || '').substring(0, 40)}"`;
+        else if (step.action === 'scroll') step.description = `Scroll ${step.direction || 'down'}`;
+        else step.description = step.action;
+      }
+      classified.push(step);
+      i++;
+    }
+
+    return classified;
   }
 
   // ═══════════════════════════════════════════════════════════════════

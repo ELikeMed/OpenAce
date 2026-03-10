@@ -110,6 +110,9 @@ export class AceBrain {
     this.browserAgent = systems.browserAgent || null;
     this.siteMemory = systems.siteMemory || null;
     this.socialMedia = systems.socialMedia || null;
+    this.integrationManager = systems.integrationManager || null;
+    this.twilioService = systems.twilioService || null;
+    this.creditManager = systems.creditManager || null;
     this._executeSOP = systems.executeSOP || null;
 
     if (systems.config) this.config = systems.config;
@@ -302,6 +305,9 @@ export class AceBrain {
         formManager: systems.formManager,
         deployPipeline: systems.deployPipeline,
         goalTracker: systems.goalTracker,
+        integrationManager: systems.integrationManager || this.integrationManager,
+        twilioService: systems.twilioService || this.twilioService,
+        creditManager: systems.creditManager || this.creditManager,
       };
 
       // ═══ UNIFIED AGENT — Single Gemini-powered intelligence ═══
@@ -1298,6 +1304,7 @@ You can include multiple ACTION tags. The system ACTUALLY executes them through 
         default:
           // Try using AIProviderManager's chat method with liveContext
           const response = await this.aiManager.chat(messages, {
+            provider: this.aiManager.getProviderForTask('research'),
             liveContext: systemPrompt.split('═══ CURRENT CONTEXT ═══')[1] || ''
           });
           return {
@@ -2335,20 +2342,29 @@ Convert this natural language description into a structured SOP with browser aut
 
 DESCRIPTION: "${description}"
 
-AVAILABLE STEP ACTIONS:
+AVAILABLE STEP ACTIONS (16 types — use ONLY these):
 - navigate: { action: "navigate", url: "https://...", description: "Go to ..." }
-- click: { action: "click", selector: "CSS selector", description: "Click ..." }
 - click_text: { action: "click_text", text: "Button Text", description: "Click ..." }
-- type: { action: "type", selector: "input#email", text: "value", description: "Type ..." }
-- fill_credentials: { action: "fill_credentials", credentialId: "site-name", description: "Login with saved credentials" }
 - click_submit: { action: "click_submit", description: "Submit the form" }
+- smart_click: { action: "smart_click", target: "describe what to click", description: "Click ..." }
+- right_click: { action: "right_click", target: "element", description: "Right-click ..." }
+- select_option: { action: "select_option", target: "dropdown name", text: "option to pick", description: "Select ..." }
+- hover: { action: "hover", target: "menu item", description: "Hover over ..." }
+- edit_field: { action: "edit_field", target: "field name", text: "value", description: "Type ... in ..." }
+- type: { action: "type", text: "value", description: "Type ..." }
+- press: { action: "press", key: "enter", description: "Press Enter" }
+- scroll: { action: "scroll", direction: "down", description: "Scroll down" }
+- switch_tab: { action: "switch_tab", target: "next", description: "Switch tab" }
+- go_back: { action: "go_back", description: "Go back" }
+- copy_text: { action: "copy_text", target: "email address", description: "Copy ..." }
 - wait: { action: "wait", ms: 2000, description: "Wait for page" }
-- wait_navigation: { action: "wait_navigation", description: "Wait for page navigation" }
-- search_google: { action: "search_google", query: "search terms", description: "Search Google" }
-- explore_page: { action: "explore_page", description: "Analyze page structure" }
-- extract_results: { action: "extract_results", description: "Extract search results" }
-- screenshot: { action: "screenshot", name: "step-name", description: "Take screenshot" }
-- scroll: { action: "scroll", amount: 500, description: "Scroll down" }
+- wait_navigation: { action: "wait_navigation", description: "Wait for page to load" }
+
+RULES:
+- After every "navigate", add a "wait_navigation" step
+- "Fill in X with Y" → edit_field (NOT type)
+- "Log in" → edit_field for username + edit_field for password + click_submit
+- After "type" used for search → add press "enter" + wait
 
 EXISTING SOPS FOR REFERENCE:
 ${JSON.stringify(existingSOPs.slice(0, 5))}
@@ -2366,7 +2382,7 @@ Return ONLY a JSON object:
 }`;
 
     try {
-      const response = await this.aiManager.chat([{ role: 'user', content: prompt }], { maxTokens: 1500 });
+      const response = await this.aiManager.chat([{ role: 'user', content: prompt }], { provider: this.aiManager.getProviderForTask('research'), maxTokens: 1500 });
       const jsonMatch = response.content.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
         this.onProgress('⚠️ AI did not return valid JSON for SOP');
@@ -2380,6 +2396,32 @@ Return ONLY a JSON object:
         this.onProgress('⚠️ Generated SOP has no steps');
         return null;
       }
+
+      // Normalize any legacy action types AI might still produce
+      const ACTION_ALIASES = {
+        navigate_to: 'click_text', click: 'click_text', smart_fill: 'edit_field',
+        fill_form: 'edit_field', fill_credentials: 'edit_field', copy: 'copy_text',
+        search_google: 'navigate', wait_for: 'wait', goBack: 'go_back', goto: 'navigate',
+        key: 'press', extract: 'copy_text', extract_results: 'copy_text',
+        screenshot: null, explore_page: null, decide: null, set_date: null,
+      };
+      sopData.steps = sopData.steps
+        .map(step => {
+          if (!step || !step.action) return null;
+          const alias = ACTION_ALIASES[step.action];
+          if (alias === null) return null;  // Dead action — remove
+          if (alias === undefined) return step;  // Already unified
+          const normalized = { ...step, action: alias };
+          // Adapt fields for specific mappings
+          if (step.action === 'navigate_to') normalized.text = step.section || step.target || '';
+          if (step.action === 'click') normalized.text = step.text || step.selector || '';
+          if (step.action === 'smart_fill') { normalized.target = step.context || ''; normalized.text = step.value || ''; }
+          if (step.action === 'fill_credentials') { normalized.target = 'login credentials'; normalized.text = '{{credentials}}'; }
+          if (step.action === 'search_google') normalized.url = `https://www.google.com/search?q=${encodeURIComponent(step.query || '')}`;
+          if (step.action === 'wait_for') normalized.ms = step.ms || 3000;
+          return normalized;
+        })
+        .filter(Boolean);
 
       // Set name
       sopData.name = name || sopData.name || `Generated: ${description.substring(0, 40)}`;

@@ -89,6 +89,10 @@ export class ApiGateway {
     this.registerOnboardingRoutes();
     this.registerFormRoutes();
     this.registerWorkloadRoutes();
+    this.registerIntegrationRoutes();
+    this.registerTwilioRoutes();
+    this.registerBillingRoutes();
+    this.registerUpdateRoutes();
 
     // Global error handler (must be last)
     this.registerErrorHandler();
@@ -1479,6 +1483,30 @@ export class ApiGateway {
   // ═══════════════════════════════════════════════════════
 
   registerSettingsRoutes() {
+    this.app.get('/api/task-routing', this.wrap(async (req, res) => {
+      if (!this.ace?.aiManager) return res.json({ success: false, error: 'Not initialized' });
+      res.json({ success: true, data: this.ace.aiManager.getTaskRouting() });
+    }));
+
+    this.app.post('/api/task-routing', this.wrap(async (req, res) => {
+      if (!this.ace?.aiManager) return res.json({ success: false, error: 'Not initialized' });
+      await this.ace.aiManager.setTaskRouting(req.body);
+      res.json({ success: true });
+    }));
+
+    this.app.get('/api/providers', this.wrap(async (req, res) => {
+      if (!this.ace?.aiManager) return res.json({ success: false, error: 'AI Provider Manager not initialized' });
+      res.json({ success: true, data: this.ace.aiManager.getProvidersStatus() });
+    }));
+
+    this.app.post('/api/providers/config', this.wrap(async (req, res) => {
+      if (!this.ace?.aiManager) return res.json({ success: false, error: 'AI Provider Manager not initialized' });
+      const { provider, ...updates } = req.body;
+      if (!provider) return res.json({ success: false, error: 'Provider name required' });
+      await this.ace.aiManager.updateProviderConfig(provider, updates);
+      res.json({ success: true });
+    }));
+
     this.app.post('/api/switch-provider', this.wrap(async (req, res) => {
       if (!this.ace?.aiManager) return res.json({ success: false, error: 'AI Provider Manager not initialized' });
       await this.ace.aiManager.switchProvider(req.body.provider);
@@ -3008,6 +3036,15 @@ export class ApiGateway {
       res.json({ success: true, data: routine });
     }));
 
+    // Update a routine's properties
+    this.app.put('/api/scheduler/routines/:id', this.wrap(async (req, res) => {
+      const scheduler = this.ace?.autonomousScheduler;
+      if (!scheduler) return res.json({ success: false, error: 'Scheduler not initialized' });
+      const updated = await scheduler.updateRoutine(req.params.id, req.body);
+      if (!updated) return res.json({ success: false, error: 'Routine not found' });
+      res.json({ success: true, data: updated });
+    }));
+
     // Delete a routine
     this.app.delete('/api/scheduler/routines/:id', this.wrap(async (req, res) => {
       const scheduler = this.ace?.autonomousScheduler;
@@ -3191,6 +3228,407 @@ export class ApiGateway {
 
       await store.removeMedia(req.params.id);
       res.json({ success: true, message: 'Media removed from index' });
+    }));
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // INTEGRATION ROUTES
+  // ═══════════════════════════════════════════════════════════
+
+  registerIntegrationRoutes() {
+    const mgr = () => this.ace?.integrationManager;
+
+    // GET /api/integrations — Full catalog with user state merged
+    this.app.get('/api/integrations', this.wrap(async (req, res) => {
+      if (!mgr()) return res.json({ success: true, data: { services: [], categories: [] } });
+      const services = mgr().getAll();
+      const categories = mgr().getCategories();
+      res.json({ success: true, data: { services, categories } });
+    }));
+
+    // GET /api/integrations/enabled — Only enabled services
+    this.app.get('/api/integrations/enabled', this.wrap(async (req, res) => {
+      if (!mgr()) return res.json({ success: true, data: [] });
+      res.json({ success: true, data: mgr().getEnabled() });
+    }));
+
+    // POST /api/integrations/:id/enable
+    this.app.post('/api/integrations/:id/enable', this.wrap(async (req, res) => {
+      if (!mgr()) return res.json({ success: false, error: 'IntegrationManager not initialized' });
+      const state = await mgr().enable(req.params.id);
+      res.json({ success: true, data: state });
+    }));
+
+    // POST /api/integrations/:id/disable
+    this.app.post('/api/integrations/:id/disable', this.wrap(async (req, res) => {
+      if (!mgr()) return res.json({ success: false, error: 'IntegrationManager not initialized' });
+      await mgr().disable(req.params.id);
+      res.json({ success: true });
+    }));
+
+    // PUT /api/integrations/:id/notes — Update notes
+    this.app.put('/api/integrations/:id/notes', this.wrap(async (req, res) => {
+      if (!mgr()) return res.json({ success: false, error: 'IntegrationManager not initialized' });
+      const state = await mgr().updateNotes(req.params.id, req.body.notes || '');
+      res.json({ success: true, data: state });
+    }));
+
+    // GET /api/integrations/:id/sops — Linked SOPs for a service
+    this.app.get('/api/integrations/:id/sops', this.wrap(async (req, res) => {
+      if (!mgr()) return res.json({ success: true, data: [] });
+      const sops = mgr().getLinkedSOPs(req.params.id);
+      res.json({ success: true, data: sops });
+    }));
+
+    // POST /api/integrations/custom — Add custom service
+    this.app.post('/api/integrations/custom', this.wrap(async (req, res) => {
+      if (!mgr()) return res.json({ success: false, error: 'IntegrationManager not initialized' });
+      try {
+        const service = await mgr().addCustomService(req.body);
+        res.json({ success: true, data: service });
+      } catch (e) {
+        res.json({ success: false, error: e.message });
+      }
+    }));
+
+    // DELETE /api/integrations/custom/:id — Remove custom service
+    this.app.delete('/api/integrations/custom/:id', this.wrap(async (req, res) => {
+      if (!mgr()) return res.json({ success: false, error: 'IntegrationManager not initialized' });
+      await mgr().removeCustomService(req.params.id);
+      res.json({ success: true });
+    }));
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // TWILIO ROUTES — SMS, Voice, BYO Phone Agent
+  // ═══════════════════════════════════════════════════════════
+
+  registerTwilioRoutes() {
+    const twilio = () => this.ace?.twilioService;
+    const mgr = () => this.ace?.integrationManager;
+
+    // GET /api/twilio/status — Check if Twilio is configured
+    this.app.get('/api/twilio/status', this.wrap(async (req, res) => {
+      if (!twilio()) return res.json({ success: true, data: { configured: false } });
+      const status = await twilio().getCredentialStatus();
+      res.json({ success: true, data: status });
+    }));
+
+    // POST /api/twilio/credentials — Save Twilio credentials
+    this.app.post('/api/twilio/credentials', this.wrap(async (req, res) => {
+      if (!twilio()) return res.json({ success: false, error: 'TwilioService not initialized' });
+      const { accountSid, authToken, phoneNumber } = req.body;
+      if (!accountSid || !authToken || !phoneNumber) {
+        return res.json({ success: false, error: 'Missing required fields: accountSid, authToken, phoneNumber' });
+      }
+
+      const result = await twilio().saveCredentials({ accountSid, authToken, phoneNumber });
+
+      // Upgrade integration tier to 'connected'
+      if (mgr()) {
+        if (!mgr().state.twilio) await mgr().enable('twilio');
+        mgr().state.twilio.tier = 'connected';
+        await mgr()._saveState();
+      }
+
+      // Refresh UnifiedAgent tools (Twilio tools now available)
+      if (this.ace?.brain?.unifiedAgent) {
+        this.ace.brain.unifiedAgent.subsystems.twilioService = twilio();
+        this.ace.brain.unifiedAgent.refreshTools();
+      }
+
+      res.json({ success: true, data: result });
+    }));
+
+    // POST /api/twilio/test — Test Twilio connection
+    this.app.post('/api/twilio/test', this.wrap(async (req, res) => {
+      if (!twilio()) return res.json({ success: false, error: 'TwilioService not initialized' });
+      try {
+        const result = await twilio().testConnection();
+        res.json({ success: true, data: result });
+      } catch (e) {
+        res.json({ success: false, error: e.message });
+      }
+    }));
+
+    // POST /api/twilio/byo-credentials — Save BYO phone agent credentials
+    this.app.post('/api/twilio/byo-credentials', this.wrap(async (req, res) => {
+      if (!twilio()) return res.json({ success: false, error: 'TwilioService not initialized' });
+      const { provider, apiKey, endpointUrl, assistantId } = req.body;
+      if (!provider || !apiKey) {
+        return res.json({ success: false, error: 'Missing required fields: provider, apiKey' });
+      }
+      const result = await twilio().saveByoCredentials({ provider, apiKey, endpointUrl, assistantId });
+
+      // Refresh tools
+      if (this.ace?.brain?.unifiedAgent) {
+        this.ace.brain.unifiedAgent.refreshTools();
+      }
+
+      res.json({ success: true, data: result });
+    }));
+
+    // GET /api/twilio/byo-status — Check BYO agent config
+    this.app.get('/api/twilio/byo-status', this.wrap(async (req, res) => {
+      if (!twilio()) return res.json({ success: true, data: { configured: false } });
+      const status = await twilio().getByoCredentialStatus();
+      res.json({ success: true, data: status });
+    }));
+
+    // POST /api/webhooks/twilio/sms — Inbound SMS webhook (optional, needs public URL)
+    this.app.post('/api/webhooks/twilio/sms', this.wrap(async (req, res) => {
+      const { From, Body, MessageSid } = req.body;
+      console.log(`[Twilio] Inbound SMS from ${From}: ${Body}`);
+
+      // Respond with empty TwiML (acknowledge receipt)
+      res.type('text/xml');
+      res.send('<Response></Response>');
+    }));
+
+    // POST /api/webhooks/twilio/voice — Call status webhook (optional)
+    this.app.post('/api/webhooks/twilio/voice', this.wrap(async (req, res) => {
+      const { CallSid, CallStatus, From, To, Duration } = req.body;
+      console.log(`[Twilio] Call ${CallSid}: ${CallStatus}`);
+
+      res.type('text/xml');
+      res.send('<Response></Response>');
+    }));
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // BILLING & CREDITS ROUTES
+  // ═══════════════════════════════════════════════════════════
+
+  registerBillingRoutes() {
+    const credits = () => this.ace?.creditManager;
+    const stripe = () => this.ace?.stripeService;
+
+    // GET /api/billing/credits — Current balance + trial info
+    this.app.get('/api/billing/credits', this.wrap(async (req, res) => {
+      if (!credits()) return res.json({ success: true, data: { plan: 'trial', total: 0, trialDaysLeft: null } });
+      res.json({ success: true, data: credits().getBalance() });
+    }));
+
+    // GET /api/billing/usage — Usage stats
+    this.app.get('/api/billing/usage', this.wrap(async (req, res) => {
+      if (!credits()) return res.json({ success: true, data: { today: 0, thisWeek: 0, thisMonth: 0, recentActions: [] } });
+      res.json({ success: true, data: credits().getUsageStats() });
+    }));
+
+    // POST /api/billing/checkout — Create Stripe Checkout session
+    this.app.post('/api/billing/checkout', this.wrap(async (req, res) => {
+      if (!stripe() || !stripe().isConfigured()) {
+        return res.json({ success: false, error: 'Stripe not configured. Set up in Settings → Billing.' });
+      }
+      const { mode, amount } = req.body;
+      const customerId = credits()?.getBalance()?.stripeCustomerId || null;
+
+      const result = await stripe().createCheckoutSession({
+        mode: mode || 'top_up',
+        customerId,
+        amount: Number(amount) || 5,
+        successUrl: `http://localhost:${process.env.PORT || 3333}`,
+        cancelUrl: `http://localhost:${process.env.PORT || 3333}`,
+      });
+      res.json({ success: true, data: result });
+    }));
+
+    // POST /api/billing/webhook — Stripe webhook handler
+    this.app.post('/api/billing/webhook', this.wrap(async (req, res) => {
+      if (!stripe() || !stripe().isConfigured()) {
+        return res.status(400).json({ success: false, error: 'Stripe not configured' });
+      }
+
+      const sig = req.headers['stripe-signature'];
+      if (!sig) return res.status(400).json({ success: false, error: 'Missing Stripe-Signature header' });
+
+      let event;
+      try {
+        event = stripe().handleWebhook(req.body, sig);
+      } catch (err) {
+        console.error('[Billing] Webhook signature verification failed:', err.message);
+        return res.status(400).json({ success: false, error: 'Webhook signature verification failed' });
+      }
+
+      console.log(`[Billing] Webhook event: ${event.type}`);
+
+      switch (event.type) {
+        case 'checkout.session.completed': {
+          const session = event.data.object;
+          if (session.mode === 'subscription') {
+            // New subscription activated
+            await credits().setPlan('credits');
+            await credits().setStripeIds(session.customer, session.subscription);
+            await credits().resetSubscriptionCredits();
+            console.log('[Billing] Subscription activated');
+          } else if (session.metadata?.type === 'top_up') {
+            // Credit top-up
+            const creditAmount = Number(session.metadata.credits) || 500;
+            await credits().addCredits(creditAmount, 'stripe_top_up');
+            if (session.customer) await credits().setStripeIds(session.customer, credits().getBalance().stripeSubscriptionId);
+            console.log(`[Billing] Top-up: +${creditAmount} credits`);
+          }
+          break;
+        }
+
+        case 'invoice.paid': {
+          // Subscription renewal — reset monthly credits
+          await credits().resetSubscriptionCredits();
+          const sub = event.data.object;
+          if (sub.lines?.data?.[0]?.period?.end) {
+            await credits().setCurrentPeriodEnd(new Date(sub.lines.data[0].period.end * 1000).toISOString());
+          }
+          console.log('[Billing] Invoice paid — monthly credits reset');
+          break;
+        }
+
+        case 'customer.subscription.deleted': {
+          // Subscription cancelled
+          await credits().setPlan('trial');
+          console.log('[Billing] Subscription cancelled');
+          break;
+        }
+
+        case 'customer.subscription.updated': {
+          const sub = event.data.object;
+          if (sub.current_period_end) {
+            await credits().setCurrentPeriodEnd(new Date(sub.current_period_end * 1000).toISOString());
+          }
+          break;
+        }
+      }
+
+      res.json({ received: true });
+    }));
+
+    // POST /api/billing/auto-reload — Configure auto-reload settings
+    this.app.post('/api/billing/auto-reload', this.wrap(async (req, res) => {
+      if (!credits()) return res.json({ success: false, error: 'CreditManager not initialized' });
+      const { enabled, amount, threshold } = req.body;
+      await credits().setAutoReload({ enabled, amount, threshold });
+      res.json({ success: true, data: credits().getBalance().autoReload });
+    }));
+
+    // GET /api/billing/portal — Stripe Customer Portal
+    this.app.get('/api/billing/portal', this.wrap(async (req, res) => {
+      if (!stripe() || !stripe().isConfigured()) {
+        return res.json({ success: false, error: 'Stripe not configured' });
+      }
+      const customerId = credits()?.getBalance()?.stripeCustomerId;
+      if (!customerId) return res.json({ success: false, error: 'No Stripe customer ID. Subscribe first.' });
+
+      const result = await stripe().createCustomerPortalSession(
+        customerId,
+        `http://localhost:${process.env.PORT || 3333}`
+      );
+      res.json({ success: true, data: result });
+    }));
+
+    // GET /api/billing/stripe-status — Check Stripe config
+    this.app.get('/api/billing/stripe-status', this.wrap(async (req, res) => {
+      if (!stripe()) return res.json({ success: true, data: { configured: false } });
+      const status = await stripe().getCredentialStatus();
+      res.json({ success: true, data: status });
+    }));
+
+    // POST /api/billing/plan — Switch between 'credits' and 'byo_key' plans
+    this.app.post('/api/billing/plan', this.wrap(async (req, res) => {
+      if (!credits()) return res.json({ success: false, error: 'CreditManager not initialized' });
+      const { plan } = req.body;
+      if (!['credits', 'byo_key'].includes(plan)) {
+        return res.json({ success: false, error: 'Invalid plan. Must be "credits" or "byo_key".' });
+      }
+      await credits().setPlan(plan);
+      res.json({ success: true, data: credits().getBalance() });
+    }));
+
+    // Stripe credentials are configured via data/memory/credentials/stripe.json (not exposed via API)
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // UPDATE, FEEDBACK & CRASH ROUTES
+  // ═══════════════════════════════════════════════════════════
+
+  registerUpdateRoutes() {
+    const updates = () => this.ace?.updateManager;
+    const feedback = () => this.ace?.feedbackManager;
+    const crashes = () => this.ace?.crashReporter;
+
+    // ── Version & Update Check ──────────────────────────────
+
+    // GET /api/system/version — Current version + update state
+    this.app.get('/api/system/version', this.wrap(async (req, res) => {
+      if (!updates()) return res.json({ success: true, data: { currentVersion: '1.0.0' } });
+      res.json({ success: true, data: updates().getUpdateState() });
+    }));
+
+    // GET /api/system/update-check — Check GitHub for latest release
+    this.app.get('/api/system/update-check', this.wrap(async (req, res) => {
+      if (!updates()) return res.json({ success: false, error: 'UpdateManager not initialized' });
+      const result = await updates().checkForUpdate();
+      res.json({ success: true, data: result });
+    }));
+
+    // POST /api/system/update — Perform update with SSE progress stream
+    this.app.post('/api/system/update', (req, res) => {
+      if (!updates()) return res.json({ success: false, error: 'UpdateManager not initialized' });
+
+      // Set up SSE
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      });
+
+      const sendProgress = (data) => {
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      };
+
+      updates().performUpdate((progress) => {
+        sendProgress(progress);
+      }).then((result) => {
+        sendProgress({ step: 'complete', status: result.success ? 'done' : 'error', detail: result.success ? 'Update complete — restarting...' : result.error });
+        // Don't end response — server will exit and connection will close
+      }).catch((error) => {
+        sendProgress({ step: 'error', status: 'error', detail: error.message });
+        res.end();
+      });
+    });
+
+    // POST /api/system/dismiss-update — Dismiss update banner for this version
+    this.app.post('/api/system/dismiss-update', this.wrap(async (req, res) => {
+      if (!updates()) return res.json({ success: false, error: 'UpdateManager not initialized' });
+      const { version } = req.body;
+      await updates().dismissUpdate(version);
+      res.json({ success: true });
+    }));
+
+    // ── Feedback ────────────────────────────────────────────
+
+    // POST /api/feedback — Submit feedback
+    this.app.post('/api/feedback', this.wrap(async (req, res) => {
+      if (!feedback()) return res.json({ success: false, error: 'FeedbackManager not initialized' });
+      const { type, message } = req.body;
+      if (!message || !message.trim()) return res.json({ success: false, error: 'Message is required' });
+      const entry = await feedback().submitFeedback({ type: type || 'general', message });
+      res.json({ success: true, data: entry });
+    }));
+
+    // GET /api/feedback — List all feedback
+    this.app.get('/api/feedback', this.wrap(async (req, res) => {
+      if (!feedback()) return res.json({ success: true, data: [] });
+      const entries = await feedback().listFeedback();
+      res.json({ success: true, data: entries });
+    }));
+
+    // ── Crash Reports ───────────────────────────────────────
+
+    // GET /api/system/crashes — List recent crash reports
+    this.app.get('/api/system/crashes', this.wrap(async (req, res) => {
+      if (!crashes()) return res.json({ success: true, data: [] });
+      const limit = parseInt(req.query.limit) || 50;
+      const reports = await crashes().listCrashes(limit);
+      res.json({ success: true, data: reports });
     }));
   }
 }

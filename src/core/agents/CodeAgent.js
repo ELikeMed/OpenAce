@@ -500,6 +500,7 @@ export class CodeAgent {
     
     // Using the aiManager's chat function
     const response = await this.aiManager.chat(messages, {
+      provider: this.aiManager.getProviderForTask('code'),
       systemPrompt: systemPrompt,
       temperature: 0.2, // Lower temperature for more predictable JSON output
       maxTokens: 1500,
@@ -3315,7 +3316,7 @@ Rules:
 - Return ONLY the JSON, no markdown`;
 
     try {
-      const response = await this.aiManager.chat([{ role: 'user', content: prompt }], { maxTokens: 8000 });
+      const response = await this.aiManager.chat([{ role: 'user', content: prompt }], { provider: this.aiManager.getProviderForTask('code'), maxTokens: 32000 });
       const jsonMatch = (response.content || response.text || '').match(/\{[\s\S]*\}/);
 
       if (jsonMatch) {
@@ -3414,7 +3415,7 @@ ${file.content}
 
     const analysis = await this.aiManager.chat([
       { role: 'user', content: prompt }
-    ]);
+    ], { provider: this.aiManager.getProviderForTask('code') });
 
     return {
       success: true,
@@ -3488,7 +3489,7 @@ CRITICAL: Include the COMPLETE file content. No placeholders, no "...", no short
 
         const response = await this.aiManager.chat([
           { role: 'user', content: aiPrompt }
-        ], { maxTokens: 8000 });
+        ], { provider: this.aiManager.getProviderForTask('code'), maxTokens: 32000 });
 
         const responseText = response.content || response.text || '';
         const jsonMatch = responseText.match(/\{[\s\S]*\}/);
@@ -3597,7 +3598,7 @@ IMPORTANT:
     try {
       const response = await this.aiManager.chat([
         { role: 'user', content: prompt }
-      ], { maxTokens: 8000 });
+      ], { provider: this.aiManager.getProviderForTask('code'), maxTokens: 32000 });
 
       const responseText = response.content || response.text || '';
 

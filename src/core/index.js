@@ -43,8 +43,15 @@ import FirebaseAdapter from './projects/adapters/FirebaseAdapter.js';
 import SFTPAdapter from './projects/adapters/SFTPAdapter.js';
 import NetlifyAdapter from './projects/adapters/NetlifyAdapter.js';
 import { createSocialMediaSystem } from './social/index.js';
+import IntegrationManager from './integrations/IntegrationManager.js';
+import { TwilioService } from './integrations/TwilioService.js';
+import CreditManager from './billing/CreditManager.js';
+import { StripeService } from './billing/StripeService.js';
 import { ApprovalQueue } from './approvals/ApprovalQueue.js';
 import { ContactManager } from './contacts/ContactManager.js';
+import { UpdateManager } from './system/UpdateManager.js';
+import { FeedbackManager } from './system/FeedbackManager.js';
+import { CrashReporter } from './system/CrashReporter.js';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -109,6 +116,9 @@ export class OpenAce {
 
     // Google Integration (Gmail, Calendar, Drive)
     this.google = null;
+
+    // Twilio SMS + Voice
+    this.twilioService = null;
 
     // Social Media System
     this.socialMedia = null;
@@ -237,6 +247,26 @@ export class OpenAce {
       });
       await this.goalTracker.initialize();
 
+      // Initialize Billing / Credit Manager
+      console.log('💳 Loading billing...');
+      this.creditManager = new CreditManager({
+        dataDir: path.join(this.dataDir, 'billing')
+      });
+      await this.creditManager.initialize();
+
+      this.stripeService = new StripeService();
+      const stripeReady = await this.stripeService.initialize();
+      if (stripeReady) {
+        console.log('✅ Stripe connected — billing ready');
+      } else {
+        console.log('⚠️ Stripe not configured yet — set up in Settings → Billing');
+      }
+
+      // Initialize Update Manager
+      console.log('🔄 Loading update system...');
+      this.updateManager = new UpdateManager({ baseDir: this.baseDir });
+      await this.updateManager.initialize();
+
       // Initialize Form Manager
       console.log('📝 Loading forms...');
       this.formManager = new FormManager({
@@ -245,6 +275,28 @@ export class OpenAce {
         pipelineManager: this.pipelineManager
       });
       await this.formManager.initialize();
+
+      // Initialize Integration Manager (tech stack awareness)
+      console.log('🔌 Loading integrations...');
+      this.integrationManager = new IntegrationManager({
+        dataDir: path.join(this.baseDir, 'data/config'),
+        sopManager: this.sopManager,
+      });
+      await this.integrationManager.initialize();
+
+      // Initialize Twilio Service (SMS + Voice)
+      console.log('📱 Loading Twilio service...');
+      try {
+        this.twilioService = new TwilioService();
+        const twilioReady = await this.twilioService.initialize();
+        if (twilioReady) {
+          console.log('✅ Twilio connected — SMS and voice ready');
+        } else {
+          console.log('⚠️ Twilio not configured yet — set up in Settings → Integrations');
+        }
+      } catch (error) {
+        console.log('⚠️ Twilio not available:', error.message);
+      }
 
       // Initialize Site Memory (Ace's Brain)
       console.log('🧠 Loading site memory...');
@@ -441,6 +493,11 @@ export class OpenAce {
         formManager: this.formManager,
         deployPipeline: this.deployPipeline,
         goalTracker: this.goalTracker,
+        integrationManager: this.integrationManager,
+        twilioService: this.twilioService,
+        creditManager: this.creditManager,
+        updateManager: this.updateManager,
+        feedbackManager: this.feedbackManager,
         config: this.config,
         executeSOP: (sop, msg) => this.executeSOP(sop, msg),
       });
@@ -726,6 +783,13 @@ this.log.info('Task queue processing started');
         }
         await this.heartbeat.start();
       }
+
+      // Initialize Feedback Manager + Crash Reporter (after Telegram so they can forward)
+      console.log('📣 Loading feedback & crash reporting...');
+      this.feedbackManager = new FeedbackManager({ dataDir: path.join(this.dataDir, 'feedback') });
+      await this.feedbackManager.initialize(this.telegramBot);
+      this.crashReporter = new CrashReporter({ dataDir: path.join(this.dataDir, 'diagnostics', 'crashes'), baseDir: this.baseDir });
+      await this.crashReporter.initialize(this.telegramBot);
 
       this.initialized = true;
       console.log('\n✅ OpenAce is ready!\n');
@@ -1311,10 +1375,14 @@ this.log.info('Task queue processing started');
   async executeSOP(sop, userMessage) {
     this.onProgress(`Executing: ${sop.name}`);
 
-    // DESKTOP SOPs: Use DesktopTaskRunner (handles target/x/y coordinates from DesktopTrainer)
-    // SOPExecutor expects CSS selectors — desktop SOPs have click coordinates instead.
-    const isDesktopSOP = sop.steps?.some(s =>
-      s.x != null || s.y != null || (s.action === 'click' && s.target && !s.selector));
+    // DESKTOP SOPs: Use DesktopTaskRunner (handles semantic actions + coordinates + AI vision)
+    // Route to DesktopTaskRunner if steps have coordinates, smart_click, or came from training.
+    // SOPExecutor is only used for old SOPs with CSS selectors.
+    const DESKTOP_ACTIONS = ['smart_click', 'click_text', 'click_submit', 'edit_field', 'press', 'wait_navigation', 'right_click', 'select_option', 'hover', 'switch_tab', 'go_back', 'copy_text'];
+    const isDesktopSOP = sop.type === 'desktop' || sop.steps?.some(s =>
+      s.x != null || s.y != null ||
+      DESKTOP_ACTIONS.includes(s.action) ||
+      (s.action === 'click' && s.target && !s.selector));
 
     if (isDesktopSOP && this.brain?._desktopRunner) {
       const runner = this.brain._desktopRunner;
@@ -2486,10 +2554,18 @@ If you cannot parse a valid SOP, return: {"error": "reason"}`;
       } else {
         const defaultPipeline = {
           stages: [
-            { id: 'new', name: 'New', color: '#6c757d', order: 1 },
+            { id: 'inbox', name: 'Inbox', color: '#6c757d', order: 1, auto_assign: 'ace' },
+            { id: 'research', name: 'Research', color: '#007bff', order: 2, auto_assign: 'ace' },
+            { id: 'in_progress', name: 'In Progress', color: '#ffc107', order: 3, auto_assign: null },
+            { id: 'review', name: 'Review', color: '#17a2b8', order: 4, auto_assign: null },
+            { id: 'done', name: 'Done', color: '#28a745', order: 5, auto_assign: null },
+          ],
+          items: [],
+          lead_stages: [
+            { id: 'new', name: 'New Lead', color: '#6c757d', order: 1 },
             { id: 'contacted', name: 'Contacted', color: '#007bff', order: 2 },
-            { id: 'qualified', name: 'Qualified', color: '#ffc107', order: 3 },
-            { id: 'proposal', name: 'Proposal', color: '#17a2b8', order: 4 },
+            { id: 'qualified', name: 'Qualified', color: '#17a2b8', order: 3 },
+            { id: 'proposal', name: 'Proposal Sent', color: '#ffc107', order: 4 },
             { id: 'won', name: 'Won', color: '#28a745', order: 5 },
             { id: 'lost', name: 'Lost', color: '#dc3545', order: 6 },
           ],
@@ -3106,6 +3182,11 @@ If you cannot parse a valid SOP, return: {"error": "reason"}`;
       await this.browserAgent.close();
     }
     
+    // Stop update checker
+    if (this.updateManager) {
+      this.updateManager.shutdown();
+    }
+
     // Flush logs
     await flushLogs();
 
