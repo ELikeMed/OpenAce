@@ -19,9 +19,9 @@ config/zoom-credentials.json
 !config/openace.config.example.json
 !config/google-credentials.example.json
 
-# User projects (created by users)
-projects/
-!projects/.gitkeep
+# User projects (created by users, root only)
+/projects/
+!/projects/.gitkeep
 
 # Logs
 logs/
@@ -43,7 +43,7 @@ Thumbs.db
 *.swo
 
 # Build output
-dist/
+/dist/
 build/
 *.tgz
 
