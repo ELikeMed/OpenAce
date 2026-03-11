@@ -140,6 +140,25 @@ cd src/studio && npm install && npm run build
 
 The server runs on port 3333. Dashboard is served at `/`, Studio at `/studio`.
 
+## Troubleshooting
+
+**`xcrun: error: unable to load libxcrun` during `npm install`**
+
+This means your macOS Command Line Tools are missing or misconfigured. Run:
+
+```bash
+xcode-select --install
+```
+
+If that doesn't work (e.g. you migrated from an Intel Mac), reset first:
+
+```bash
+sudo xcode-select --reset
+xcode-select --install
+```
+
+This is required for desktop automation features (mouse/keyboard control, screen recording, trained SOPs). Once installed, re-run `npm install`.
+
 ## License
 
 MIT
