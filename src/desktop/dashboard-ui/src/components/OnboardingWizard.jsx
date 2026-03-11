@@ -22,10 +22,11 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import GavelIcon from '@mui/icons-material/Gavel';
+import SmartphoneIcon from '@mui/icons-material/Smartphone';
 import { BRAND } from '../theme';
 
 const API = 'http://localhost:3333';
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 8;
 
 const INDUSTRIES = [
   'Technology', 'Healthcare', 'Finance', 'Education', 'Real Estate',
@@ -42,6 +43,8 @@ const AI_PROVIDERS = {
     keyPlaceholder: 'AIza...',
     models: ['gemini-2.5-flash', 'gemini-2.5-pro'],
     color: '#4285f4',
+    helpText: 'Get a free API key from Google AI Studio',
+    helpLink: 'https://aistudio.google.com/apikey',
   },
   openai: {
     name: 'OpenAI',
@@ -51,6 +54,8 @@ const AI_PROVIDERS = {
     keyPlaceholder: 'sk-...',
     models: ['gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano'],
     color: '#74B9FF',
+    helpText: 'Get an API key from the OpenAI dashboard',
+    helpLink: 'https://platform.openai.com/api-keys',
   },
   claude: {
     name: 'Anthropic (Claude)',
@@ -60,6 +65,8 @@ const AI_PROVIDERS = {
     keyPlaceholder: 'sk-ant-...',
     models: ['claude-sonnet-4-6', 'claude-haiku-4-5'],
     color: '#D4A574',
+    helpText: 'Get an API key from the Anthropic console',
+    helpLink: 'https://console.anthropic.com/settings/keys',
   },
   ollama: {
     name: 'Ollama (Local & Free)',
@@ -68,6 +75,8 @@ const AI_PROVIDERS = {
     needsKey: false,
     models: ['llama3.2', 'llama3.1', 'mistral', 'codellama', 'gemma2'],
     color: '#10b981',
+    helpText: 'Download and run Ollama on your machine — no API key needed',
+    helpLink: 'https://ollama.com/download',
   },
 };
 
@@ -96,6 +105,11 @@ export default function OnboardingWizard({ onComplete }) {
   const [website, setWebsite] = useState('');
   const [desktopControl, setDesktopControl] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+
+  // Telegram state
+  const [telegramToken, setTelegramToken] = useState('');
+  const [telegramTesting, setTelegramTesting] = useState(false);
+  const [telegramTestResult, setTelegramTestResult] = useState(null);
 
   const goNext = () => setStep(s => Math.min(s + 1, TOTAL_STEPS - 1));
   const goBack = () => setStep(s => Math.max(s - 1, 0));
@@ -204,7 +218,21 @@ export default function OnboardingWizard({ onComplete }) {
       await saveBusinessProfile();
       setSaving(false);
     }
-    if (step === 5) {
+    if (step === 5 && telegramToken.trim()) {
+      // Save Telegram config (optional — only if token provided)
+      setSaving(true);
+      try {
+        await fetch(`${API}/api/setup/telegram`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bot_token: telegramToken, enabled: true }),
+        });
+      } catch (e) {
+        console.error('Failed to save Telegram config:', e);
+      }
+      setSaving(false);
+    }
+    if (step === 6) {
       // Desktop control decided
       setSaving(true);
       await saveDesktopAutonomy();
@@ -516,6 +544,17 @@ export default function OnboardingWizard({ onComplete }) {
                       </Grid>
                     </RadioGroup>
 
+                    {/* Ollama help link (no API key needed) */}
+                    {selectedProvider === 'ollama' && (
+                      <Typography variant="caption" sx={{ color: BRAND.textSecondary, mt: 1.5, display: 'block', textAlign: 'center' }}>
+                        {AI_PROVIDERS.ollama.helpText}.{' '}
+                        <Box component="a" href={AI_PROVIDERS.ollama.helpLink} target="_blank" rel="noopener noreferrer"
+                          sx={{ color: BRAND.primaryLight, textDecoration: 'underline', cursor: 'pointer' }}>
+                          Download Ollama &rarr;
+                        </Box>
+                      </Typography>
+                    )}
+
                     {/* API Key Input (if needed) */}
                     {AI_PROVIDERS[selectedProvider]?.needsKey && (
                       <Fade in>
@@ -538,6 +577,13 @@ export default function OnboardingWizard({ onComplete }) {
                             }}
                             sx={inputSx}
                           />
+                          <Typography variant="caption" sx={{ color: BRAND.textSecondary, mt: 0.8, display: 'block' }}>
+                            {AI_PROVIDERS[selectedProvider]?.helpText}{' '}
+                            <Box component="a" href={AI_PROVIDERS[selectedProvider]?.helpLink} target="_blank" rel="noopener noreferrer"
+                              sx={{ color: BRAND.primaryLight, textDecoration: 'underline', cursor: 'pointer' }}>
+                              Get your key here &rarr;
+                            </Box>
+                          </Typography>
                         </Box>
                       </Fade>
                     )}
@@ -722,8 +768,103 @@ export default function OnboardingWizard({ onComplete }) {
             </Fade>
           )}
 
-          {/* ═══════ Step 5: Desktop Control ═══════ */}
+          {/* ═══════ Step 5: Telegram Setup (Optional) ═══════ */}
           {step === 5 && (
+            <Fade in timeout={500}>
+              <Box>
+                <Box sx={{ textAlign: 'center', mb: 3 }}>
+                  <Avatar sx={{
+                    width: 56, height: 56, mx: 'auto', mb: 2,
+                    background: 'linear-gradient(135deg, #0088cc, #29b6f6)',
+                  }}>
+                    <SmartphoneIcon sx={{ fontSize: 30 }} />
+                  </Avatar>
+                  <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
+                    Telegram Access
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: BRAND.textSecondary }}>
+                    Talk to Ace from your phone via Telegram (optional)
+                  </Typography>
+                </Box>
+
+                <Box sx={{ maxWidth: 480, mx: 'auto' }}>
+                  <Card sx={{
+                    mb: 2,
+                    border: `1px solid ${alpha('#0088cc', 0.2)}`,
+                    background: alpha('#0088cc', 0.04),
+                  }}>
+                    <CardContent>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                        How to get a Telegram bot token:
+                      </Typography>
+                      <Box component="ol" sx={{ pl: 2.5, m: 0, '& li': { fontSize: '0.82rem', color: BRAND.textSecondary, mb: 0.5, lineHeight: 1.5 } }}>
+                        <li>Open Telegram and search for <strong>@BotFather</strong></li>
+                        <li>Send <code>/newbot</code> and follow the prompts</li>
+                        <li>Copy the bot token BotFather gives you</li>
+                        <li>Paste it below</li>
+                      </Box>
+                    </CardContent>
+                  </Card>
+
+                  <TextField
+                    label="Bot Token"
+                    value={telegramToken}
+                    onChange={e => { setTelegramToken(e.target.value); setTelegramTestResult(null); }}
+                    fullWidth
+                    placeholder="1234567890:ABCdefGhIjKlmNoPqRsTuVwXyZ"
+                    sx={inputSx}
+                  />
+
+                  {telegramToken.trim().length > 10 && (
+                    <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'center' }}>
+                      <Button
+                        variant="outlined" size="small"
+                        onClick={async () => {
+                          setTelegramTesting(true);
+                          setTelegramTestResult(null);
+                          try {
+                            const res = await fetch(`${API}/api/setup/test-telegram`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ bot_token: telegramToken }),
+                            });
+                            const data = await res.json();
+                            setTelegramTestResult(data.success ? 'success' : `failed: ${data.error || 'Invalid token'}`);
+                          } catch (e) {
+                            setTelegramTestResult('failed: Network error');
+                          }
+                          setTelegramTesting(false);
+                        }}
+                        disabled={telegramTesting}
+                        sx={{
+                          borderColor: alpha('#0088cc', 0.3), color: '#0088cc',
+                          '&:hover': { borderColor: '#0088cc', background: alpha('#0088cc', 0.08) },
+                        }}
+                      >
+                        {telegramTesting ? <CircularProgress size={16} sx={{ mr: 1 }} /> : null}
+                        {telegramTesting ? 'Testing...' : 'Test Token'}
+                      </Button>
+                      {telegramTestResult === 'success' && (
+                        <Chip icon={<CheckCircleIcon sx={{ fontSize: 16 }} />} label="Valid!" size="small"
+                          sx={{ background: alpha(BRAND.success, 0.15), color: BRAND.success, fontWeight: 600 }} />
+                      )}
+                      {telegramTestResult && telegramTestResult !== 'success' && (
+                        <Chip icon={<ErrorOutlineIcon sx={{ fontSize: 16 }} />} label={telegramTestResult} size="small"
+                          sx={{ background: alpha(BRAND.error, 0.15), color: BRAND.error, fontWeight: 600, maxWidth: 260 }} />
+                      )}
+                    </Box>
+                  )}
+
+                  <Typography variant="caption" sx={{ display: 'block', textAlign: 'center', mt: 2, color: BRAND.textMuted }}>
+                    Skip this if you don't use Telegram — you can set it up later in Settings
+                  </Typography>
+                </Box>
+              </Box>
+            </Fade>
+          )}
+
+          {/* ═══════ Step 6: Desktop Control ═══════ */}
+          {step === 6 && (
             <Fade in timeout={500}>
               <Box>
                 <Box sx={{ textAlign: 'center', mb: 4 }}>
@@ -825,8 +966,8 @@ export default function OnboardingWizard({ onComplete }) {
             </Fade>
           )}
 
-          {/* ═══════ Step 6: All Set! ═══════ */}
-          {step === 6 && (
+          {/* ═══════ Step 7: All Set! ═══════ */}
+          {step === 7 && (
             <Fade in timeout={500}>
               <Box sx={{ textAlign: 'center' }}>
                 <Avatar sx={{
@@ -875,6 +1016,24 @@ export default function OnboardingWizard({ onComplete }) {
                       </Box>
                     </CardContent>
                   </Card>
+
+                  {/* Telegram summary (only if token provided) */}
+                  {telegramToken.trim() && (
+                    <Card sx={{
+                      border: `1px solid ${alpha('#0088cc', 0.2)}`,
+                      background: alpha('#0088cc', 0.05),
+                    }}>
+                      <CardContent sx={{ p: 2, '&:last-child': { pb: 2 }, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        <SmartphoneIcon sx={{ color: '#0088cc' }} />
+                        <Box>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>Telegram</Typography>
+                          <Typography variant="caption" sx={{ color: '#0088cc' }}>
+                            Connected
+                          </Typography>
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  )}
                 </Box>
 
                 <Button
@@ -900,7 +1059,7 @@ export default function OnboardingWizard({ onComplete }) {
       </Box>
 
       {/* Navigation Buttons */}
-      {step > 0 && step < 6 && (
+      {step > 0 && step < 7 && (
         <Box sx={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           px: 4, py: 3, maxWidth: 660, mx: 'auto', width: '100%',

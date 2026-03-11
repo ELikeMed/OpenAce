@@ -2078,6 +2078,11 @@ export class ApiGateway {
 
         await fs.writeFile(configPath, JSON.stringify(config, null, 4));
 
+        // Re-initialize the AI provider in memory so it takes effect immediately
+        if (this.ace?.aiManager) {
+          await this.ace.aiManager.initialize();
+        }
+
         console.log(`🤖 AI provider configured: ${provider}`);
         res.json({ success: true, data: { provider, configured: true } });
       } catch (err) {
@@ -2128,6 +2133,53 @@ export class ApiGateway {
         res.json({ success: false, error: 'Cannot test without API key' });
       } catch (err) {
         res.json({ success: false, error: err.message });
+      }
+    }));
+
+    // POST /api/setup/telegram — configure Telegram bot during onboarding
+    this.app.post('/api/setup/telegram', this.wrap(async (req, res) => {
+      try {
+        const { bot_token, enabled } = req.body;
+        if (!bot_token) return res.json({ success: false, error: 'Bot token is required' });
+
+        const raw = await fs.readFile(configPath, 'utf-8');
+        const config = JSON.parse(raw);
+
+        config.telegram = config.telegram || {};
+        config.telegram.bot_token = bot_token;
+        config.telegram.enabled = enabled !== false;
+
+        await fs.writeFile(configPath, JSON.stringify(config, null, 4));
+
+        console.log('📱 Telegram bot token saved');
+        res.json({ success: true, data: { configured: true } });
+      } catch (err) {
+        res.json({ success: false, error: err.message });
+      }
+    }));
+
+    // POST /api/setup/test-telegram — validate Telegram bot token
+    this.app.post('/api/setup/test-telegram', this.wrap(async (req, res) => {
+      try {
+        const { bot_token } = req.body;
+        if (!bot_token) return res.json({ success: false, error: 'Bot token is required' });
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        const tgRes = await fetch(`https://api.telegram.org/bot${bot_token}/getMe`, {
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+
+        if (tgRes.ok) {
+          const data = await tgRes.json();
+          if (data.ok) {
+            return res.json({ success: true, data: { botName: data.result.first_name, username: data.result.username } });
+          }
+        }
+        res.json({ success: false, error: 'Invalid bot token' });
+      } catch (err) {
+        res.json({ success: false, error: err.name === 'AbortError' ? 'Connection timed out' : err.message });
       }
     }));
   }

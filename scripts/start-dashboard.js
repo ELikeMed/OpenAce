@@ -14,6 +14,7 @@ import { ActivityLogger } from '../src/core/activity/ActivityLogger.js';
 import { OpenAce } from '../src/core/index.js';
 import { ApiGateway } from '../src/core/gateway/ApiGateway.js';
 import { eventBus, EVENTS } from '../src/core/events/EventBus.js';
+import open from 'open';
 
 // Start log capture immediately — before anything else initializes
 logCapture.start();
@@ -123,7 +124,7 @@ initialize().then(() => {
     res.sendFile(path.join(baseDir, 'src/desktop/dashboard-ui/dist/index.html'));
   });
 
-  app.listen(PORT, () => {
+  app.listen(PORT, async () => {
     console.log(`
 ╔═══════════════════════════════════════════════════╗
 ║                                                   ║
@@ -135,5 +136,12 @@ initialize().then(() => {
 ║                                                   ║
 ╚═══════════════════════════════════════════════════╝
 `);
+
+    // Auto-open browser
+    try {
+      await open(`http://localhost:${PORT}`);
+    } catch (err) {
+      console.log(`💡 Open http://localhost:${PORT} in your browser`);
+    }
   });
 });

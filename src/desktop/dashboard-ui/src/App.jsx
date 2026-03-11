@@ -341,7 +341,13 @@ function App() {
     return (
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <OnboardingWizard onComplete={() => setNeedsOnboarding(false)} />
+        <OnboardingWizard onComplete={() => {
+          setNeedsOnboarding(false);
+          // Auto-start the guided tour after first onboarding
+          if (!localStorage.getItem('ace_tour_completed')) {
+            setTimeout(() => setTourActive(true), 500);
+          }
+        }} />
       </ThemeProvider>
     );
   }
