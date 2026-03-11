@@ -82,8 +82,9 @@ cd src/desktop/dashboard-ui && npm install --no-audit --no-fund 2>&1 | tail -1 &
 echo ""
 echo -e "  ${GREEN}${BOLD}♠  OpenAce installed successfully!${NC}"
 echo ""
-echo -e "  To start OpenAce:"
-echo -e "    ${CYAN}cd ~/openace && npm start${NC}"
+echo -e "  ${CYAN}→${NC} Starting OpenAce..."
 echo ""
-echo -e "  Then open: ${CYAN}http://localhost:3333${NC}"
-echo ""
+
+# Auto-start — browser opens automatically
+cd "$INSTALL_DIR"
+npm start

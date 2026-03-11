@@ -39,6 +39,9 @@ app.use('/projects', express.static(path.join(baseDir, 'projects'), {
   index: 'index.html'
 }));
 
+// Serve documentation
+app.use('/docs', express.static(path.join(baseDir, 'docs'), { extensions: ['html'], index: 'index.html' }));
+
 // Serve Ace Studio React app
 app.use('/studio', express.static(path.join(baseDir, 'src', 'studio', 'dist')));
 

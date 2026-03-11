@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenAce — Increase Net Profits For Your Business</title>
+  <meta name="description" content="OpenAce finds your leads, contacts them, and closes deals — exactly like a top sales teammate would. Increase net profits while you focus on working ON your business. Free for 45 days." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    /* ============================================================
+       RESET & ROOT
+    ============================================================ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --primary:   #6C5CE7;
+      --plight:    #A29BFE;
+      --pdark:     #5A4BD1;
+      --secondary: #00CEC9;
+      --slight:    #55EFC4;
+      --accent:    #FD79A8;
+      --success:   #00B894;
+      --warning:   #FDCB6E;
+      --bg:        #0A0A14;
+      --card:      #12121e;
+      --surface:   #1a1a2e;
+      --border:    #2a2a4a;
+      --text:      #E8E8F0;
+      --muted:     #8B8BA3;
+      --faint:     #3a3a5a;
+      --cyan-glow: rgba(0, 206, 201, 0.4);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ============================================================
+       TYPOGRAPHY
+    ============================================================ */
+    h1, h2, h3, h4 { font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
+    .gradient-text {
+      background: linear-gradient(135deg, #fff 0%, var(--plight) 50%, var(--secondary) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .cyan-text { color: var(--secondary); }
+
+    /* ============================================================
+       LAYOUT
+    ============================================================ */
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+    section { padding: 100px 0; }
+
+    /* ============================================================
+       BUTTONS
+    ============================================================ */
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px; padding: 10px 22px;
+      border-radius: 10px; font-weight: 600; font-size: 0.9rem; cursor: pointer;
+      transition: all 0.2s; text-decoration: none; border: none;
+      font-family: inherit;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), var(--plight));
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(108,92,231,0.4);
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(108,92,231,0.5); }
+    .btn-ghost {
+      background: rgba(255,255,255,0.06); color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { background: rgba(255,255,255,0.1); border-color: var(--faint); }
+    .btn-large { padding: 14px 32px; font-size: 1rem; border-radius: 14px; }
+    .btn-cyan {
+      background: linear-gradient(135deg, var(--secondary), #00E6E0);
+      color: #0A0A14;
+      box-shadow: 0 4px 20px var(--cyan-glow);
+    }
+    .btn-cyan:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,206,201,0.5); }
+
+    /* ============================================================
+       NAV
+    ============================================================ */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      padding: 16px 0;
+      backdrop-filter: blur(20px);
+      background: rgba(10, 10, 20, 0.8);
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      transition: all 0.3s;
+    }
+    nav .inner {
+      max-width: 1200px; margin: 0 auto; padding: 0 24px;
+      display: grid; grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+    }
+    .nav-brand {
+      display: flex; align-items: center;
+      font-size: 1.2rem; font-weight: 800; color: var(--text);
+      text-decoration: none;
+    }
+    .nav-brand img {
+      width: 36px; height: 36px;
+      filter: drop-shadow(0 0 8px var(--cyan-glow));
+    }
+    .nav-brand .logo-svg {
+      width: 36px; height: 36px;
+      filter: drop-shadow(0 0 8px var(--cyan-glow));
+    }
+    .nav-links { display: flex; align-items: center; gap: 32px; justify-self: center; }
+    .nav-links a {
+      color: var(--muted); text-decoration: none; font-size: 0.9rem;
+      font-weight: 500; transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text); }
+
+    /* ============================================================
+       HERO
+    ============================================================ */
+    .hero {
+      min-height: 100vh;
+      display: flex; align-items: center;
+      position: relative; overflow: hidden;
+      padding-top: 80px;
+    }
+
+    .hero-bg {
+      position: absolute; inset: 0; z-index: 0;
+      background: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(0,206,201,0.2) 0%, transparent 70%),
+                  radial-gradient(ellipse 50% 40% at 90% 60%, rgba(108,92,231,0.12) 0%, transparent 60%),
+                  radial-gradient(ellipse 40% 30% at 10% 80%, rgba(253,121,168,0.06) 0%, transparent 60%);
+    }
+
+    .orb {
+      position: absolute; border-radius: 50%;
+      filter: blur(80px); opacity: 0.12; animation: float 8s ease-in-out infinite;
+    }
+    .orb-1 { width: 500px; height: 500px; background: var(--secondary); top: -100px; left: -100px; animation-delay: 0s; }
+    .orb-2 { width: 400px; height: 400px; background: var(--primary); bottom: -100px; right: -50px; animation-delay: 3s; }
+    .orb-3 { width: 300px; height: 300px; background: var(--accent); top: 40%; left: 60%; animation-delay: 5s; }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0) scale(1); }
+      50% { transform: translateY(-30px) scale(1.05); }
+    }
+
+    .hero-grid {
+      position: absolute; inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+      background-size: 60px 60px;
+      mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 30%, transparent 100%);
+    }
+
+    .hero-content { position: relative; z-index: 1; text-align: center; max-width: 880px; margin: 0 auto; }
+
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 8px 16px; border-radius: 100px;
+      background: rgba(0,206,201,0.1); border: 1px solid rgba(0,206,201,0.3);
+      color: var(--secondary); font-size: 0.8rem; font-weight: 600;
+      margin-bottom: 28px;
+      animation: fadeInDown 0.6s ease;
+    }
+    .hero-badge .dot {
+      width: 6px; height: 6px; border-radius: 50%; background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+    .hero h1 {
+      font-size: clamp(2.6rem, 5.5vw, 4.2rem);
+      margin-bottom: 20px;
+      animation: fadeInDown 0.6s ease 0.1s both;
+      font-weight: 800;
+      line-height: 1.1;
+    }
+
+    .hero .subtitle {
+      font-size: 1.15rem; color: var(--muted); max-width: 620px; margin: 0 auto 40px;
+      animation: fadeInDown 0.6s ease 0.2s both;
+      line-height: 1.7;
+    }
+
+    @keyframes fadeInDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* ============================================================
+       TERMINAL INSTALL BLOCK
+    ============================================================ */
+    .terminal {
+      max-width: 680px; margin: 0 auto;
+      background: #0D0D1A;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 40px rgba(0,206,201,0.08);
+      animation: fadeInUp 0.8s ease 0.3s both;
+      text-align: left;
+    }
+    .terminal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px;
+      background: rgba(255,255,255,0.03);
+      border-bottom: 1px solid var(--border);
+    }
+    .terminal-dots { display: flex; gap: 6px; }
+    .terminal-dots span { width: 10px; height: 10px; border-radius: 50%; }
+    .terminal-dots span:nth-child(1) { background: #FF5F57; }
+    .terminal-dots span:nth-child(2) { background: #FFBD2E; }
+    .terminal-dots span:nth-child(3) { background: #28C840; }
+    .terminal-title { font-size: 0.72rem; color: var(--muted); font-weight: 500; }
+
+    .terminal-tabs {
+      display: flex; gap: 0;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.02);
+    }
+    .terminal-tab {
+      padding: 10px 20px;
+      font-size: 0.8rem; font-weight: 600;
+      color: var(--muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+      background: none; border-top: none; border-left: none; border-right: none;
+      font-family: inherit;
+    }
+    .terminal-tab:hover { color: var(--text); }
+    .terminal-tab.active {
+      color: var(--secondary);
+      border-bottom-color: var(--secondary);
+      background: rgba(0,206,201,0.05);
+    }
+
+    .terminal-body {
+      padding: 20px;
+      position: relative;
+    }
+    .terminal-line {
+      font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.82rem;
+      line-height: 1.8;
+      color: var(--text);
+      word-break: break-all;
+    }
+    .terminal-line .prompt { color: var(--secondary); }
+    .terminal-line .cmd { color: #E8E8F0; }
+    .terminal-line .flag { color: var(--plight); }
+    .terminal-line .comment { color: var(--success); font-style: italic; opacity: 0.8; }
+
+    .terminal-copy {
+      position: absolute; top: 14px; right: 14px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 12px;
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+    .terminal-copy:hover { background: rgba(255,255,255,0.14); color: var(--text); }
+    .terminal-copy.copied { color: var(--success); border-color: rgba(0,184,148,0.4); }
+
+    .terminal-note {
+      text-align: center;
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 16px;
+      animation: fadeInUp 0.8s ease 0.4s both;
+    }
+
+    /* Install helper guide */
+    .install-guide {
+      max-width: 680px; margin: 20px auto 0;
+      animation: fadeInUp 0.8s ease 0.5s both;
+    }
+    .install-guide-toggle {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 10px 20px; margin: 0 auto;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--secondary);
+      font-size: 0.82rem; font-weight: 600;
+      cursor: pointer; transition: all 0.2s;
+      font-family: inherit;
+    }
+    .install-guide-toggle:hover { background: rgba(0,206,201,0.08); border-color: rgba(0,206,201,0.3); }
+    .install-guide-toggle .arrow { transition: transform 0.3s; display: inline-block; }
+    .install-guide-toggle.open .arrow { transform: rotate(180deg); }
+
+    .install-guide-content {
+      display: none; margin-top: 16px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .install-guide-content.open { display: block; }
+
+    .install-steps {
+      display: grid; grid-template-columns: 1fr 1fr 1fr;
+      gap: 0;
+    }
+    .install-step {
+      padding: 24px 20px;
+      border-right: 1px solid var(--border);
+      text-align: center;
+    }
+    .install-step:last-child { border-right: none; }
+    .install-step-num {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      color: #fff; font-size: 0.85rem; font-weight: 800;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 12px;
+    }
+    .install-step h4 {
+      font-size: 0.85rem; font-weight: 700; color: var(--text);
+      margin: 0 0 6px;
+    }
+    .install-step p {
+      font-size: 0.75rem; color: var(--muted); line-height: 1.5;
+      margin: 0;
+    }
+    .install-step kbd {
+      display: inline-block; padding: 2px 7px;
+      background: rgba(255,255,255,0.08); border: 1px solid var(--border);
+      border-radius: 5px; font-size: 0.72rem; font-family: inherit;
+      color: var(--secondary); font-weight: 600;
+    }
+
+    .install-guide-footer {
+      padding: 14px 20px;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      font-size: 0.75rem; color: var(--muted);
+    }
+    .install-guide-footer a {
+      color: var(--secondary); text-decoration: underline;
+    }
+
+    /* ============================================================
+       DASHBOARD PREVIEW
+    ============================================================ */
+    .preview-section { padding: 60px 0 100px; }
+
+    .hero-preview {
+      position: relative; margin: 0 auto;
+      max-width: 940px;
+      animation: fadeInUp 0.8s ease 0.5s both;
+    }
+    .hero-preview::before {
+      content: '';
+      position: absolute; inset: -1px; border-radius: 20px;
+      background: linear-gradient(135deg, rgba(0,206,201,0.4), rgba(108,92,231,0.3), rgba(253,121,168,0.2));
+      z-index: 0;
+    }
+    .preview-window {
+      position: relative; z-index: 1; border-radius: 20px; overflow: hidden;
+      background: var(--card);
+      border: 1px solid var(--border);
+      box-shadow: 0 40px 120px rgba(0,0,0,0.6), 0 0 60px rgba(0,206,201,0.1);
+    }
+    .preview-titlebar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 14px 20px;
+      background: rgba(255,255,255,0.03);
+      border-bottom: 1px solid var(--border);
+    }
+    .titlebar-dot { width: 12px; height: 12px; border-radius: 50%; }
+    .titlebar-dot:nth-child(1) { background: #FF5F57; }
+    .titlebar-dot:nth-child(2) { background: #FFBD2E; }
+    .titlebar-dot:nth-child(3) { background: #28C840; }
+    .preview-url {
+      flex: 1; text-align: center;
+      font-size: 0.75rem; color: var(--muted);
+      background: rgba(255,255,255,0.04); border-radius: 6px;
+      padding: 4px 12px; margin: 0 20px;
+    }
+    .preview-body { display: flex; height: 380px; }
+    .preview-sidebar {
+      width: 190px; flex-shrink: 0;
+      background: rgba(255,255,255,0.02);
+      border-right: 1px solid var(--border);
+      padding: 16px 12px;
+    }
+    .preview-nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px; border-radius: 8px;
+      font-size: 0.75rem; color: var(--muted);
+      margin-bottom: 2px;
+    }
+    .preview-nav-item.active {
+      background: rgba(108,92,231,0.15);
+      color: var(--text);
+      border-left: 2px solid var(--primary);
+    }
+    .preview-nav-icon { font-size: 13px; width: 18px; text-align: center; }
+    .preview-main { flex: 1; padding: 20px; overflow: hidden; }
+    .preview-chat { display: flex; flex-direction: column; gap: 12px; height: 100%; }
+    .msg { display: flex; gap: 10px; }
+    .msg.bot { flex-direction: row; }
+    .msg.user { flex-direction: row-reverse; }
+    .msg-avatar {
+      width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; color: #fff; font-weight: 700;
+    }
+    .msg-avatar.ace { background: linear-gradient(135deg, var(--secondary), #00E6E0); }
+    .msg-avatar.you { background: linear-gradient(135deg, var(--accent), var(--primary)); }
+    .msg-bubble {
+      max-width: 78%; padding: 10px 14px; border-radius: 14px;
+      font-size: 0.78rem; line-height: 1.5;
+    }
+    .msg.bot .msg-bubble { background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: var(--text); }
+    .msg.user .msg-bubble { background: linear-gradient(135deg, var(--primary), var(--pdark)); color: #fff; }
+    .msg-tool {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 8px; border-radius: 4px;
+      background: rgba(0,206,201,0.12); color: var(--secondary);
+      font-size: 0.65rem; font-weight: 600; margin-top: 6px;
+    }
+    .typing { display: flex; gap: 4px; align-items: center; padding: 10px 14px; }
+    .typing span {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--secondary); opacity: 0.5;
+      animation: typing 1.2s infinite;
+    }
+    .typing span:nth-child(2) { animation-delay: 0.2s; }
+    .typing span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes typing { 0%,60%,100% { opacity: 0.3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-4px); } }
+    .preview-input {
+      display: flex; gap: 8px; margin-top: auto;
+      background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 14px;
+      font-size: 0.75rem; color: var(--muted);
+    }
+
+    /* ============================================================
+       STATS BAR
+    ============================================================ */
+    .stats-bar { padding: 40px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 40px; text-align: center; }
+    .stat-number {
+      font-size: 2.4rem; font-weight: 800;
+      background: linear-gradient(135deg, var(--secondary), var(--slight));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .stat-label { font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
+
+    /* ============================================================
+       SECTION SHARED
+    ============================================================ */
+    .section-label {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 14px; border-radius: 100px;
+      background: rgba(0,206,201,0.08); border: 1px solid rgba(0,206,201,0.25);
+      color: var(--secondary); font-size: 0.78rem; font-weight: 600; letter-spacing: 0.05em;
+      text-transform: uppercase; margin-bottom: 20px;
+    }
+    .section-title { font-size: clamp(2rem, 4vw, 2.8rem); margin-bottom: 16px; }
+    .section-sub { font-size: 1.05rem; color: var(--muted); max-width: 560px; line-height: 1.7; }
+    .section-header { margin-bottom: 64px; }
+
+    /* ============================================================
+       FEATURES
+    ============================================================ */
+    .features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+    .feature-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 32px;
+      transition: all 0.3s;
+      position: relative; overflow: hidden;
+    }
+    .feature-card::before {
+      content: ''; position: absolute; inset: 0; border-radius: 20px; opacity: 0;
+      background: linear-gradient(135deg, rgba(0,206,201,0.06), rgba(108,92,231,0.04));
+      transition: opacity 0.3s;
+    }
+    .feature-card:hover { transform: translateY(-4px); border-color: rgba(0,206,201,0.3); }
+    .feature-card:hover::before { opacity: 1; }
+    .feature-icon {
+      width: 52px; height: 52px; border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px; margin-bottom: 20px;
+    }
+    .feature-card h3 { font-size: 1.1rem; margin-bottom: 10px; position: relative; }
+    .feature-card p { font-size: 0.875rem; color: var(--muted); line-height: 1.7; position: relative; }
+
+    /* ============================================================
+       HOW IT WORKS
+    ============================================================ */
+    .how-bg { background: linear-gradient(180deg, transparent 0%, rgba(0,206,201,0.03) 50%, transparent 100%); }
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; position: relative; }
+    .steps::before {
+      content: ''; position: absolute;
+      top: 36px; left: calc(16.67% + 20px); right: calc(16.67% + 20px);
+      height: 2px;
+      background: linear-gradient(90deg, var(--secondary), var(--primary));
+      opacity: 0.3;
+    }
+    .step { text-align: center; padding: 0 24px; }
+    .step-number {
+      width: 72px; height: 72px; border-radius: 50%;
+      background: var(--card); border: 2px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 24px; font-size: 1.5rem; font-weight: 800;
+      color: var(--secondary); position: relative; z-index: 1;
+      box-shadow: 0 0 30px rgba(0,206,201,0.15);
+    }
+    .step h3 { font-size: 1.1rem; margin-bottom: 10px; }
+    .step p { font-size: 0.875rem; color: var(--muted); }
+
+    /* ============================================================
+       WHY OPENACE
+    ============================================================ */
+    .why-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; }
+    .why-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 32px;
+      transition: all 0.3s;
+    }
+    .why-card:hover { border-color: rgba(0,206,201,0.3); transform: translateY(-2px); }
+    .why-icon {
+      width: 48px; height: 48px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; margin-bottom: 16px;
+      background: rgba(0,206,201,0.1);
+    }
+    .why-card h3 { font-size: 1.05rem; margin-bottom: 8px; }
+    .why-card p { font-size: 0.875rem; color: var(--muted); line-height: 1.7; }
+
+    /* ============================================================
+       CTA SECTION
+    ============================================================ */
+    .cta-section {
+      text-align: center;
+      background: linear-gradient(135deg, rgba(0,206,201,0.06) 0%, rgba(108,92,231,0.04) 100%);
+      border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+    }
+    .cta-section h2 { font-size: clamp(2rem, 4vw, 2.8rem); margin-bottom: 16px; }
+    .cta-section p { font-size: 1.1rem; color: var(--muted); margin-bottom: 40px; }
+    .cta-buttons { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+
+    /* ============================================================
+       FOOTER
+    ============================================================ */
+    footer { padding: 48px 0 32px; border-top: 1px solid var(--border); }
+    .footer-inner {
+      display: grid; grid-template-columns: 1fr auto 1fr;
+      align-items: center; gap: 16px;
+    }
+    .footer-brand {
+      display: flex; align-items: center;
+      font-weight: 700; font-size: 1rem;
+      text-decoration: none; color: var(--text);
+    }
+    .footer-brand .logo-svg { width: 28px; height: 28px; filter: drop-shadow(0 0 6px var(--cyan-glow)); }
+    .footer-links { display: flex; gap: 24px; justify-self: center; }
+    .footer-links a { color: var(--muted); text-decoration: none; font-size: 0.85rem; transition: color 0.2s; }
+    .footer-links a:hover { color: var(--text); }
+    .footer-copy { color: var(--muted); font-size: 0.8rem; justify-self: end; }
+
+    /* ============================================================
+       SCROLL ANIMATIONS
+    ============================================================ */
+    .reveal {
+      opacity: 0; transform: translateY(30px);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+
+    /* ============================================================
+       RESPONSIVE
+    ============================================================ */
+    @media (max-width: 900px) {
+      .features-grid { grid-template-columns: repeat(2, 1fr); }
+      .steps { grid-template-columns: 1fr; gap: 40px; }
+      .steps::before { display: none; }
+      .why-grid { grid-template-columns: 1fr; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .nav-links { display: none; }
+      .preview-sidebar { display: none; }
+    }
+    @media (max-width: 600px) {
+      .features-grid { grid-template-columns: 1fr; }
+      .hero h1 { font-size: 2.2rem; }
+      .terminal-tab { padding: 8px 14px; font-size: 0.72rem; }
+      .install-steps { grid-template-columns: 1fr; }
+      .install-step { border-right: none; border-bottom: 1px solid var(--border); }
+      .install-step:last-child { border-bottom: none; }
+      .stats-grid { grid-template-columns: 1fr 1fr; gap: 24px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ============================================================
+     NAV
+============================================================ -->
+<nav>
+  <div class="inner">
+    <a href="#" class="nav-brand">Open<span class="cyan-text">Ace</span></a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#how-it-works">How it Works</a>
+      <a href="#why">Why OpenAce</a>
+      <a href="/docs">Docs</a>
+    </div>
+    <div style="display:flex;gap:12px;align-items:center;justify-self:end">
+      <a href="https://github.com/ELikeMed/OpenAce" class="btn btn-ghost" target="_blank">GitHub</a>
+      <a href="#install" class="btn btn-cyan">Get Started</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============================================================
+     HERO
+============================================================ -->
+<section class="hero">
+  <div class="hero-bg"></div>
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+  <div class="hero-grid"></div>
+
+  <div class="container" style="width:100%">
+    <div class="hero-content">
+      <img src="logo.png" alt="OpenAce" style="width:120px;height:120px;margin:0 auto 28px;display:block;filter:drop-shadow(0 0 20px rgba(0,206,201,0.4));animation:fadeInDown 0.5s ease">
+
+      <div class="hero-badge">
+        <div class="dot"></div>
+        Open Source · Free for 45 Days
+      </div>
+
+      <h1>
+        Increase Net Profits<br>
+        <span class="gradient-text">For Your Business</span>
+      </h1>
+
+      <p class="subtitle">
+        OpenAce finds your leads, contacts them, and closes deals — exactly like a top sales teammate would. Increase your profits while you focus on working ON your business.
+      </p>
+
+      <!-- Terminal Install Block -->
+      <div class="terminal" id="install">
+        <div class="terminal-header">
+          <div class="terminal-dots"><span></span><span></span><span></span></div>
+          <div class="terminal-title">Terminal</div>
+          <div style="width:44px"></div>
+        </div>
+        <div class="terminal-tabs">
+          <button class="terminal-tab active" data-os="mac">macOS/Linux</button>
+          <button class="terminal-tab" data-os="win">Windows</button>
+        </div>
+        <div class="terminal-body">
+          <button class="terminal-copy" onclick="copyInstall(this)">Copy</button>
+          <div class="terminal-line" data-cmd="mac">
+            <span class="comment"># One command. Installs everything. Opens automatically.</span>
+          </div>
+          <div class="terminal-line" data-cmd="mac">
+            <span class="prompt">$</span> <span class="cmd">curl -fsSL https://raw.githubusercontent.com/ELikeMed/OpenAce/main/install.sh | bash</span>
+          </div>
+          <div class="terminal-line" data-cmd="win" style="display:none">
+            <span class="comment"># One command. Installs everything. Opens automatically.</span>
+          </div>
+          <div class="terminal-line" data-cmd="win" style="display:none">
+            <span class="prompt">$</span> <span class="cmd">iwr -useb https://raw.githubusercontent.com/ELikeMed/OpenAce/main/install.ps1 | iex</span>
+          </div>
+        </div>
+      </div>
+      <div class="terminal-note">Installs Git + Node.js automatically if needed · Opens in your browser when ready</div>
+
+      <!-- Install Helper Guide -->
+      <div class="install-guide">
+        <button class="install-guide-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+          New to this? Here's how <span class="arrow">&#9660;</span>
+        </button>
+        <div class="install-guide-content">
+          <div class="install-steps" data-guide="mac">
+            <div class="install-step">
+              <div class="install-step-num">1</div>
+              <h4>Open Terminal</h4>
+              <p>Press <kbd>Cmd</kbd> + <kbd>Space</kbd>, type <strong>Terminal</strong>, hit Enter</p>
+            </div>
+            <div class="install-step">
+              <div class="install-step-num">2</div>
+              <h4>Paste & Run</h4>
+              <p>Click <strong>Copy</strong> above, then <kbd>Cmd</kbd> + <kbd>V</kbd> in Terminal, hit Enter</p>
+            </div>
+            <div class="install-step">
+              <div class="install-step-num">3</div>
+              <h4>Done</h4>
+              <p>Ace installs everything and opens in your browser automatically. That's it.</p>
+            </div>
+          </div>
+          <div class="install-steps" data-guide="win" style="display:none">
+            <div class="install-step">
+              <div class="install-step-num">1</div>
+              <h4>Open PowerShell</h4>
+              <p>Press <kbd>Win</kbd>, type <strong>PowerShell</strong>, hit Enter</p>
+            </div>
+            <div class="install-step">
+              <div class="install-step-num">2</div>
+              <h4>Paste & Run</h4>
+              <p>Click <strong>Copy</strong> above, then <kbd>Ctrl</kbd> + <kbd>V</kbd> in PowerShell, hit Enter</p>
+            </div>
+            <div class="install-step">
+              <div class="install-step-num">3</div>
+              <h4>Done</h4>
+              <p>Ace installs everything and opens in your browser automatically. That's it.</p>
+            </div>
+          </div>
+          <div class="install-guide-footer">
+            Want someone to set it up for you? <a href="https://calendly.com/likemindedpro/45min" target="_blank">Book a free setup call</a>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     DASHBOARD PREVIEW
+============================================================ -->
+<section class="preview-section">
+  <div class="container">
+    <div class="hero-preview reveal">
+      <div class="preview-window">
+        <div class="preview-titlebar">
+          <div class="titlebar-dot"></div>
+          <div class="titlebar-dot"></div>
+          <div class="titlebar-dot"></div>
+          <div class="preview-url">localhost:3333 — OpenAce</div>
+        </div>
+        <div class="preview-body">
+          <div class="preview-sidebar">
+            <div style="font-size:0.62rem;color:var(--muted);padding:0 4px 12px;letter-spacing:0.08em;text-transform:uppercase">Navigation</div>
+            <div class="preview-nav-item active"><span class="preview-nav-icon">💬</span> Chat</div>
+            <div class="preview-nav-item"><span class="preview-nav-icon">🔄</span> Routines</div>
+            <div class="preview-nav-item"><span class="preview-nav-icon">📋</span> Processes</div>
+            <div class="preview-nav-item"><span class="preview-nav-icon">💻</span> Coder</div>
+            <div class="preview-nav-item"><span class="preview-nav-icon">👥</span> Organization</div>
+            <div class="preview-nav-item"><span class="preview-nav-icon">📊</span> Pipeline</div>
+            <div class="preview-nav-item"><span class="preview-nav-icon">📁</span> Media & Files</div>
+            <div class="preview-nav-item"><span class="preview-nav-icon">⚙️</span> Settings</div>
+          </div>
+          <div class="preview-main">
+            <div class="preview-chat">
+              <div class="msg user">
+                <div class="msg-bubble">Find property managers in Dallas that need event software</div>
+                <div class="msg-avatar you">E</div>
+              </div>
+              <div class="msg bot">
+                <div class="msg-avatar ace">
+                  <img src="logo.png" alt="Ace" style="width:16px;height:16px;border-radius:2px">
+                </div>
+                <div>
+                  <div class="msg-bubble">
+                    Found <strong>14 leads</strong> in Dallas metro. Added to your pipeline with emails and phone numbers.<br><br>
+                    Top picks: Pinnacle Property Group, DFW Management Co, Lone Star Estate Services.
+                  </div>
+                  <div class="msg-tool">web_search</div>
+                  <div class="msg-tool">save_leads</div>
+                </div>
+              </div>
+              <div class="msg user">
+                <div class="msg-bubble">Email the top 5 with a personalized pitch</div>
+                <div class="msg-avatar you">E</div>
+              </div>
+              <div class="msg bot">
+                <div class="msg-avatar ace">
+                  <img src="logo.png" alt="Ace" style="width:16px;height:16px;border-radius:2px">
+                </div>
+                <div>
+                  <div class="msg-bubble">
+                    5 personalized emails sent. Each one references their portfolio size and current pain points. Moved all to "Contacted" — follow-ups scheduled for Thursday.
+                  </div>
+                  <div class="msg-tool">send_email</div>
+                  <div class="msg-tool">move_lead</div>
+                  <div class="msg-tool">schedule_task</div>
+                </div>
+              </div>
+              <div class="msg bot">
+                <div class="msg-avatar ace">
+                  <img src="logo.png" alt="Ace" style="width:16px;height:16px;border-radius:2px">
+                </div>
+                <div class="typing"><span></span><span></span><span></span></div>
+              </div>
+              <div class="preview-input">
+                <span style="opacity:0.5">Ask Ace anything...</span>
+                <span style="margin-left:auto">↵</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     STATS
+============================================================ -->
+<section class="stats-bar">
+  <div class="container">
+    <div class="stats-grid reveal">
+      <div>
+        <div class="stat-number">24/7</div>
+        <div class="stat-label">Finds & contacts leads while you sleep</div>
+      </div>
+      <div>
+        <div class="stat-number">10x</div>
+        <div class="stat-label">More outreach than a solo founder</div>
+      </div>
+      <div>
+        <div class="stat-number">45</div>
+        <div class="stat-label">Days free — no credit card required</div>
+      </div>
+      <div>
+        <div class="stat-number">100%</div>
+        <div class="stat-label">Your leads, your data, your machine</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     FEATURES
+============================================================ -->
+<section id="features">
+  <div class="container">
+    <div class="section-header reveal">
+      <div class="section-label">How Ace Closes Deals</div>
+      <h2 class="section-title">Your full sales pipeline <span class="gradient-text">on autopilot</span></h2>
+      <p class="section-sub">Ace doesn't just organize — it finds leads, reaches out, follows up, and closes. Like having a top-performing sales teammate who never stops working.</p>
+    </div>
+
+    <div class="features-grid">
+      <div class="feature-card reveal">
+        <div class="feature-icon" style="background:rgba(0,206,201,0.12)">🔍</div>
+        <h3>Finds Your Leads</h3>
+        <p>Tell Ace your target market and it searches the web, finds real businesses with real contact info, and adds them to your pipeline. No manual prospecting.</p>
+      </div>
+
+      <div class="feature-card reveal" style="transition-delay:0.1s">
+        <div class="feature-icon" style="background:rgba(108,92,231,0.12)">📧</div>
+        <h3>Contacts & Follows Up</h3>
+        <p>Ace drafts personalized emails, sends them, and follows up on schedule — exactly how a top salesperson would. No templates, no copy-paste, no forgotten leads.</p>
+      </div>
+
+      <div class="feature-card reveal" style="transition-delay:0.2s">
+        <div class="feature-icon" style="background:rgba(253,121,168,0.12)">📊</div>
+        <h3>Manages Your Pipeline</h3>
+        <p>Every lead tracked from first contact to closed deal. Ace moves stages, flags stale prospects, and tells you exactly who needs attention.</p>
+      </div>
+
+      <div class="feature-card reveal" style="transition-delay:0.05s">
+        <div class="feature-icon" style="background:rgba(0,184,148,0.12)">🔄</div>
+        <h3>Runs While You Sleep</h3>
+        <p>Schedule routines — morning briefings, pipeline grooming, lead follow-ups — that run automatically. Wake up to new leads contacted and deals moving forward.</p>
+      </div>
+
+      <div class="feature-card reveal" style="transition-delay:0.15s">
+        <div class="feature-icon" style="background:rgba(253,203,110,0.12)">💻</div>
+        <h3>Builds What You Need</h3>
+        <p>Need a landing page for a campaign? A contact form? A client portal? Tell Ace and it builds it — full code, live preview, deployed in minutes.</p>
+      </div>
+
+      <div class="feature-card reveal" style="transition-delay:0.25s">
+        <div class="feature-icon" style="background:rgba(116,185,255,0.12)">📱</div>
+        <h3>Drives Inbound Traffic</h3>
+        <p>Draft, schedule, and post across Twitter, LinkedIn, Facebook, Instagram, and TikTok. Create content that brings leads to you while Ace handles outbound.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     HOW IT WORKS
+============================================================ -->
+<section id="how-it-works" class="how-bg">
+  <div class="container">
+    <div class="section-header reveal" style="text-align:center">
+      <div class="section-label">How It Works</div>
+      <h2 class="section-title">Up and running in <span class="gradient-text">under 5 minutes</span></h2>
+      <p class="section-sub" style="margin:0 auto">Install. Tell Ace your market. Watch leads come in, emails go out, and your pipeline fill up.</p>
+    </div>
+
+    <div class="steps">
+      <div class="step reveal">
+        <div class="step-number">1</div>
+        <h3>Install & Launch</h3>
+        <p>One command. 60 seconds. Ace is running on your machine — no accounts, no cloud, no credit card. 45 days completely free.</p>
+      </div>
+      <div class="step reveal" style="transition-delay:0.15s">
+        <div class="step-number">2</div>
+        <h3>Tell Ace Your Market</h3>
+        <p>"Find commercial property managers in Dallas." "Research event planners in Austin." Ace immediately starts hunting for real leads with real contact info.</p>
+      </div>
+      <div class="step reveal" style="transition-delay:0.3s">
+        <div class="step-number">3</div>
+        <h3>Ace Closes the Loop</h3>
+        <p>Leads found. Emails sent. Follow-ups scheduled. Pipeline updated. Ace works the entire sales cycle — just like a top-performing teammate would.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     WHY OPENACE
+============================================================ -->
+<section id="why">
+  <div class="container">
+    <div class="section-header reveal" style="text-align:center">
+      <div class="section-label">Why OpenAce</div>
+      <h2 class="section-title">Not another tool. <span class="gradient-text">A closer.</span></h2>
+      <p class="section-sub" style="margin:0 auto">Most software helps you organize. OpenAce generates revenue. That's the difference.</p>
+    </div>
+
+    <div class="why-grid">
+      <div class="why-card reveal">
+        <div class="why-icon">💰</div>
+        <h3>Generates Profit, Not Busywork</h3>
+        <p>Other tools help you manage tasks. Ace finds leads, sends emails, follows up, and moves deals forward. It works the pipeline so you don't have to.</p>
+      </div>
+      <div class="why-card reveal" style="transition-delay:0.1s">
+        <div class="why-icon">🤝</div>
+        <h3>Sells Like Your Best Teammate</h3>
+        <p>Ace doesn't blast generic templates. It researches each lead, writes personalized outreach, and follows up on the right schedule — like a top salesperson would.</p>
+      </div>
+      <div class="why-card reveal" style="transition-delay:0.15s">
+        <div class="why-icon">🔒</div>
+        <h3>Your Leads. Your Machine.</h3>
+        <p>Runs locally — your lead data, your email history, your pipeline stays on your machine. No one else ever sees it. Free for 45 days, then Ace Credits keep it running.</p>
+      </div>
+      <div class="why-card reveal" style="transition-delay:0.2s">
+        <div class="why-icon">⚡</div>
+        <h3>End-to-End, Not Just Another Step</h3>
+        <p>Most products handle one piece — a CRM, a mailer, a scraper. Ace handles the entire chain: find → contact → follow up → close. One conversation, full cycle.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     CTA / BOTTOM INSTALL
+============================================================ -->
+<section class="cta-section" id="get-started">
+  <div class="container">
+    <div class="reveal">
+      <div class="section-label" style="margin:0 auto 20px;display:inline-flex">Get Started</div>
+      <h2>Your next deal is<br><span class="gradient-text">one install away</span></h2>
+      <p>60 seconds to install. 45 days free. No credit card.</p>
+
+      <!-- Terminal Block (repeated) -->
+      <div class="terminal" style="margin-bottom:16px;animation:none">
+        <div class="terminal-header">
+          <div class="terminal-dots"><span></span><span></span><span></span></div>
+          <div class="terminal-title">Terminal</div>
+          <div style="width:44px"></div>
+        </div>
+        <div class="terminal-tabs">
+          <button class="terminal-tab active" data-os="mac">macOS/Linux</button>
+          <button class="terminal-tab" data-os="win">Windows</button>
+        </div>
+        <div class="terminal-body">
+          <button class="terminal-copy" onclick="copyInstall(this)">Copy</button>
+          <div class="terminal-line" data-cmd="mac">
+            <span class="comment"># One command. Installs everything. Opens automatically.</span>
+          </div>
+          <div class="terminal-line" data-cmd="mac">
+            <span class="prompt">$</span> <span class="cmd">curl -fsSL https://raw.githubusercontent.com/ELikeMed/OpenAce/main/install.sh | bash</span>
+          </div>
+          <div class="terminal-line" data-cmd="win" style="display:none">
+            <span class="comment"># One command. Installs everything. Opens automatically.</span>
+          </div>
+          <div class="terminal-line" data-cmd="win" style="display:none">
+            <span class="prompt">$</span> <span class="cmd">iwr -useb https://raw.githubusercontent.com/ELikeMed/OpenAce/main/install.ps1 | iex</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Compact install helper -->
+      <div class="install-guide" style="animation:none">
+        <button class="install-guide-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+          New to this? Here's how <span class="arrow">&#9660;</span>
+        </button>
+        <div class="install-guide-content">
+          <div class="install-steps" data-guide="mac">
+            <div class="install-step">
+              <div class="install-step-num">1</div>
+              <h4>Open Terminal</h4>
+              <p>Press <kbd>Cmd</kbd> + <kbd>Space</kbd>, type <strong>Terminal</strong>, hit Enter</p>
+            </div>
+            <div class="install-step">
+              <div class="install-step-num">2</div>
+              <h4>Paste & Run</h4>
+              <p>Click <strong>Copy</strong> above, then <kbd>Cmd</kbd> + <kbd>V</kbd> in Terminal, hit Enter</p>
+            </div>
+            <div class="install-step">
+              <div class="install-step-num">3</div>
+              <h4>Done</h4>
+              <p>Ace installs and opens in your browser automatically.</p>
+            </div>
+          </div>
+          <div class="install-steps" data-guide="win" style="display:none">
+            <div class="install-step">
+              <div class="install-step-num">1</div>
+              <h4>Open PowerShell</h4>
+              <p>Press <kbd>Win</kbd>, type <strong>PowerShell</strong>, hit Enter</p>
+            </div>
+            <div class="install-step">
+              <div class="install-step-num">2</div>
+              <h4>Paste & Run</h4>
+              <p>Click <strong>Copy</strong> above, then <kbd>Ctrl</kbd> + <kbd>V</kbd> in PowerShell, hit Enter</p>
+            </div>
+            <div class="install-step">
+              <div class="install-step-num">3</div>
+              <h4>Done</h4>
+              <p>Ace installs and opens in your browser automatically.</p>
+            </div>
+          </div>
+          <div class="install-guide-footer">
+            Want someone to set it up for you? <a href="https://calendly.com/likemindedpro/45min" target="_blank">Book a free setup call</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="cta-buttons" style="margin-top:24px">
+        <a href="https://github.com/ELikeMed/OpenAce" class="btn btn-ghost btn-large" target="_blank">⭐ Star on GitHub</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     FOOTER
+============================================================ -->
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <a href="#" class="footer-brand">Open<span class="cyan-text">Ace</span></a>
+      <div class="footer-links">
+        <a href="https://github.com/ELikeMed/OpenAce" target="_blank">GitHub</a>
+        <a href="#features">Features</a>
+        <a href="#install">Install</a>
+        <a href="https://calendly.com/likemindedpro/45min" target="_blank">Setup Service</a>
+        <a href="mailto:Openaceai@gmail.com?subject=Interested%20in%20Investing%20in%20OpenAce" style="background:linear-gradient(135deg, var(--secondary), #00E6E0);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;font-weight:700">Investors</a>
+      </div>
+      <div class="footer-copy">Made by Eric Greenstein with Ace on OpenAce.</div>
+    </div>
+  </div>
+</footer>
+
+<!-- ============================================================
+     SCRIPTS
+============================================================ -->
+<script>
+  // Scroll reveal
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) entry.target.classList.add('visible');
+    });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+  // Nav shadow on scroll
+  window.addEventListener('scroll', () => {
+    const nav = document.querySelector('nav');
+    nav.style.boxShadow = window.scrollY > 20 ? '0 4px 30px rgba(0,0,0,0.4)' : 'none';
+  });
+
+  // Terminal OS tabs — switch visible command lines + install guide
+  const COMMANDS = {
+    mac: 'curl -fsSL https://raw.githubusercontent.com/ELikeMed/OpenAce/main/install.sh | bash',
+    win: 'iwr -useb https://raw.githubusercontent.com/ELikeMed/OpenAce/main/install.ps1 | iex',
+  };
+
+  document.querySelectorAll('.terminal-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const terminal = tab.closest('.terminal');
+      const tabs = terminal.querySelectorAll('.terminal-tab');
+      const os = tab.dataset.os;
+
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+
+      // Show/hide command lines for selected OS
+      terminal.querySelectorAll('.terminal-line[data-cmd]').forEach(line => {
+        line.style.display = line.dataset.cmd === os ? '' : 'none';
+      });
+
+      // Also switch the install guide steps (find closest guide in same parent container)
+      const parent = terminal.closest('.hero-content') || terminal.closest('.reveal') || terminal.parentElement;
+      const guide = parent.querySelector('.install-guide-content');
+      if (guide) {
+        guide.querySelectorAll('[data-guide]').forEach(g => {
+          g.style.display = g.dataset.guide === os ? '' : 'none';
+        });
+      }
+    });
+  });
+
+  // Copy to clipboard — copies the visible command from the clicked terminal
+  function copyInstall(btn) {
+    const terminal = btn.closest('.terminal');
+    const activeTab = terminal.querySelector('.terminal-tab.active');
+    const os = activeTab ? activeTab.dataset.os : 'mac';
+    const cmd = COMMANDS[os] || COMMANDS.mac;
+
+    navigator.clipboard.writeText(cmd).then(() => {
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+    });
+  }
+</script>
+
+</body>
+</html>

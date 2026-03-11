@@ -63,7 +63,7 @@ PROJECT_OVERVIEW.md
 QUICKSTART.md
 TELEGRAM_SETUP.md
 ace-local.sh
-docs/
+docs/*.md
 ecosystem.config.cjs
 
 # Test/demo scripts (keep start-dashboard, setup, event-monitor, update)
