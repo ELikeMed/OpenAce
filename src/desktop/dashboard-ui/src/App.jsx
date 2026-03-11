@@ -272,11 +272,10 @@ function App() {
     }
   };
 
-  // When CodeAgent creates a project, show a badge on Studio nav item and auto-navigate
+  // When CodeAgent creates a project, show a badge on Studio nav item (don't auto-navigate — let user read chat)
   useEffect(() => {
     const handle = () => {
       setStudioNewBadge(true);
-      setSelectedPage('studio');
     };
     window.addEventListener('ace:project-created', handle);
     return () => window.removeEventListener('ace:project-created', handle);

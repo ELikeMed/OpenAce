@@ -790,6 +790,52 @@ class ProjectManager {
   }
 
   /**
+   * Link an external folder as a Studio project via symlink.
+   * Unlike importFromFolder, this does NOT copy files — it creates a symlink
+   * so edits go directly to the original folder.
+   * @param {string} sourcePath - Absolute path to the source folder
+   * @param {string} projectName - Name for the linked project
+   * @returns {Promise<object>} Project metadata with linked: true
+   */
+  async linkFolder(sourcePath, projectName) {
+    this.validateProjectName(projectName);
+
+    const resolvedSource = path.resolve(sourcePath);
+    if (!existsSync(resolvedSource)) {
+      throw new Error(`Source folder not found: ${sourcePath}`);
+    }
+
+    const stat = await fs.stat(resolvedSource);
+    if (!stat.isDirectory()) {
+      throw new Error(`Source is not a directory: ${sourcePath}`);
+    }
+
+    // Ensure project doesn't already exist
+    let finalName = projectName;
+    let projectDir = path.join(this.projectsDir, finalName);
+    let counter = 2;
+    while (existsSync(projectDir)) {
+      finalName = `${projectName}-${counter}`;
+      projectDir = path.join(this.projectsDir, finalName);
+      counter++;
+    }
+
+    console.log(`[ProjectManager] Linking folder "${resolvedSource}" → "${finalName}"...`);
+    await fs.symlink(resolvedSource, projectDir, 'dir');
+
+    // Auto-detect project type and ensure project.json exists
+    const meta = await this.ensureProjectJson(finalName);
+
+    // Mark as linked in project.json so the UI can show a badge
+    const metaPath = path.join(projectDir, 'project.json');
+    const fullMeta = { ...meta, linked: true, linkedPath: resolvedSource };
+    await fs.writeFile(metaPath, JSON.stringify(fullMeta, null, 2));
+
+    console.log(`[ProjectManager] Folder linked: "${finalName}" → "${resolvedSource}" (${meta.type})`);
+    return { ...fullMeta, name: finalName };
+  }
+
+  /**
    * Recursively copy a directory, skipping node_modules, .git, .DS_Store
    */
   async _copyDir(src, dest) {

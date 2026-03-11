@@ -3,6 +3,7 @@ import {
   Box, Typography, Paper, Button, alpha, Chip, IconButton,
   TextField, InputAdornment, Tooltip, CircularProgress, Divider,
   List, ListItem, ListItemButton, ListItemText, ListItemIcon,
+  Dialog, DialogTitle, DialogContent, DialogActions,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -15,6 +16,7 @@ import ErrorIcon from '@mui/icons-material/Error';
 import FolderIcon from '@mui/icons-material/Folder';
 import DownloadIcon from '@mui/icons-material/Download';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import LinkIcon from '@mui/icons-material/Link';
 import { BRAND } from '../theme';
 
 const API = 'http://localhost:3333';
@@ -44,6 +46,11 @@ export default function Studio({ onNavigate }) {
   const [previewKey, setPreviewKey] = useState(0);
   const [newBadge, setNewBadge] = useState(null); // projectName that was just created
   const iframeRef = useRef(null);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkPath, setLinkPath] = useState('');
+  const [linkName, setLinkName] = useState('');
+  const [linking, setLinking] = useState(false);
+  const [linkError, setLinkError] = useState('');
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -125,6 +132,35 @@ export default function Studio({ onNavigate }) {
     }
   };
 
+  const handleLinkFolder = async () => {
+    if (!linkPath.trim()) return;
+    setLinking(true);
+    setLinkError('');
+    try {
+      const name = linkName.trim() || linkPath.trim().split('/').filter(Boolean).pop() || 'linked-project';
+      const res = await fetch(`${API}/api/projects/link-folder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: linkPath.trim(), name }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setLinkOpen(false);
+        setLinkPath('');
+        setLinkName('');
+        const list = await fetchProjects();
+        const found = list.find(p => p.name === (data.project?.name || name));
+        if (found) handleSelect(found);
+      } else {
+        setLinkError(data.error || 'Failed to link folder');
+      }
+    } catch (e) {
+      setLinkError(e.message);
+    } finally {
+      setLinking(false);
+    }
+  };
+
   const previewUrl = selected ? `/projects/${selected.name}/` : null;
   const editorUrl = `/studio`;
 
@@ -158,6 +194,11 @@ export default function Studio({ onNavigate }) {
                   border: `1px solid ${alpha(BRAND.primary, 0.25)}`,
                 }}
               />
+              <Tooltip title="Link existing folder">
+                <IconButton size="small" onClick={() => setLinkOpen(true)} sx={{ color: BRAND.textMuted }}>
+                  <LinkIcon sx={{ fontSize: 16 }} />
+                </IconButton>
+              </Tooltip>
               <Tooltip title="Refresh list">
                 <IconButton size="small" onClick={fetchProjects} sx={{ color: BRAND.textMuted }}>
                   <RefreshIcon sx={{ fontSize: 16 }} />
@@ -246,16 +287,32 @@ export default function Studio({ onNavigate }) {
                           </Box>
                         }
                         secondary={
-                          <Chip
-                            label={getTypeStyle(project.type).label}
-                            size="small"
-                            sx={{
-                              mt: 0.5, height: 18, fontSize: '0.65rem',
-                              background: typeStyle.bg,
-                              color: typeStyle.text,
-                              border: 'none',
-                            }}
-                          />
+                          <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5, flexWrap: 'wrap' }}>
+                            <Chip
+                              label={getTypeStyle(project.type).label}
+                              size="small"
+                              sx={{
+                                height: 18, fontSize: '0.65rem',
+                                background: typeStyle.bg,
+                                color: typeStyle.text,
+                                border: 'none',
+                              }}
+                            />
+                            {project.linked && (
+                              <Chip
+                                icon={<LinkIcon sx={{ fontSize: '10px !important' }} />}
+                                label="Linked"
+                                size="small"
+                                sx={{
+                                  height: 18, fontSize: '0.6rem',
+                                  background: alpha(BRAND.secondary, 0.12),
+                                  color: BRAND.secondary,
+                                  border: 'none',
+                                  '& .MuiChip-label': { px: 0.5 },
+                                }}
+                              />
+                            )}
+                          </Box>
                         }
                       />
                     </ListItemButton>
@@ -438,6 +495,78 @@ export default function Studio({ onNavigate }) {
           )}
         </Paper>
       </Box>
+
+      {/* Link Folder Dialog */}
+      <Dialog
+        open={linkOpen}
+        onClose={() => { setLinkOpen(false); setLinkError(''); }}
+        PaperProps={{
+          sx: {
+            background: BRAND.bgCard,
+            border: `1px solid ${BRAND.border}`,
+            borderRadius: '14px',
+            minWidth: 420,
+          }
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', pb: 0.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <LinkIcon sx={{ color: BRAND.secondary }} />
+            Link Existing Folder
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="caption" sx={{ color: BRAND.textMuted, display: 'block', mb: 2 }}>
+            Link an app or codebase from your computer. Ace can read, edit, and deploy it — changes go directly to the original folder.
+          </Typography>
+          <TextField
+            fullWidth
+            size="small"
+            label="Folder path"
+            placeholder="/Users/you/my-app"
+            value={linkPath}
+            onChange={e => setLinkPath(e.target.value)}
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            fullWidth
+            size="small"
+            label="Project name (optional)"
+            placeholder="Auto-detected from folder name"
+            value={linkName}
+            onChange={e => setLinkName(e.target.value)}
+          />
+          {linkError && (
+            <Typography sx={{ mt: 1.5, fontSize: '0.8rem', color: BRAND.error }}>
+              {linkError}
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => { setLinkOpen(false); setLinkError(''); }}
+            size="small"
+            sx={{ color: BRAND.textMuted }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={handleLinkFolder}
+            disabled={!linkPath.trim() || linking}
+            startIcon={linking ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <LinkIcon />}
+            sx={{
+              background: `linear-gradient(135deg, ${BRAND.secondary}, ${BRAND.primary})`,
+              fontWeight: 600,
+              textTransform: 'none',
+              '&:hover': { background: `linear-gradient(135deg, ${BRAND.primary}, ${BRAND.secondary})` },
+            }}
+          >
+            {linking ? 'Linking...' : 'Link Project'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

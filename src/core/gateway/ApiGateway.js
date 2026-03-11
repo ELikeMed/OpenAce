@@ -2714,6 +2714,24 @@ export class ApiGateway {
         res.status(status).json({ success: false, error: err.message });
       }
     }));
+
+    // POST /api/projects/link-folder — Link an external folder as a project (symlink, no copy)
+    this.app.post('/api/projects/link-folder', this.wrap(async (req, res) => {
+      if (!this.ace?.projectManager) {
+        return res.status(500).json({ success: false, error: 'ProjectManager not initialized' });
+      }
+      try {
+        const { path: folderPath, name } = req.body;
+        if (!folderPath || !name) {
+          return res.status(400).json({ success: false, error: 'Missing "path" and/or "name" in request body' });
+        }
+        const project = await this.ace.projectManager.linkFolder(folderPath, name);
+        res.json({ success: true, project });
+      } catch (err) {
+        const status = err.message.includes('not found') ? 404 : err.message.includes('Invalid') ? 400 : 500;
+        res.status(status).json({ success: false, error: err.message });
+      }
+    }));
   }
 
   // ═══════════════════════════════════════════════════════

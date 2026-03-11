@@ -1933,6 +1933,7 @@ When you're struggling with a task and can't figure it out after multiple attemp
 
   async process(message, conversationHistory, channelContext = {}) {
     this.resetAbort(); // Clear any previous abort signal
+    this._createdProject = null; // Track project creation for client notification
     const thinking = ['🧠 UnifiedAgent processing...'];
     this._currentConversationId = channelContext.channelId || channelContext.conversationId || '';
 
@@ -2338,10 +2339,17 @@ When you're struggling with a task and can't figure it out after multiple attemp
 
       thinking.push('Response generated');
 
+      // Include project creation data so the client can show notifications
+      const responseData = {};
+      if (this._createdProject) {
+        responseData.projectName = this._createdProject;
+        responseData.studioUrl = `/studio?project=${this._createdProject}`;
+      }
+
       return {
         text: parsed.cleanText,
         actions: [],
-        data: {},
+        data: responseData,
         thinking,
         toolsUsed: [...new Set(toolsCalled)],
         question: question,
@@ -3875,6 +3883,7 @@ When you're struggling with a task and can't figure it out after multiple attemp
         );
 
         this.onProgress(`Project "${projectName}" created with ${results.length} files`);
+        this._createdProject = projectName; // Signal to process() for client notification
         return JSON.stringify({
           success: true,
           projectName,
@@ -3893,6 +3902,7 @@ When you're struggling with a task and can't figure it out after multiple attemp
           description,
           title: name.replace(/-/g, ' '),
         });
+        this._createdProject = result.projectName; // Signal to process() for client notification
         return JSON.stringify({
           ...result,
           studioUrl: `/studio?project=${result.projectName}`,
@@ -3910,6 +3920,7 @@ When you're struggling with a task and can't figure it out after multiple attemp
           updated: new Date().toISOString(), framework: 'vanilla', entryPoint: 'index.html', status: 'active'
         }, null, 2));
         this.onProgress(`Created placeholder project "${projectName}" (scaffolding failed: ${scaffoldErr.message})`);
+        this._createdProject = projectName; // Signal to process() for client notification
         return JSON.stringify({
           success: true, projectName, studioUrl: `/studio?project=${projectName}`,
           message: `Project "${projectName}" created with a placeholder. Open Studio to start building.`,

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import {
   Box, TextField, Button, Paper, Typography, Avatar, alpha, IconButton, Chip,
-  Checkbox, Select, MenuItem, CircularProgress, LinearProgress, Tooltip,
+  Checkbox, Select, MenuItem, CircularProgress, LinearProgress, Tooltip, Snackbar,
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import AceSpadeIcon from './components/AceSpadeIcon';
@@ -1260,6 +1260,7 @@ function Chat() {
   const textFieldRef = useRef(null);
   const abortControllerRef = useRef(null);
   const [bizProfile, setBizProfile] = useState(null);
+  const [projectToast, setProjectToast] = useState(null); // { name } — shows "Project ready in Studio!"
 
   // Fetch active business profile for personalized suggestions
   useEffect(() => {
@@ -2067,6 +2068,7 @@ function Chat() {
               const createdProject = data?.data?.projectName || data?.projectName;
               if (createdProject) {
                 window.dispatchEvent(new CustomEvent('ace:project-created', { detail: { projectName: createdProject } }));
+                setProjectToast({ name: createdProject });
               }
             }
             if (event.type === 'error') {
@@ -2211,6 +2213,7 @@ function Chat() {
                 window.dispatchEvent(new CustomEvent('ace:project-created', {
                   detail: { projectName: createdProject }
                 }));
+                setProjectToast({ name: createdProject });
               }
             }
 
@@ -2958,6 +2961,37 @@ function Chat() {
           </Box>
         </Paper>
       </Box>
+
+      {/* Project created toast */}
+      <Snackbar
+        open={!!projectToast}
+        autoHideDuration={8000}
+        onClose={() => setProjectToast(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        message={projectToast ? `Project "${projectToast.name}" is ready!` : ''}
+        action={
+          <Button
+            size="small"
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('ace:navigate', { detail: { page: 'studio' } }));
+              setProjectToast(null);
+            }}
+            sx={{ color: BRAND.secondary, fontWeight: 700, textTransform: 'none' }}
+          >
+            Open in Studio
+          </Button>
+        }
+        slotProps={{ content: {
+          sx: {
+            background: BRAND.bgCard,
+            border: `1px solid ${alpha(BRAND.secondary, 0.3)}`,
+            borderRadius: '12px',
+            color: BRAND.textPrimary,
+            fontWeight: 500,
+            boxShadow: `0 8px 24px ${alpha('#000', 0.4)}`,
+          }
+        } }}
+      />
     </Box>
   );
 }
