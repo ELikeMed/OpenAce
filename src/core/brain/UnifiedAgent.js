@@ -98,7 +98,7 @@ export class UnifiedAgent {
       memory:    { name: 'Memory',            tools: ['save_note', 'recall_notes', 'recall_research', 'get_site_memory'], description: 'Save and recall notes, research, and site knowledge', alwaysOn: true },
       research:  { name: 'Research',           tools: ['web_search', 'read_webpage'], description: 'Search the web and read pages' },
       browser:   { name: 'Browser Control',    tools: ['open_browser', 'browser_click', 'browser_type', 'take_screenshot', 'scroll_page', 'read_screen', 'extract_page_data', 'go_back', 'browse_and_extract'], description: 'Control Chrome browser with AI vision' },
-      pipeline:  { name: 'Pipeline / CRM',     tools: ['save_leads', 'get_pipeline', 'move_lead'], description: 'Manage leads and sales pipeline' },
+      pipeline:  { name: 'Pipeline / CRM',     tools: ['save_leads', 'get_pipeline', 'move_lead', 'set_lead_dnc'], description: 'Manage leads and sales pipeline' },
       email:     { name: 'Email',              tools: ['send_email'], description: 'Send emails via Gmail' },
       phone:     { name: 'Phone / SMS',        tools: ['send_sms', 'make_call', 'dispatch_phone_call'], description: 'Send SMS and make phone calls via Twilio or AI agents' },
       contacts:  { name: 'Contacts',           tools: ['manage_contacts'], description: 'Manage contact book' },
@@ -398,6 +398,20 @@ export class UnifiedAgent {
             note: { type: 'STRING', description: 'Optional note about why the lead was moved (e.g. "Sent partnership email")' }
           },
           required: ['lead_id', 'stage']
+        }
+      });
+
+      declarations.push({
+        name: 'set_lead_dnc',
+        description: 'Toggle the do-not-contact flag on a lead. When enabled, Ace will NOT email this lead and will skip them in routines. Use when the user says "don\'t contact this lead", "mark as do not contact", "protect this contact from outreach", or when you notice a form-submission lead that shouldn\'t receive sales emails.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            lead_id: { type: 'STRING', description: 'The lead ID (e.g. "lead-1772214124769")' },
+            do_not_contact: { type: 'BOOLEAN', description: 'true to block outreach, false to allow it' },
+            reason: { type: 'STRING', description: 'Why this lead is being flagged (e.g. "Form respondent, not a sales lead")' }
+          },
+          required: ['lead_id', 'do_not_contact']
         }
       });
     }
@@ -969,7 +983,7 @@ export class UnifiedAgent {
       memory:    ['save_note', 'recall_notes', 'recall_research', 'get_site_memory'],
       research:  ['web_search', 'read_webpage'],
       browser:   ['open_browser', 'browser_click', 'browser_type', 'take_screenshot', 'scroll_page', 'read_screen', 'extract_page_data', 'go_back', 'browse_and_extract'],
-      pipeline:  ['save_leads', 'get_pipeline', 'move_lead'],
+      pipeline:  ['save_leads', 'get_pipeline', 'move_lead', 'set_lead_dnc'],
       email:     ['send_email'],
       phone:     ['send_sms', 'make_call', 'dispatch_phone_call'],
       contacts:  ['manage_contacts'],
@@ -989,7 +1003,7 @@ export class UnifiedAgent {
     const triggers = [
       { group: 'browser',   patterns: [/\bgo to\b/, /\bopen\b/, /\bvisit\b/, /\bbrowse\b/, /\bclick\b/, /\bnavigate\b/, /\bpull up\b/, /https?:\/\//, /\.com\b/, /\.org\b/, /\.io\b/] },
       { group: 'research',  patterns: [/\bsearch\b/, /\bfind\b/, /\blook\s*up\b/, /\bresearch\b/, /\bgoogle\b/, /\binvestigate\b/, /\blook into\b/] },
-      { group: 'pipeline',  patterns: [/\blead/i, /\bpipeline\b/, /\bprospect/i, /\bcrm\b/, /\bsave.*lead/i] },
+      { group: 'pipeline',  patterns: [/\blead/i, /\bpipeline\b/, /\bprospect/i, /\bcrm\b/, /\bsave.*lead/i, /\bdo.?not.?contact/i, /\bdnc\b/i, /\bdon'?t contact/i] },
       { group: 'email',     patterns: [/\bemail\b/, /\bsend\b.*\b(message|note|mail)\b/, /\breach out\b/, /\bcontact.*@/, /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/] },
       { group: 'phone',     patterns: [/\bsms\b/, /\btext\b/, /\bcall\b/, /\bphone\b/, /\btwilio\b/, /\bdial\b/, /\bring\b/, /\bvoice\b/, /\bvapi\b/, /\bbland\b/, /\bretell\b/] },
       { group: 'contacts',  patterns: [/\bcontact/i] },
@@ -1245,6 +1259,7 @@ When calling create_calendar_event, you MUST pass start_time as an ISO 8601 stri
 - **send_email**: Send email via Gmail SMTP. Use when asked to email findings or contact someone.
 - **save_leads / get_pipeline**: CRM/pipeline management. Save research as leads.
 - **move_lead**: Move a lead between pipeline stages (new → contacted → qualified → proposal → negotiation → won/lost).
+- **set_lead_dnc**: Toggle do-not-contact on a lead. Protected leads cannot be emailed and are skipped in routines. Use when user says "don't contact them" or when form-submission leads shouldn't get sales outreach.
 - **manage_contacts**: Add, search, or list contacts.
 - **schedule_task**: Create recurring scheduled tasks.
 - **manage_goals**: Track active missions. ALWAYS create a goal when the user describes an ongoing objective — "find me 10 leads", "research companies in Dallas", "your mission is...", "every day find...", "I need you to get me X". You do NOT need the word "mission" or "goal" — any request for repeated/ongoing work should become a tracked goal. When you save leads or complete work, update progress.
@@ -1588,11 +1603,19 @@ You manage a sales/outreach pipeline. Leads move through stages as you take acti
 - When you send an email to a lead's email address, the lead automatically moves to "contacted."
 - You don't need to call move_lead separately after sending an email — it happens automatically.
 
+**Do-not-contact protection:**
+- Some leads are marked "do not contact" — you CANNOT email them (the system will block it).
+- These leads are automatically skipped in pipeline routines and grooming.
+- Before batch emailing, check get_pipeline for any do_not_contact leads and skip them.
+- If you see leads from forms/surveys (source starts with "form:"), ask the user: "I see some contacts from your [form name]. Should I skip those or include them in the outreach?"
+- User can say "don't contact them" or "mark as do not contact" → use set_lead_dnc.
+
 **Manual movement — when the user asks:**
-- "Contact those leads" → For each lead: send_email (auto-moves to contacted).
+- "Contact those leads" → For each lead: check DNC flag first, then send_email (auto-moves to contacted).
 - "Mark that lead as qualified" → call move_lead with stage "qualified."
 - "We lost that deal" → call move_lead with stage "lost."
 - "Send them a proposal" → send_email with proposal + call move_lead to "proposal."
+- "Don't contact that person" → call set_lead_dnc with do_not_contact: true.
 
 **When contacting multiple leads:**
 - Go through leads one by one. For each: get their email from get_pipeline, send the email, confirm to the user.
@@ -2362,6 +2385,7 @@ When you're struggling with a task and can't figure it out after multiple attemp
       case 'save_leads': return await this._toolSaveLeads(args);
       case 'get_pipeline': return await this._toolGetPipeline(args);
       case 'move_lead': return await this._toolMoveLead(args);
+      case 'set_lead_dnc': return await this._toolSetLeadDNC(args);
       case 'manage_contacts': return await this._toolManageContacts(args);
       case 'schedule_task': return await this._toolScheduleTask(args);
       case 'manage_goals': return await this._toolManageGoals(args);
@@ -2701,6 +2725,23 @@ When you're struggling with a task and can't figure it out after multiple attemp
     const { to, subject, body, html } = args;
     this.onProgress(`Sending email to ${to}`);
 
+    // Hard block: check if this email belongs to a do-not-contact lead
+    const pm = this.subsystems.pipelineManager;
+    if (pm?.pipeline?.leads) {
+      const dncLead = pm.pipeline.leads.find(l =>
+        l.email && l.email.toLowerCase() === to.toLowerCase() && l.do_not_contact
+      );
+      if (dncLead) {
+        this.onProgress(`Blocked: ${dncLead.company} is marked do-not-contact`);
+        return JSON.stringify({
+          error: `Cannot email ${to} — "${dncLead.company}" is marked as do-not-contact. Remove the flag first if you want to reach out.`,
+          blocked: true,
+          leadId: dncLead.id,
+          company: dncLead.company
+        });
+      }
+    }
+
     try {
       const smtp = new GmailSMTPService();
       await smtp.initialize();
@@ -2935,6 +2976,21 @@ When you're struggling with a task and can't figure it out after multiple attemp
       }
       this.onProgress(`Lead moved to "${stage}"`);
       return JSON.stringify({ success: true, lead_id, newStage: stage });
+    } catch (e) {
+      return JSON.stringify({ error: e.message });
+    }
+  }
+
+  async _toolSetLeadDNC(args) {
+    const pm = this.subsystems.pipelineManager;
+    if (!pm) return JSON.stringify({ error: 'Pipeline not available' });
+
+    const { lead_id, do_not_contact, reason } = args;
+    try {
+      const lead = await pm.setDoNotContact(lead_id, do_not_contact, reason);
+      const status = do_not_contact ? 'protected from outreach' : 'cleared for outreach';
+      this.onProgress(`"${lead.company}" ${status}`);
+      return JSON.stringify({ success: true, lead_id, company: lead.company, do_not_contact: lead.do_not_contact, status });
     } catch (e) {
       return JSON.stringify({ error: e.message });
     }
@@ -5192,7 +5248,7 @@ When you're struggling with a task and can't figure it out after multiple attemp
       web_search: 'research', read_webpage: 'research', recall_research: 'research',
       get_site_memory: 'research',
       send_email: 'email',
-      save_leads: 'pipeline', get_pipeline: 'pipeline', move_lead: 'pipeline',
+      save_leads: 'pipeline', get_pipeline: 'pipeline', move_lead: 'pipeline', set_lead_dnc: 'pipeline',
       list_sops: 'sop', update_sop: 'sop', create_sop: 'sop', run_sop: 'sop',
     };
     return map[toolName] || 'other';

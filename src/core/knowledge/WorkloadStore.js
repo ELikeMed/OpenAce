@@ -183,6 +183,7 @@ export class WorkloadStore {
     this.indexPath = path.join(dataDir, 'index.json');
     this.sources = [];
     this.media = []; // { id, filename, path, type, size, tags, description, addedAt }
+    this.removedMediaPaths = []; // Paths user removed — skip on rescan
     this.idf = {};
     this.totalChunks = 0;
     this._allTokenSets = []; // For IDF rebuilding
@@ -211,9 +212,11 @@ export class WorkloadStore {
       const parsed = JSON.parse(data);
       this.sources = parsed.sources || [];
       this.media = parsed.media || [];
+      this.removedMediaPaths = parsed.removedMediaPaths || [];
     } catch {
       this.sources = [];
       this.media = [];
+      this.removedMediaPaths = [];
     }
   }
 
@@ -221,7 +224,8 @@ export class WorkloadStore {
     await fs.writeFile(this.indexPath, JSON.stringify({
       version: '1.0.0',
       sources: this.sources,
-      media: this.media
+      media: this.media,
+      removedMediaPaths: this.removedMediaPaths
     }, null, 2));
   }
 
@@ -301,9 +305,9 @@ export class WorkloadStore {
 
     if (ext === '.pdf') {
       try {
-        const pdfParse = await import('pdf-parse');
-        const pdf = pdfParse.default || pdfParse;
-        const result = await pdf(buffer);
+        const { PDFParse } = await import('pdf-parse');
+        const parser = new PDFParse({ data: buffer });
+        const result = await parser.getText();
         return result.text || '';
       } catch (e) {
         console.warn(`[WorkloadStore] PDF parse failed: ${e.message}`);
@@ -1067,7 +1071,9 @@ export class WorkloadStore {
       }
     }
 
-    this.media = scanned;
+    // Keep external files (from scanMediaFolder) that aren't in our mediaDir
+    const externalMedia = this.media.filter(m => !m.path.startsWith(this.mediaDir));
+    this.media = [...scanned, ...externalMedia];
     await this._saveIndex();
   }
 
@@ -1083,6 +1089,7 @@ export class WorkloadStore {
     }
 
     const existingByPath = new Map(this.media.map(m => [m.path, m]));
+    const removedSet = new Set(this.removedMediaPaths);
     let added = 0;
 
     for (const entry of entries) {
@@ -1092,6 +1099,7 @@ export class WorkloadStore {
 
       const fullPath = path.join(folderPath, entry.name);
       if (existingByPath.has(fullPath)) continue; // Already indexed
+      if (removedSet.has(fullPath)) continue; // User removed this
 
       let stat;
       try { stat = await fs.stat(fullPath); } catch { continue; }
@@ -1135,9 +1143,25 @@ export class WorkloadStore {
   }
 
   /**
-   * Remove a media file from the index (doesn't delete the file from disk).
+   * Remove a media file. If uploaded to our media dir, deletes the copy.
+   * If scanned from an external folder, just removes from index and remembers
+   * the path so rescan won't re-add it.
    */
   async removeMedia(mediaId) {
+    const item = this.media.find(m => m.id === mediaId);
+    if (!item) return;
+
+    const isOurCopy = item.path.startsWith(this.mediaDir);
+    if (isOurCopy) {
+      // Safe to delete — it's our copy in data/workload/media/
+      try { await fs.unlink(item.path); } catch {}
+    } else {
+      // External file — don't delete, but remember so rescan skips it
+      if (!this.removedMediaPaths.includes(item.path)) {
+        this.removedMediaPaths.push(item.path);
+      }
+    }
+
     this.media = this.media.filter(m => m.id !== mediaId);
     await this._saveIndex();
   }

@@ -2416,9 +2416,22 @@ function Chat() {
                 <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
                   Ace Is Ready to Close Deals
                 </Typography>
-                <Typography variant="body2" sx={{ color: BRAND.textMuted, mb: 3, fontSize: '0.95rem', maxWidth: 500, mx: 'auto' }}>
+                <Typography variant="body2" sx={{ color: BRAND.textMuted, mb: 2, fontSize: '0.95rem', maxWidth: 500, mx: 'auto' }}>
                   Tell Ace who your ideal customer is and watch it find leads, reach out, follow up, and move deals through your pipeline — all from this chat.
                 </Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => window.dispatchEvent(new CustomEvent('ace:start-tour'))}
+                  sx={{
+                    mb: 3, fontSize: '0.78rem', textTransform: 'none',
+                    borderColor: alpha(BRAND.primary, 0.3),
+                    color: BRAND.primaryLight,
+                    '&:hover': { borderColor: BRAND.primary, background: alpha(BRAND.primary, 0.08) },
+                  }}
+                >
+                  Take a Tour
+                </Button>
 
                 {/* ═══ Get Ace Running — Guided Setup ═══ */}
                 {setupSteps.filter(s => !completedSetup.includes(s.id)).length > 0 && (

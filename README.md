@@ -22,7 +22,7 @@ OpenAce is an open-source AI Chief of Staff that runs locally on your machine. I
 
 ```bash
 # Clone the repo
-git clone https://github.com/anthropics/OpenAce.git
+git clone https://github.com/ELikeMed/OpenAce.git
 cd OpenAce
 
 # Install dependencies

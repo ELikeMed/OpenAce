@@ -3211,6 +3211,46 @@ export class ApiGateway {
       }
     }));
 
+    // Upload media files (images, videos) directly via browser
+    this.app.post('/api/workload/media/upload', this.wrap(async (req, res) => {
+      const store = this.ace?.workloadStore;
+      if (!store) return res.json({ success: false, error: 'WorkloadStore not initialized' });
+
+      const filename = decodeURIComponent(req.headers['x-filename'] || `upload_${Date.now()}.jpg`);
+      const chunks = [];
+      req.on('data', chunk => chunks.push(chunk));
+      await new Promise((resolve, reject) => { req.on('end', resolve); req.on('error', reject); });
+      const buffer = Buffer.concat(chunks);
+
+      if (!buffer.length) return res.json({ success: false, error: 'Empty file' });
+
+      const path = await import('path');
+      const fs = await import('fs/promises');
+      const ext = path.default.extname(filename).toLowerCase();
+
+      // Validate it's a media file
+      const mediaExts = new Set([
+        '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bmp',
+        '.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v',
+        '.mp3', '.wav', '.ogg', '.m4a'
+      ]);
+      if (!mediaExts.has(ext)) {
+        return res.json({ success: false, error: `Unsupported media type: ${ext}. Use the file upload for documents.` });
+      }
+
+      // Save to media directory
+      const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const destPath = path.default.join(store.mediaDir, safeName);
+      await fs.default.mkdir(store.mediaDir, { recursive: true });
+      await fs.default.writeFile(destPath, buffer);
+
+      // Re-scan to pick it up
+      await store.scanMedia();
+
+      const added = store.media.find(m => m.path === destPath);
+      res.json({ success: true, data: { filename: safeName, path: destPath, media: added || null } });
+    }));
+
     // Update media tags/description
     this.app.put('/api/workload/media/:id', this.wrap(async (req, res) => {
       const store = this.ace?.workloadStore;

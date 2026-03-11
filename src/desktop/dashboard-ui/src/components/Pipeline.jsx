@@ -27,6 +27,7 @@ import NoteAddIcon from '@mui/icons-material/NoteAdd';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import LocalOfferIcon from '@mui/icons-material/LocalOffer';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
+import BlockIcon from '@mui/icons-material/Block';
 import { BRAND } from '../theme';
 
 const STAGE_COLORS = {
@@ -187,6 +188,20 @@ function LeadDetailDrawer({ leadId, open, onClose, leadStages, onLeadUpdated }) 
     } catch (e) { console.error(e); }
   };
 
+  const handleToggleDNC = async () => {
+    if (!lead) return;
+    const newValue = !lead.do_not_contact;
+    try {
+      await fetch(`/api/pipeline/leads/${leadId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ do_not_contact: newValue }),
+      });
+      setLead(prev => ({ ...prev, do_not_contact: newValue }));
+      onLeadUpdated?.();
+    } catch (e) { console.error(e); }
+  };
+
   const initials = (lead?.company || '?').slice(0, 2).toUpperCase();
   const formData = lead?.formData;
 
@@ -319,6 +334,40 @@ function LeadDetailDrawer({ leadId, open, onClose, leadStages, onLeadUpdated }) 
                 )}
               </Paper>
             </Box>
+
+            {/* Do Not Contact Toggle */}
+            <Paper
+              onClick={handleToggleDNC}
+              sx={{
+                p: 1.5, display: 'flex', alignItems: 'center', gap: 1.5, cursor: 'pointer',
+                background: lead.do_not_contact ? alpha(BRAND.error, 0.08) : alpha(BRAND.bgSurface, 0.5),
+                border: `1px solid ${lead.do_not_contact ? alpha(BRAND.error, 0.3) : 'transparent'}`,
+                transition: 'all 0.2s',
+                '&:hover': { background: lead.do_not_contact ? alpha(BRAND.error, 0.12) : alpha(BRAND.bgSurface, 0.8) },
+              }}
+            >
+              <BlockIcon sx={{ fontSize: 18, color: lead.do_not_contact ? BRAND.error : BRAND.textMuted }} />
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.82rem', color: lead.do_not_contact ? BRAND.error : BRAND.textSecondary }}>
+                  Do Not Contact
+                </Typography>
+                <Typography variant="caption" sx={{ color: BRAND.textMuted }}>
+                  {lead.do_not_contact ? 'Ace will not email or include this lead in routines' : 'Click to protect this contact from outreach'}
+                </Typography>
+              </Box>
+              <Box sx={{
+                width: 36, height: 20, borderRadius: 10, position: 'relative',
+                background: lead.do_not_contact ? BRAND.error : alpha(BRAND.textMuted, 0.3),
+                transition: 'background 0.2s',
+              }}>
+                <Box sx={{
+                  width: 16, height: 16, borderRadius: '50%', background: '#fff',
+                  position: 'absolute', top: 2,
+                  left: lead.do_not_contact ? 18 : 2,
+                  transition: 'left 0.2s',
+                }} />
+              </Box>
+            </Paper>
 
             {/* Stage */}
             <Box>
@@ -790,9 +839,16 @@ function LeadsTable({ leads, leadStages, onMove, onDelete, onLeadClick }) {
                 }}
               >
                 <TableCell>
-                  <Typography variant="body2" sx={{ fontWeight: 600, color: BRAND.textPrimary }}>
-                    {lead.company || 'Unknown'}
-                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: BRAND.textPrimary }}>
+                      {lead.company || 'Unknown'}
+                    </Typography>
+                    {lead.do_not_contact && (
+                      <Tooltip title="Do Not Contact">
+                        <BlockIcon sx={{ fontSize: 14, color: BRAND.error }} />
+                      </Tooltip>
+                    )}
+                  </Box>
                   {lead.notes && lead.notes.length > 0 && (
                     <Tooltip title={lead.notes.join(' | ')} arrow>
                       <Typography variant="caption" sx={{

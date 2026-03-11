@@ -46,6 +46,7 @@ import ExtensionIcon from '@mui/icons-material/Extension';
 
 import Workload from './components/Workload';
 import Integrations from './components/Integrations';
+import GuidedTour from './components/GuidedTour';
 
 
 const API = 'http://localhost:3333';
@@ -88,11 +89,18 @@ function App() {
   const [updateProgress, setUpdateProgress] = useState([]); // [{ step, status, detail }]
   const [updating, setUpdating] = useState(false);
 
+  // Setup service modal
+  const [setupModalOpen, setSetupModalOpen] = useState(false);
+
   // Feedback state
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackType, setFeedbackType] = useState('general');
   const [feedbackMsg, setFeedbackMsg] = useState('');
   const [feedbackSnack, setFeedbackSnack] = useState('');
+
+  // Guided tour state
+  const [tourActive, setTourActive] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   // Global recording overlay state
   const [recordingState, setRecordingState] = useState(null); // null | { stepNum, mode, state: 'recording'|'saving'|'saved' }
@@ -290,6 +298,13 @@ function App() {
     return () => window.removeEventListener('ace:navigate', handle);
   }, []);
 
+  // Start guided tour event (from Chat welcome screen or help popover)
+  useEffect(() => {
+    const handle = () => setTourActive(true);
+    window.addEventListener('ace:start-tour', handle);
+    return () => window.removeEventListener('ace:start-tour', handle);
+  }, []);
+
   const currentWidth = collapsed ? collapsedWidth : drawerWidth;
 
   // All pages rendered but hidden — preserves state (chat messages, events, etc.)
@@ -415,6 +430,7 @@ function App() {
                 <ListItem key={item.id} disablePadding sx={{ px: collapsed ? 0.5 : 0 }}>
                   <Tooltip title={collapsed ? item.text : ''} placement="right" arrow>
                     <ListItemButton
+                      data-tour-tab={item.id}
                       onClick={() => {
                         setSelectedPage(item.id);
                         if (item.id === 'studio') setStudioNewBadge(false);
@@ -546,6 +562,18 @@ function App() {
                   }}
                 >
                   openaceai@gmail.com
+                </Typography>
+                <Typography
+                  component="span"
+                  onClick={() => setSetupModalOpen(true)}
+                  sx={{
+                    fontSize: '0.58rem', color: alpha(BRAND.textMuted, 0.6),
+                    textDecoration: 'none', display: 'block', mt: 0.5,
+                    cursor: 'pointer',
+                    '&:hover': { color: BRAND.secondary },
+                  }}
+                >
+                  Need setup help?
                 </Typography>
               </Box>
             )}
@@ -854,6 +882,16 @@ function App() {
         )}
       </Box>
 
+      {/* Guided Tour + Help Button */}
+      <GuidedTour
+        active={tourActive}
+        onClose={() => setTourActive(false)}
+        onNavigate={(tabId) => setSelectedPage(tabId)}
+        currentPage={selectedPage}
+        helpOpen={helpOpen}
+        onHelpToggle={() => setHelpOpen(!helpOpen)}
+      />
+
       {/* Update Progress Dialog */}
       <Dialog
         open={updateDialogOpen}
@@ -1063,6 +1101,133 @@ function App() {
           <Button onClick={() => setCreditModalOpen(false)} size="small">Close</Button>
           <Button onClick={() => { setCreditModalOpen(false); setSelectedPage('settings'); }} size="small">
             Billing Settings
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ═══ Setup Service Modal ═══ */}
+      <Dialog
+        open={setupModalOpen}
+        onClose={() => setSetupModalOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            background: BRAND.bgCard, borderRadius: '16px',
+            border: `1px solid ${alpha(BRAND.primary, 0.15)}`,
+          },
+        }}
+      >
+        <DialogTitle sx={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          pb: 0.5,
+        }}>
+          <Typography sx={{ fontWeight: 700, fontSize: '1.1rem' }}>
+            Setup Service
+          </Typography>
+          <IconButton size="small" onClick={() => setSetupModalOpen(false)} sx={{ color: BRAND.textMuted }}>
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <Typography sx={{ fontSize: '0.88rem', color: BRAND.textSecondary, mb: 2.5, lineHeight: 1.6 }}>
+            A real teammate will set up OpenAce for your business — so Ace is ready to hit the ground running.
+          </Typography>
+
+          {/* What you get */}
+          <Typography sx={{ fontWeight: 700, fontSize: '0.8rem', color: BRAND.textMuted, mb: 1, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            What's included
+          </Typography>
+          {[
+            'Install & configure OpenAce on your computer',
+            'Learn your sales process and build custom SOPs',
+            'Set up daily routines (lead research, follow-ups, pipeline)',
+            'Import your existing contacts and leads',
+            'Live walkthrough so you know how everything works',
+          ].map((item, i) => (
+            <Box key={i} sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 0.75 }}>
+              <CheckCircleIcon sx={{ fontSize: 16, color: BRAND.secondary, mt: 0.25, flexShrink: 0 }} />
+              <Typography sx={{ fontSize: '0.82rem', color: BRAND.textPrimary, lineHeight: 1.4 }}>{item}</Typography>
+            </Box>
+          ))}
+
+          {/* Pricing */}
+          <Box sx={{
+            mt: 2.5, p: 2, borderRadius: '12px',
+            background: alpha(BRAND.primary, 0.04),
+            border: `1px solid ${alpha(BRAND.primary, 0.1)}`,
+          }}>
+            <Box sx={{ textAlign: 'center', mb: 1.5 }}>
+              <Typography sx={{ fontSize: '2rem', fontWeight: 800, color: BRAND.textPrimary, lineHeight: 1 }}>
+                $150
+                <Typography component="span" sx={{ fontSize: '0.85rem', fontWeight: 500, color: BRAND.textMuted }}> / hour</Typography>
+              </Typography>
+              <Typography sx={{ fontSize: '0.78rem', color: BRAND.textSecondary, mt: 0.5 }}>
+                Most setups take 3–6 hours
+              </Typography>
+              <Typography sx={{ fontSize: '0.72rem', color: BRAND.textMuted, mt: 0.25 }}>
+                Pay upfront or split into monthly payments — no interest.
+              </Typography>
+            </Box>
+
+            <Divider sx={{ borderColor: alpha(BRAND.border, 0.3), my: 1.5 }} />
+
+            <Box sx={{ textAlign: 'center' }}>
+              <Typography sx={{ fontSize: '0.75rem', fontWeight: 600, color: BRAND.textPrimary, lineHeight: 1.5 }}>
+                Starts with a free 15-minute discovery call
+              </Typography>
+              <Typography sx={{ fontSize: '0.7rem', color: BRAND.textMuted, lineHeight: 1.5 }}>
+                We learn about your business and scope the work — no commitment.
+              </Typography>
+            </Box>
+          </Box>
+
+          {/* Concierge & Enterprise teasers */}
+          <Box sx={{ mt: 2, display: 'flex', gap: 1.5 }}>
+            <Box sx={{
+              flex: 1, p: 1.5, borderRadius: '10px',
+              border: `1px solid ${alpha(BRAND.border, 0.3)}`,
+              background: alpha(BRAND.bgCard, 0.3),
+            }}>
+              <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, color: BRAND.textPrimary, mb: 0.25 }}>
+                Concierge
+              </Typography>
+              <Typography sx={{ fontSize: '0.68rem', color: BRAND.textMuted, lineHeight: 1.4 }}>
+                Ongoing help — SOP tuning, pipeline reviews, priority support. Ask on the call.
+              </Typography>
+            </Box>
+            <Box sx={{
+              flex: 1, p: 1.5, borderRadius: '10px',
+              border: `1px solid ${alpha(BRAND.border, 0.3)}`,
+              background: alpha(BRAND.bgCard, 0.3),
+            }}>
+              <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, color: BRAND.textPrimary, mb: 0.25 }}>
+                Enterprise
+              </Typography>
+              <Typography sx={{ fontSize: '0.68rem', color: BRAND.textMuted, lineHeight: 1.4 }}>
+                Custom integrations, multi-user setup, dedicated account manager. Ask on the call.
+              </Typography>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5, pt: 1 }}>
+          <Button
+            onClick={() => setSetupModalOpen(false)}
+            sx={{ color: BRAND.textMuted, fontSize: '0.82rem' }}
+          >
+            Maybe later
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => window.open('https://calendly.com/likemindedpro/45min', '_blank')}
+            sx={{
+              background: `linear-gradient(135deg, ${BRAND.secondary}, ${BRAND.primary})`,
+              fontWeight: 700, fontSize: '0.82rem', borderRadius: '10px',
+              px: 3, textTransform: 'none',
+              '&:hover': { background: `linear-gradient(135deg, ${BRAND.primary}, ${BRAND.secondary})` },
+            }}
+          >
+            Book Free Discovery Call
           </Button>
         </DialogActions>
       </Dialog>

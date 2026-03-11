@@ -88,7 +88,10 @@ export default function Workload() {
   const [media, setMedia] = useState([]);
   const [mediaFolder, setMediaFolder] = useState('');
   const [scanningMedia, setScanningMedia] = useState(false);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [mediaDragOver, setMediaDragOver] = useState(false);
   const fileInputRef = useRef(null);
+  const mediaFileInputRef = useRef(null);
 
   const fetchSources = useCallback(async () => {
     try {
@@ -238,6 +241,42 @@ export default function Workload() {
     } catch {}
   };
 
+  const handleMediaUpload = async (files) => {
+    if (!files || files.length === 0) return;
+    setUploadingMedia(true);
+
+    for (const file of files) {
+      try {
+        const buffer = await file.arrayBuffer();
+        const res = await fetch(`${API}/api/workload/media/upload`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/octet-stream',
+            'x-filename': encodeURIComponent(file.name),
+          },
+          body: buffer,
+        });
+        const data = await res.json();
+        if (data.success) {
+          setSnackbar(`Added: ${file.name}`);
+        } else {
+          setSnackbar(`Failed: ${data.error || 'Unknown error'}`);
+        }
+      } catch (e) {
+        setSnackbar(`Upload error: ${e.message}`);
+      }
+    }
+
+    setUploadingMedia(false);
+    fetchMedia();
+  };
+
+  const handleMediaDrop = (e) => {
+    e.preventDefault();
+    setMediaDragOver(false);
+    handleMediaUpload(e.dataTransfer.files);
+  };
+
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
     setSearching(true);
@@ -263,9 +302,9 @@ export default function Workload() {
           <FolderOpenIcon />
         </Avatar>
         <Box>
-          <Typography variant="h5" fontWeight={700}>Workload</Typography>
+          <Typography variant="h5" fontWeight={700}>Media & Files</Typography>
           <Typography variant="body2" color={BRAND.textMuted}>
-            Upload files or connect codebases for Ace to learn from
+            Everything here is Ace's toolkit — images for social posts, documents for reference, codebases to maintain, and templates to reuse. Upload it, and Ace can use it.
           </Typography>
         </Box>
       </Box>
@@ -306,17 +345,20 @@ export default function Workload() {
             {uploading ? 'Uploading...' : 'Drop files here or click to upload'}
           </Typography>
           <Typography variant="caption" color={BRAND.textMuted}>
-            PDF, DOCX, TXT, CSV, code files
+            Docs, templates, PDFs, spreadsheets, code files — anything Ace should know about
           </Typography>
           {uploading && <LinearProgress sx={{ mt: 1 }} />}
         </Paper>
 
         {/* Connect Codebase */}
         <Paper sx={{ flex: 1, p: 3 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
             <CodeIcon sx={{ color: BRAND.secondary }} />
-            <Typography fontWeight={600}>Connect Codebase</Typography>
+            <Typography fontWeight={600}>Connect a Project</Typography>
           </Box>
+          <Typography variant="caption" color={BRAND.textMuted} sx={{ display: 'block', mb: 1 }}>
+            Point Ace to a website, app, or project folder — it indexes the code so it can help maintain, debug, and improve it.
+          </Typography>
           <TextField
             fullWidth size="small" placeholder="/path/to/your/project"
             value={folderPath} onChange={(e) => setFolderPath(e.target.value)}
@@ -367,9 +409,9 @@ export default function Workload() {
       ) : sources.length === 0 ? (
         <Paper sx={{ p: 4, textAlign: 'center' }}>
           <FolderOpenIcon sx={{ fontSize: 48, color: BRAND.textMuted, mb: 1 }} />
-          <Typography color={BRAND.textMuted}>No files or codebases ingested yet</Typography>
+          <Typography color={BRAND.textMuted}>Ace's knowledge base is empty</Typography>
           <Typography variant="caption" color={BRAND.textMuted}>
-            Upload files above or connect a codebase folder
+            Upload business docs, brand assets, or connect a project folder — Ace will reference them when researching, posting, emailing, and coding.
           </Typography>
         </Paper>
       ) : (
@@ -394,28 +436,44 @@ export default function Workload() {
         </Button>
       </Box>
 
-      {/* Scan external media folder */}
-      <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-        <TextField
-          size="small" fullWidth
-          placeholder="Point to a media folder (e.g. /Users/you/Pictures/social-media)"
-          value={mediaFolder} onChange={(e) => setMediaFolder(e.target.value)}
+      {/* Media Upload Zone */}
+      <Paper
+        sx={{
+          p: 3, textAlign: 'center', cursor: 'pointer', mb: 2,
+          border: `2px dashed ${mediaDragOver ? BRAND.secondary : BRAND.border}`,
+          background: mediaDragOver ? alpha(BRAND.secondary, 0.05) : 'transparent',
+          transition: 'all 0.2s',
+          '&:hover': { borderColor: BRAND.primaryLight, background: alpha(BRAND.primary, 0.03) },
+        }}
+        onDragOver={(e) => { e.preventDefault(); setMediaDragOver(true); }}
+        onDragLeave={() => setMediaDragOver(false)}
+        onDrop={handleMediaDrop}
+        onClick={() => mediaFileInputRef.current?.click()}
+      >
+        <input
+          ref={mediaFileInputRef}
+          type="file"
+          multiple
+          accept="image/*,video/*,audio/*"
+          style={{ display: 'none' }}
+          onChange={(e) => handleMediaUpload(e.target.files)}
         />
-        <Button
-          variant="outlined" size="small" onClick={handleScanMedia}
-          disabled={scanningMedia}
-          sx={{ whiteSpace: 'nowrap', borderColor: BRAND.border }}
-        >
-          Scan Folder
-        </Button>
-      </Box>
+        <CloudUploadIcon sx={{ fontSize: 32, color: BRAND.textMuted, mb: 0.5 }} />
+        <Typography variant="body2" fontWeight={600}>
+          {uploadingMedia ? 'Uploading...' : 'Drop images, videos, or audio here'}
+        </Typography>
+        <Typography variant="caption" color={BRAND.textMuted}>
+          Brand photos, product shots, video clips — Ace uses these for social media posts
+        </Typography>
+        {uploadingMedia && <LinearProgress sx={{ mt: 1 }} />}
+      </Paper>
 
       {scanningMedia && <LinearProgress sx={{ mb: 2 }} />}
 
       {media.length === 0 ? (
         <Paper sx={{ p: 3, textAlign: 'center', mb: 2 }}>
           <Typography color={BRAND.textMuted} variant="body2">
-            No media files yet. Drop images/videos into <code>data/workload/media/</code> or scan a folder above.
+            No images or videos yet. Drop files above or click to browse your computer.
           </Typography>
         </Paper>
       ) : (
@@ -450,13 +508,15 @@ export default function Workload() {
                   ))}
                 </Box>
               )}
-              <IconButton
-                size="small"
-                onClick={() => handleDeleteMedia(m.id)}
-                sx={{ position: 'absolute', top: 4, right: 4, color: BRAND.textMuted, background: alpha(BRAND.bg, 0.7), width: 22, height: 22 }}
-              >
-                <DeleteIcon sx={{ fontSize: 14 }} />
-              </IconButton>
+              <Tooltip title="Remove from Ace">
+                <IconButton
+                  size="small"
+                  onClick={(e) => { e.stopPropagation(); handleDeleteMedia(m.id); }}
+                  sx={{ position: 'absolute', top: 4, right: 4, color: BRAND.textMuted, background: alpha(BRAND.bg, 0.7), width: 22, height: 22 }}
+                >
+                  <DeleteIcon sx={{ fontSize: 14 }} />
+                </IconButton>
+              </Tooltip>
             </Paper>
           ))}
         </Box>
@@ -464,7 +524,7 @@ export default function Workload() {
 
       {/* Search */}
       <Divider sx={{ my: 3 }} />
-      <Typography variant="h6" fontWeight={600} sx={{ mb: 1.5 }}>Search Workload</Typography>
+      <Typography variant="h6" fontWeight={600} sx={{ mb: 1.5 }}>Search Files</Typography>
       <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
         <TextField
           fullWidth size="small"

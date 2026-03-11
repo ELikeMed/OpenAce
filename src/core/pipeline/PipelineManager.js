@@ -193,6 +193,7 @@ export class PipelineManager {
       source: leadData.source || 'manual',
       form_id: leadData.form_id || null,
       submission_id: leadData.submission_id || null,
+      do_not_contact: leadData.do_not_contact || false,
       notes: leadData.notes || [],
       tags: leadData.tags || [],
       created_by: leadData.created_by || 'ace',
@@ -410,6 +411,22 @@ export class PipelineManager {
     };
   }
 
+  /**
+   * Toggle do-not-contact flag on a lead.
+   */
+  async setDoNotContact(leadId, value, reason) {
+    const lead = this.pipeline.leads.find(l => l.id === leadId);
+    if (!lead) throw new Error('Lead not found');
+
+    lead.do_not_contact = !!value;
+    lead.updated_at = new Date().toISOString();
+    if (reason) {
+      lead.notes.push(`[${new Date().toLocaleDateString()}] ${value ? 'Marked do-not-contact' : 'Removed do-not-contact'}: ${reason}`);
+    }
+    await this.savePipeline();
+    return lead;
+  }
+
   // ═══════════════════════════════════════════════════════
   // AUTONOMOUS PIPELINE INTELLIGENCE
   // ═══════════════════════════════════════════════════════
@@ -423,6 +440,9 @@ export class PipelineManager {
     const actionable = [];
 
     for (const lead of leads) {
+      // Skip do-not-contact leads entirely
+      if (lead.do_not_contact) continue;
+
       const age = now - new Date(lead.updated_at || lead.created_at).getTime();
       const ageHours = age / (1000 * 60 * 60);
 
@@ -480,7 +500,7 @@ export class PipelineManager {
       const age = now - new Date(l.updated_at || l.created_at).getTime();
       return age > 48 * 60 * 60 * 1000;
     });
-    const noContact = leads.filter(l => !l.email && !l.phone && l.stage !== 'lost' && l.stage !== 'won');
+    const noContact = leads.filter(l => !l.email && !l.phone && l.stage !== 'lost' && l.stage !== 'won' && !l.do_not_contact);
     const won = leads.filter(l => l.stage === 'won');
 
     return {

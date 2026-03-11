@@ -92,6 +92,7 @@ class FormManager {
         multi_step: true,
         show_progress: true,
         add_to_pipeline: true,
+        protect_from_outreach: false,
         submit_button_text: 'Submit',
         ...formData.settings
       },
@@ -212,6 +213,7 @@ class FormManager {
           source: `form:${form.name}`,
           form_id: formId,
           submission_id: submission.id,
+          do_not_contact: !!form.settings.protect_from_outreach,
           notes: [`Submitted "${form.name}" on ${new Date().toLocaleDateString()}`],
           tags: ['form-submission', form.type]
         });
@@ -338,6 +340,7 @@ class FormManager {
             source: `form:${form.name}`,
             form_id: formId,
             submission_id: submission.id,
+            do_not_contact: !!form.settings.protect_from_outreach,
             notes: [`Submitted "${form.name}" (synced from Firebase) on ${new Date(entry.submitted_at).toLocaleDateString()}`],
             tags: ['form-submission', 'firebase-sync', form.type]
           });

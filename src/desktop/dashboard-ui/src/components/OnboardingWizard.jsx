@@ -21,10 +21,11 @@ import StorageIcon from '@mui/icons-material/Storage';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
+import GavelIcon from '@mui/icons-material/Gavel';
 import { BRAND } from '../theme';
 
 const API = 'http://localhost:3333';
-const TOTAL_STEPS = 6;
+const TOTAL_STEPS = 7;
 
 const INDUSTRIES = [
   'Technology', 'Healthcare', 'Finance', 'Education', 'Real Estate',
@@ -94,13 +95,14 @@ export default function OnboardingWizard({ onComplete }) {
   const [location, setLocation] = useState('');
   const [website, setWebsite] = useState('');
   const [desktopControl, setDesktopControl] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   const goNext = () => setStep(s => Math.min(s + 1, TOTAL_STEPS - 1));
   const goBack = () => setStep(s => Math.max(s - 1, 0));
 
   // Fetch system status when entering step 1
   useEffect(() => {
-    if (step === 1 && !setupStatus) {
+    if (step === 2 && !setupStatus) {
       fetchSetupStatus();
     }
   }, [step]);
@@ -190,19 +192,19 @@ export default function OnboardingWizard({ onComplete }) {
   };
 
   const handleNext = async () => {
-    if (step === 1) {
+    if (step === 2) {
       // Save AI provider config
       setSaving(true);
       await saveAiProvider();
       setSaving(false);
     }
-    if (step === 3) {
+    if (step === 4) {
       // Business step complete
       setSaving(true);
       await saveBusinessProfile();
       setSaving(false);
     }
-    if (step === 4) {
+    if (step === 5) {
       // Desktop control decided
       setSaving(true);
       await saveDesktopAutonomy();
@@ -213,13 +215,14 @@ export default function OnboardingWizard({ onComplete }) {
   };
 
   const canProceed = () => {
-    if (step === 1) {
+    if (step === 1) return termsAccepted;
+    if (step === 2) {
       // Need a provider selected; if it needs a key, must have one
       if (AI_PROVIDERS[selectedProvider]?.needsKey && apiKey.trim().length < 5) return false;
       return true;
     }
-    if (step === 2) return ownerName.trim().length > 0 && companyName.trim().length > 0;
-    if (step === 3) return industry.trim().length > 0;
+    if (step === 3) return ownerName.trim().length > 0 && companyName.trim().length > 0;
+    if (step === 4) return industry.trim().length > 0;
     return true;
   };
 
@@ -322,8 +325,102 @@ export default function OnboardingWizard({ onComplete }) {
             </Fade>
           )}
 
-          {/* ═══════ Step 1: System Setup & AI Provider ═══════ */}
+          {/* ═══════ Step 1: Terms & Consent ═══════ */}
           {step === 1 && (
+            <Fade in timeout={500}>
+              <Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+                  <GavelIcon sx={{ color: BRAND.primaryLight }} />
+                  <Typography variant="h5" sx={{ fontWeight: 700 }}>Before We Begin</Typography>
+                </Box>
+                <Typography variant="body2" sx={{ color: BRAND.textSecondary, mb: 2.5, lineHeight: 1.6 }}>
+                  OpenAce is an autonomous AI assistant that can take real actions on your computer and on the internet. Please read and accept the following before continuing.
+                </Typography>
+
+                {/* Scrollable terms box */}
+                <Box sx={{
+                  maxHeight: 280, overflowY: 'auto', mb: 2.5, p: 2.5,
+                  borderRadius: '12px',
+                  border: `1px solid ${alpha(BRAND.border, 0.5)}`,
+                  background: alpha(BRAND.bgCard, 0.5),
+                  fontSize: '0.78rem', color: BRAND.textSecondary, lineHeight: 1.7,
+                  '&::-webkit-scrollbar': { width: 6 },
+                  '&::-webkit-scrollbar-thumb': { background: BRAND.border, borderRadius: 3 },
+                }}>
+                  <Typography sx={{ fontWeight: 700, fontSize: '0.82rem', color: BRAND.textPrimary, mb: 1 }}>
+                    What OpenAce Can Do
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.78rem', color: BRAND.textSecondary, mb: 1.5, lineHeight: 1.7 }}>
+                    OpenAce can browse the web, send emails, manage your sales pipeline, control your desktop (click, type, scroll), interact with third-party websites and services, read and modify files, and take other autonomous actions on your behalf. These actions are performed by artificial intelligence and may produce unintended, inaccurate, or incorrect results.
+                  </Typography>
+
+                  <Typography sx={{ fontWeight: 700, fontSize: '0.82rem', color: BRAND.textPrimary, mb: 1 }}>
+                    Use at Your Own Risk
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.78rem', color: BRAND.textSecondary, mb: 1.5, lineHeight: 1.7 }}>
+                    This software is provided "as is" and "as available" without warranties of any kind, whether express, implied, or statutory, including but not limited to warranties of merchantability, fitness for a particular purpose, accuracy, and non-infringement. You are solely responsible for reviewing and verifying all actions taken by the AI. Do not rely on OpenAce outputs as a sole source of truth or as a substitute for professional advice.
+                  </Typography>
+
+                  <Typography sx={{ fontWeight: 700, fontSize: '0.82rem', color: BRAND.textPrimary, mb: 1 }}>
+                    Assumption of Risk
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.78rem', color: BRAND.textSecondary, mb: 1.5, lineHeight: 1.7 }}>
+                    By using OpenAce, you acknowledge and accept all risks associated with autonomous AI software, including but not limited to: data loss or corruption, unintended emails or communications sent on your behalf, incorrect information presented as fact, unintended interactions with websites and services, desktop actions that may modify files or settings, and financial or business consequences of AI-initiated actions.
+                  </Typography>
+
+                  <Typography sx={{ fontWeight: 700, fontSize: '0.82rem', color: BRAND.textPrimary, mb: 1 }}>
+                    Limitation of Liability
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.78rem', color: BRAND.textSecondary, mb: 1.5, lineHeight: 1.7 }}>
+                    In no event shall the developers, contributors, or maintainers of OpenAce be liable for any direct, indirect, incidental, special, consequential, or exemplary damages arising from or related to your use of the software, including but not limited to data loss, unauthorized actions, financial loss, system damage, or unintended communications sent on your behalf, even if advised of the possibility of such damages. Our aggregate liability shall not exceed $100.
+                  </Typography>
+
+                  <Typography sx={{ fontWeight: 700, fontSize: '0.82rem', color: BRAND.textPrimary, mb: 1 }}>
+                    Indemnification
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.78rem', color: BRAND.textSecondary, mb: 1.5, lineHeight: 1.7 }}>
+                    You agree to indemnify, defend, and hold harmless the developers and contributors of OpenAce from any claims, damages, losses, liabilities, and expenses (including attorneys' fees) arising from your use of the software, any actions taken by the AI on your behalf, or your violation of these terms.
+                  </Typography>
+
+                  <Typography sx={{ fontWeight: 700, fontSize: '0.82rem', color: BRAND.textPrimary, mb: 1 }}>
+                    Experimental Software
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.78rem', color: BRAND.textSecondary, lineHeight: 1.7 }}>
+                    OpenAce is experimental software under active development. Features may change, break, or behave unexpectedly. You can configure approval settings and disable autonomous capabilities at any time in Settings. You remain responsible for all actions taken by the AI while using this software.
+                  </Typography>
+                </Box>
+
+                {/* Accept checkbox */}
+                <Box
+                  onClick={() => setTermsAccepted(!termsAccepted)}
+                  sx={{
+                    display: 'flex', alignItems: 'center', gap: 1.5, p: 2,
+                    borderRadius: '12px', cursor: 'pointer',
+                    border: `1px solid ${alpha(termsAccepted ? BRAND.success : BRAND.border, 0.4)}`,
+                    background: alpha(termsAccepted ? BRAND.success : BRAND.bgCard, 0.06),
+                    transition: 'all 0.2s ease',
+                    '&:hover': { background: alpha(BRAND.primary, 0.06) },
+                  }}
+                >
+                  <Box sx={{
+                    width: 22, height: 22, borderRadius: '6px', flexShrink: 0,
+                    border: `2px solid ${termsAccepted ? BRAND.success : BRAND.textMuted}`,
+                    background: termsAccepted ? BRAND.success : 'transparent',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'all 0.2s ease',
+                  }}>
+                    {termsAccepted && <CheckCircleIcon sx={{ fontSize: 16, color: '#fff' }} />}
+                  </Box>
+                  <Typography sx={{ fontSize: '0.85rem', fontWeight: 600, color: BRAND.textPrimary }}>
+                    I understand that OpenAce is an autonomous AI that takes real actions, and I accept the risks and terms above.
+                  </Typography>
+                </Box>
+              </Box>
+            </Fade>
+          )}
+
+          {/* ═══════ Step 2: System Setup & AI Provider ═══════ */}
+          {step === 2 && (
             <Fade in timeout={500}>
               <Box>
                 <Box sx={{ textAlign: 'center', mb: 3 }}>
@@ -500,8 +597,8 @@ export default function OnboardingWizard({ onComplete }) {
             </Fade>
           )}
 
-          {/* ═══════ Step 2: About You ═══════ */}
-          {step === 2 && (
+          {/* ═══════ Step 3: About You ═══════ */}
+          {step === 3 && (
             <Fade in timeout={500}>
               <Box>
                 <Box sx={{ textAlign: 'center', mb: 4 }}>
@@ -540,8 +637,8 @@ export default function OnboardingWizard({ onComplete }) {
             </Fade>
           )}
 
-          {/* ═══════ Step 3: Your Business ═══════ */}
-          {step === 3 && (
+          {/* ═══════ Step 4: Your Business ═══════ */}
+          {step === 4 && (
             <Fade in timeout={500}>
               <Box>
                 <Box sx={{ textAlign: 'center', mb: 4 }}>
@@ -625,8 +722,8 @@ export default function OnboardingWizard({ onComplete }) {
             </Fade>
           )}
 
-          {/* ═══════ Step 4: Desktop Control ═══════ */}
-          {step === 4 && (
+          {/* ═══════ Step 5: Desktop Control ═══════ */}
+          {step === 5 && (
             <Fade in timeout={500}>
               <Box>
                 <Box sx={{ textAlign: 'center', mb: 4 }}>
@@ -728,8 +825,8 @@ export default function OnboardingWizard({ onComplete }) {
             </Fade>
           )}
 
-          {/* ═══════ Step 5: All Set! ═══════ */}
-          {step === 5 && (
+          {/* ═══════ Step 6: All Set! ═══════ */}
+          {step === 6 && (
             <Fade in timeout={500}>
               <Box sx={{ textAlign: 'center' }}>
                 <Avatar sx={{
@@ -803,7 +900,7 @@ export default function OnboardingWizard({ onComplete }) {
       </Box>
 
       {/* Navigation Buttons */}
-      {step > 0 && step < 5 && (
+      {step > 0 && step < 6 && (
         <Box sx={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           px: 4, py: 3, maxWidth: 660, mx: 'auto', width: '100%',
