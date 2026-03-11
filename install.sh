@@ -75,6 +75,10 @@ fi
 echo -e "  ${CYAN}→${NC} Installing dependencies (this may take a minute)..."
 npm install --no-audit --no-fund 2>&1 | tail -3
 
+# ── Build Dashboard ──
+echo -e "  ${CYAN}→${NC} Building dashboard..."
+cd src/desktop/dashboard-ui && npm install --no-audit --no-fund 2>&1 | tail -1 && npm run build 2>&1 | tail -1 && cd ../../..
+
 echo ""
 echo -e "  ${GREEN}${BOLD}♠  OpenAce installed successfully!${NC}"
 echo ""

@@ -159,6 +159,14 @@ xcode-select --install
 
 This is required for desktop automation features (mouse/keyboard control, screen recording, trained SOPs). Once installed, re-run `npm install`.
 
+**Windows: Desktop automation not yet available**
+
+OpenAce runs on Windows for all core features — chat, pipeline, contacts, email, research, calendar, social media, forms, and code studio. Desktop automation (mouse/keyboard control, screen recording, trained desktop SOPs) currently requires macOS. Windows desktop automation is on the roadmap.
+
+**Windows: `robotjs` build errors during `npm install`**
+
+You may see build errors related to `robotjs` — this is safe to ignore. The server will start and all non-desktop features work normally. If you want desktop automation in the future, you'll need [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the C++ workload installed.
+
 ## License
 
 MIT
