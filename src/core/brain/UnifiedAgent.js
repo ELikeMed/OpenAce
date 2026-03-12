@@ -149,7 +149,7 @@ export class UnifiedAgent {
     // Always available: web search + page reading
     declarations.push({
       name: 'web_search',
-      description: 'Search the web using DuckDuckGo. Returns titles, URLs, and snippets for up to 10 results. Use this when you need to find information online.',
+      description: 'Search the web using Google in Chrome. Opens Google, extracts results from the page. Returns titles, URLs, and snippets for up to 10 results. Use this when you need to find information online.',
       parameters: {
         type: 'OBJECT',
         properties: {
@@ -1240,7 +1240,7 @@ When calling create_calendar_event, you MUST pass start_time as an ISO 8601 stri
     prompt += `# YOUR TOOLS
 
 ## Research Tools
-- **web_search**: Search the web via DuckDuckGo. Use as the first step for any research.
+- **web_search**: Search the web via Google in Chrome. Use as the first step for any research.
 - **read_webpage**: Fetch and extract text from a URL. Use after web_search to read promising results.
 - **recall_research**: Check past research before searching again — avoid duplicate work.
 
@@ -2439,54 +2439,69 @@ When you're struggling with a task and can't figure it out after multiple attemp
     }
   }
 
-  // ── Web Search (DuckDuckGo fetch) ──
+  // ── Web Search (Google via Chrome) ──
   async _toolWebSearch(args) {
     const query = args.query;
     this.onProgress(`Searching: ${query}`);
 
-    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
-      body: `q=${encodeURIComponent(query)}`,
-    });
-
-    if (!resp.ok) return JSON.stringify({ error: `Search failed: HTTP ${resp.status}`, hint: 'Fall back to open_browser with Google: open_browser url="https://www.google.com/search?q=YOUR+QUERY".' });
-
-    const html = await resp.text();
-    const results = [];
-    const linkPattern = /<a\s+[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
-    const snippetPattern = /<a\s+[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
-
-    const links = [];
-    let match;
-    while ((match = linkPattern.exec(html)) !== null) {
-      let href = match[1];
-      const title = match[2].replace(/<[^>]+>/g, '').trim();
-      const realUrl = href.match(/uddg=([^&]+)/);
-      if (realUrl) href = decodeURIComponent(realUrl[1]);
-      if (title && href && !href.includes('duckduckgo.com')) {
-        links.push({ title, url: href });
-      }
+    // Use Google in Chrome — real browser, no bot detection
+    const browser = await this._getDesktopBrowser();
+    if (!browser) {
+      return JSON.stringify({ error: 'Desktop browser not available. Cannot perform web search.', hint: 'Try open_browser with a Google search URL instead.' });
     }
 
-    const snippets = [];
-    while ((match = snippetPattern.exec(html)) !== null) {
-      snippets.push(match[1].replace(/<[^>]+>/g, '').trim());
-    }
+    const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+    await browser.navigateTo(googleUrl);
 
-    for (let i = 0; i < links.length && i < 10; i++) {
-      results.push({
-        position: i + 1,
-        title: links[i].title,
-        url: links[i].url,
-        snippet: snippets[i] || '',
+    // Wait a moment for results to render
+    await new Promise(r => setTimeout(r, 2000));
+
+    // Extract search results directly from Google's DOM via JavaScript
+    this.onProgress('Reading Google results...');
+    const extractJs = `(function(){
+      var results = [];
+      var items = document.querySelectorAll('div.g, div[data-hveid] div.g');
+      if (!items.length) items = document.querySelectorAll('[data-sokoban-container] a[href]');
+      items.forEach(function(el, i) {
+        if (i >= 10) return;
+        var a = el.querySelector('a[href]');
+        var h3 = el.querySelector('h3');
+        var snip = el.querySelector('[data-sncf], .VwiC3b, [style*="-webkit-line-clamp"]');
+        if (!a || !h3) return;
+        var url = a.href;
+        if (!url || url.includes('google.com/search')) return;
+        results.push({
+          title: h3.innerText || '',
+          url: url,
+          snippet: snip ? snip.innerText.substring(0, 300) : ''
+        });
       });
+      return JSON.stringify(results);
+    })()`;
+
+    let results = [];
+    try {
+      const raw = await browser._executeJsInChrome(extractJs);
+      if (raw) results = JSON.parse(raw);
+    } catch (e) {
+      this.onProgress(`DOM extraction failed: ${e.message}`);
     }
+
+    // If DOM extraction got nothing, fall back to reading the visible page text
+    if (results.length === 0) {
+      this.onProgress('DOM extraction empty, reading page text...');
+      try {
+        const pageText = await browser._executeJsInChrome(
+          `(function(){ return document.body.innerText.substring(0, 8000); })()`
+        );
+        if (pageText && pageText.length > 100) {
+          results = [{ title: 'Google Search Results', url: googleUrl, snippet: pageText.substring(0, 2000) }];
+        }
+      } catch (e) { /* fall through */ }
+    }
+
+    // Number results
+    results = results.map((r, i) => ({ position: i + 1, ...r }));
 
     this.onProgress(`Found ${results.length} results`);
 
@@ -2500,7 +2515,7 @@ When you're struggling with a task and can't figure it out after multiple attemp
     };
 
     if (results.length === 0) {
-      return JSON.stringify({ query, resultCount: 0, results: [], hint: 'No results found. Try: (1) rephrase the query with different keywords, (2) open_browser to search Google visually: open_browser url="https://www.google.com/search?q=YOUR+QUERY".' });
+      return JSON.stringify({ query, resultCount: 0, results: [], hint: 'Google returned no extractable results. Try read_screen to visually see the page, or rephrase the query.' });
     }
 
     return JSON.stringify({ query, resultCount: results.length, results });

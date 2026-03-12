@@ -594,43 +594,21 @@ Extract ALL matching items from the text above. Be thorough — include every li
     // ═══ STEP 0: Maximize Chrome to fill the screen ═══
     await this._ensureChromeWindow();
 
-    // ═══ ADAPTIVE SEARCH: Try Google via Chrome, fall back to DuckDuckGo HTTP ═══
+    // ═══ SEARCH: Google via Chrome ═══
     let searchResult;
     try {
       searchResult = await this.searchGoogle(query);
     } catch (googleErr) {
-      this.onProgress(`⚠️ Chrome/Google failed: ${googleErr.message}. Switching to DuckDuckGo...`);
-      try {
-        const ddgResult = await this.duckDuckGoSearch(query);
-        if (ddgResult.success && ddgResult.results.length > 0) {
-          // DDG worked — return text results directly (no screenshot nav loop)
-          const content = ddgResult.results
-            .map(r => `**${r.title}**\n${r.url}\n${r.snippet}`)
-            .join('\n\n');
-          return {
-            success: true,
-            query,
-            steps: 1,
-            pagesVisited: 0,
-            content,
-            results: [{ step: 'ddg_fallback', ...ddgResult }],
-            extractedPages: ddgResult.results,
-            source: 'duckduckgo_fallback',
-          };
-        }
-      } catch (ddgErr) {
-        this.onProgress(`⚠️ DuckDuckGo also failed: ${ddgErr.message}`);
-      }
-      // Both failed
+      this.onProgress(`⚠️ Chrome/Google search failed: ${googleErr.message}`);
       return {
         success: false,
         query,
         steps: 0,
         pagesVisited: 0,
-        content: `I tried searching via Chrome and DuckDuckGo but both failed. Chrome error: ${googleErr.message}. You might need to open the browser manually, or try again in a moment.`,
+        content: `Google search failed: ${googleErr.message}. You might need to open Chrome manually, or try again in a moment.`,
         results: [],
         extractedPages: [],
-        source: 'all_failed',
+        source: 'failed',
       };
     }
 
