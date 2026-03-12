@@ -1010,7 +1010,7 @@ export class UnifiedAgent {
       { group: 'calendar',  patterns: [/\bcalendar\b/, /\bmeeting\b/, /\bevent\b/, /\bschedule\b/, /\bappointment\b/, /\bblock\s*time\b/, /\bset\s*up\s*(a|an)?\s*(call|meeting|sync)\b/i] },
       { group: 'social',    patterns: [/\bpost\b/, /\bsocial\b/, /\btwitter\b/, /\blinkedin\b/, /\bfacebook\b/, /\binstagram\b/, /\btiktok\b/, /\bcontent\s*plan\b/] },
       { group: 'sops',      patterns: [/\bsop\b/i, /\bprocedure\b/, /\bplaybook\b/, /\btrain\b/, /\bteach\b/, /\bshow me how\b/] },
-      { group: 'projects',  patterns: [/\bproject\b/, /\bcode\b/, /\bbuild\b/, /\bcreate\s*(an?\s*)?(app|website|page|site)\b/, /\[Studio Project:/] },
+      { group: 'projects',  patterns: [/\bproject\b/, /\bcode\b/, /\bbuild\b/, /\bcreate\s*(an?\s*)?(app|website|page|site)\b/, /\[Studio Project:/, /\bseo\b/, /\bhtml\b/, /\bcss\b/, /\bfile\b/, /\bupdate\b.*\b(page|site|app)\b/, /\bedit\b/, /\bchange\b.*\b(heading|title|text|color|style|section|button)\b/, /\bfix\b.*\b(bug|error|issue)\b/, /\bmetadata\b/] },
       { group: 'forms',     patterns: [/\bform\b/, /\bquiz\b/, /\bsurvey\b/, /\bsubmission/i] },
       { group: 'workload',  patterns: [/\bworkload\b/, /\bfile\b/, /\bdocument\b/, /\bmedia\b/, /\bupload\b/, /\bingest/i] },
       { group: 'deploy',    patterns: [/\bdeploy\b/, /\bpublish\b/, /\blaunch\b/, /\bship\b/, /\bnetlify\b/, /\bfirebase\b/] },
@@ -1035,6 +1035,11 @@ export class UnifiedAgent {
     // If browser state is active (Chrome has a page open), always include browser
     if (this._browserState && (Date.now() - (this._browserState.timestamp || 0)) < 5 * 60 * 1000) {
       selectedGroups.add('browser');
+    }
+
+    // If there's an active project (from Studio or previous context), always include project tools
+    if (this._activeProjectName) {
+      selectedGroups.add('projects');
     }
 
     // If search/find triggered, usually need browser too for follow-up
@@ -1187,6 +1192,7 @@ User: "Make Net Profits purple" → search="Net Profits" → finds line 52 → r
 5. **TOOL RESULTS ARE TRUTH** — Your response must be based on actual tool results, not assumptions about what the tools would return.
 6. **NO FAKE URLS** — Never generate URLs like "https://example.com/property/123". Only share URLs that came from tool results.
 7. **NO FALSE CONTINUATION PROMISES** — NEVER say "I will continue", "I'll keep working on the remaining", or "I'll proceed with the rest." Each conversation turn is independent — you will NOT automatically continue. Instead, report exactly what you completed, what remains, and ask "Want me to keep going?" so the user can choose. Example: "Done — found and emailed 3 leads. 4 more needed to hit today's goal. Want me to keep searching?"
+8. **NEVER PASTE CODE IN CHAT** — You have project tools (write_project_file, edit_project_file). ALWAYS use them to modify files directly. NEVER paste HTML, CSS, JavaScript, or any code blocks in the chat for the user to copy. If a tool fails, retry it or explain the error briefly — do NOT dump the code as a fallback.
 
 `;
 
@@ -1995,8 +2001,12 @@ When you're struggling with a task and can't figure it out after multiple attemp
 
     messages.push({ role: 'user', content: userContent });
 
-    // Detect Studio project context
+    // Detect Studio project context and track active project for auto-fill
     const isStudioProject = message.includes('[Studio Project:');
+    const studioProjectMatch = message.match(/\[Studio Project:\s*(.+?)\]/);
+    if (studioProjectMatch) {
+      this._activeProjectName = studioProjectMatch[1].trim();
+    }
 
     // Call Gemini with tools (with retry for rate limits)
     this.onProgress('Thinking');
@@ -2379,6 +2389,13 @@ When you're struggling with a task and can't figure it out after multiple attemp
   // ═══════════════════════════════════════════════════════
 
   async _executeTool(name, args) {
+    // Auto-fill project_name for project tools when Gemini drops it
+    const projectTools = ['write_project_file', 'read_project_file', 'edit_project_file', 'list_project_files'];
+    if (projectTools.includes(name) && !args.project_name && this._activeProjectName) {
+      args.project_name = this._activeProjectName;
+      console.log(`[UnifiedAgent] Auto-filled project_name="${this._activeProjectName}" for ${name}`);
+    }
+
     switch (name) {
       case 'web_search': return await this._toolWebSearch(args);
       case 'read_webpage': return await this._toolReadWebpage(args);
