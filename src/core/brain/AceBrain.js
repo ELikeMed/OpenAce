@@ -469,6 +469,45 @@ export class AceBrain {
     const source = context.source || 'unknown';
     const startTime = Date.now();
 
+    // ═══ NO API KEY CHECK — Guide user through setup ═══
+    if (this.aiManager) {
+      const available = Object.keys(this.aiManager.providers || {});
+      if (available.length === 0) {
+        this.addToConversation(channelId, 'user', message, { userName, source });
+        const setupGuide = `Hey ${userName}! I'm Ace, your AI executive assistant. I need an AI connection to get started — it's free and takes about 60 seconds.
+
+**Step 1 — Get your free API key:**
+
+1. Go to [Google AI Studio](https://aistudio.google.com/apikey)
+2. Sign in with your Google account
+3. Click **"Create API key"**
+4. Copy the key
+
+**Step 2 — Connect it to me:**
+
+5. Click the **⚙️ Settings** tab (bottom left of the sidebar)
+6. Scroll down to **AI Providers** — you'll see Gemini, OpenAI, Claude, and Ollama
+7. Click **"Set Up"** on the **Gemini** card
+8. Paste your API key → click **Test Connection** → click **Save & Enable**
+
+**Step 3 — Set up Task Routing:**
+
+9. Still in Settings, scroll down to **Task Routing**
+10. You'll see dropdowns for General, Code, Vision, and Research — set each one to **Gemini**
+
+That's it! Once connected, I can help you with research, email, social media, websites, scheduling, and a whole lot more.
+
+**Pro tip:** You can also add OpenAI or Claude API keys later as backup providers, and use Task Routing to assign different AIs to different tasks.`;
+        return {
+          text: setupGuide,
+          actions: [],
+          data: {},
+          thinking: ['No AI provider configured — showing setup guide'],
+          metadata: { source: 'setup_guide', duration: Date.now() - startTime }
+        };
+      }
+    }
+
     // Step 0: Record the incoming message
     this.addToConversation(channelId, 'user', message, { userName, source });
 
@@ -567,6 +606,37 @@ export class AceBrain {
           };
         }
       } catch (unifiedErr) {
+        const errMsg = (unifiedErr.message || '').toLowerCase();
+        // Detect quota/rate limit errors and give the user a helpful response
+        if (errMsg.includes('429') || errMsg.includes('quota') || errMsg.includes('rate') ||
+            errMsg.includes('resource_exhausted') || errMsg.includes('too many requests') ||
+            errMsg.includes('exceeded') || errMsg.includes('limit')) {
+          const quotaMsg = `I've hit the API rate limit. This usually means the free tier quota has been reached for now.
+
+**Here's how to fix it:**
+
+1. Click the **⚙️ Settings** tab (bottom left of the sidebar)
+2. Scroll down to **AI Providers** — you'll see Gemini, OpenAI, Claude, and Ollama
+3. Make sure **Gemini** shows a green **"Active"** badge. If not, click **"Set Up"** to add your key, or click the Gemini card to make it active.
+4. Then scroll down to **Task Routing** — this is where you pick which AI handles each type of task (General, Code, Vision, Research)
+5. In each dropdown, make sure **Gemini** is selected
+
+**If it keeps happening:**
+
+- **Wait a few minutes** — Free tier limits reset quickly
+- **Upgrade to Tier 1** — Go to [Google AI Studio](https://aistudio.google.com) → click your profile → Billing. Adding a credit card unlocks much higher limits.
+- **Add a backup provider** — In Settings → AI Providers, click "Set Up" on OpenAI or Claude to add a second API key. Then in Task Routing, you can assign different providers to different tasks.
+
+I'll be ready to help as soon as the limit resets!`;
+          this.addToConversation(channelId, 'assistant', quotaMsg, { type: 'quota_error' });
+          return {
+            text: quotaMsg,
+            actions: [],
+            data: {},
+            thinking: ['API quota/rate limit reached — showing upgrade guide'],
+            metadata: { source: 'quota_error', duration: Date.now() - startTime }
+          };
+        }
         this.onProgress(`⚠️ UnifiedAgent error: ${unifiedErr.message}`);
       }
     }
