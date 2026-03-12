@@ -9,7 +9,7 @@
 import fs from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -194,10 +194,29 @@ export class UpdateManager {
         this.currentVersion = pkg.version || this.currentVersion;
       } catch { /* keep current */ }
 
-      // Step 7: Restart
+      // Step 7: Restart — spawn new server process before exiting
       progress('restart', 'active', 'Restarting server...');
 
-      // Give the SSE response time to flush before exit
+      const startScript = path.join(this.baseDir, 'scripts/start-dashboard.js');
+      const isWindows = process.platform === 'win32';
+
+      // Spawn a detached process that waits for this one to die, then starts fresh
+      if (isWindows) {
+        spawn('cmd', ['/c', `timeout /t 3 /nobreak >nul && node "${startScript}"`], {
+          cwd: this.baseDir,
+          detached: true,
+          stdio: 'ignore',
+          windowsHide: true,
+        }).unref();
+      } else {
+        spawn('sh', ['-c', `sleep 3 && node "${startScript}"`], {
+          cwd: this.baseDir,
+          detached: true,
+          stdio: 'ignore',
+        }).unref();
+      }
+
+      // Give the SSE response time to flush, then exit so port is freed
       setTimeout(() => process.exit(0), 2000);
 
       return { success: true, version: this.currentVersion };

@@ -22,44 +22,69 @@ if command -v git &>/dev/null; then
 else
   echo -e "  ${RED}✗${NC} Git not found."
   if [[ "$OSTYPE" == "darwin"* ]]; then
-    echo -e "  ${YELLOW}→${NC} Installing via Xcode Command Line Tools..."
+    echo -e "  ${YELLOW}→${NC} Installing Xcode Command Line Tools (this may open a dialog)..."
     xcode-select --install 2>/dev/null || true
-    echo -e "  ${YELLOW}→${NC} After install completes, re-run this script."
-    exit 1
+    echo ""
+    echo -e "  ${YELLOW}A dialog should have appeared to install Command Line Tools.${NC}"
+    echo -e "  ${YELLOW}After it finishes, re-run this installer:${NC}"
+    echo ""
+    echo -e "    ${CYAN}curl -fsSL https://raw.githubusercontent.com/ELikeMed/OpenAce/main/install.sh | bash${NC}"
+    echo ""
+    exit 0
   else
     echo -e "  ${YELLOW}→${NC} Install Git first:"
     echo -e "    Ubuntu/Debian: sudo apt install git"
     echo -e "    CentOS/RHEL:   sudo yum install git"
+    echo -e "  Then re-run this installer."
     exit 1
   fi
 fi
 
 # ── Check / Install Node.js ──
 NODE_MIN=18
+install_node() {
+  echo -e "  ${CYAN}→${NC} Installing Node.js via nvm..."
+  # Download NVM installer to temp file (avoids stdin conflict when piped via curl|bash)
+  NVM_INSTALL=$(mktemp)
+  curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh -o "$NVM_INSTALL" 2>/dev/null
+  if [ ! -s "$NVM_INSTALL" ]; then
+    rm -f "$NVM_INSTALL"
+    echo -e "  ${RED}✗${NC} Failed to download nvm installer."
+    echo -e "  ${YELLOW}→${NC} Install Node.js manually from: https://nodejs.org"
+    echo -e "  Then re-run this installer."
+    exit 1
+  fi
+  bash "$NVM_INSTALL" 2>/dev/null
+  rm -f "$NVM_INSTALL"
+
+  # Load nvm into current shell
+  export NVM_DIR="$HOME/.nvm"
+  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
+  # Install LTS
+  nvm install --lts 2>/dev/null
+
+  # Verify
+  if ! command -v node &>/dev/null; then
+    echo -e "  ${RED}✗${NC} Node.js installation failed."
+    echo -e "  ${YELLOW}→${NC} Install manually from: https://nodejs.org"
+    echo -e "  Then re-run this installer."
+    exit 1
+  fi
+  echo -e "  ${GREEN}✓${NC} Node.js $(node -v) installed"
+}
+
 if command -v node &>/dev/null; then
   NODE_VER=$(node -v | sed 's/v//' | cut -d. -f1)
   if [ "$NODE_VER" -ge "$NODE_MIN" ]; then
     echo -e "  ${GREEN}✓${NC} Node.js $(node -v)"
   else
     echo -e "  ${YELLOW}!${NC} Node.js $(node -v) is too old (need v${NODE_MIN}+). Upgrading..."
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash 2>/dev/null
-    export NVM_DIR="$HOME/.nvm"
-    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-    nvm install --lts 2>/dev/null
-    echo -e "  ${GREEN}✓${NC} Node.js $(node -v) installed"
+    install_node
   fi
 else
   echo -e "  ${YELLOW}!${NC} Node.js not found. Installing..."
-  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash 2>/dev/null
-  export NVM_DIR="$HOME/.nvm"
-  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-  nvm install --lts 2>/dev/null
-  if ! command -v node &>/dev/null; then
-    echo -e "  ${RED}✗${NC} Node.js installation failed."
-    echo -e "  ${YELLOW}→${NC} Install manually from: https://nodejs.org"
-    exit 1
-  fi
-  echo -e "  ${GREEN}✓${NC} Node.js $(node -v) installed"
+  install_node
 fi
 
 # ── Clone or Update OpenAce ──
@@ -71,7 +96,7 @@ if [ -d "$INSTALL_DIR/.git" ]; then
 else
   echo -e "  ${CYAN}→${NC} Cloning OpenAce..."
   if ! git clone https://github.com/ELikeMed/OpenAce.git "$INSTALL_DIR" 2>&1; then
-    echo -e "  ${RED}✗${NC} Git clone failed. Check your internet connection and GitHub access."
+    echo -e "  ${RED}✗${NC} Git clone failed. Check your internet connection."
     exit 1
   fi
   cd "$INSTALL_DIR"
@@ -102,7 +127,7 @@ echo -e "  ${CYAN}→${NC} Building Ace Studio..."
 cd src/studio
 npm install --no-audit --no-fund 2>&1 || true
 if ! npm run build 2>&1; then
-  echo -e "  ${YELLOW}!${NC} Studio build failed (non-critical — Studio will be unavailable)"
+  echo -e "  ${YELLOW}!${NC} Studio build failed (non-critical)"
 fi
 cd "$INSTALL_DIR"
 echo -e "  ${GREEN}✓${NC} Studio built"
@@ -111,12 +136,17 @@ echo -e "  ${GREEN}✓${NC} Studio built"
 echo ""
 echo -e "  ${GREEN}${BOLD}♠  OpenAce installed successfully!${NC}"
 echo ""
-echo -e "  To start OpenAce, run:"
-echo ""
-echo -e "    ${CYAN}cd ~/openace && npm start${NC}"
-echo ""
-echo -e "  Then open: ${CYAN}http://localhost:3333${NC}"
-echo ""
-echo -e "  ${YELLOW}Note:${NC} Desktop automation (mouse/keyboard) requires macOS."
-echo -e "  All other features work on macOS and Linux."
+echo -e "  ┌─────────────────────────────────────────────┐"
+echo -e "  │  ${BOLD}TO START OPENACE:${NC}                          │"
+echo -e "  │                                             │"
+echo -e "  │  1. Open a NEW terminal window              │"
+echo -e "  │  2. Run these commands:                     │"
+echo -e "  │                                             │"
+echo -e "  │     ${CYAN}cd ~/openace && npm start${NC}               │"
+echo -e "  │                                             │"
+echo -e "  │  3. Open your BROWSER (Chrome/Safari) to:   │"
+echo -e "  │     ${CYAN}http://localhost:3333${NC}                    │"
+echo -e "  │                                             │"
+echo -e "  │  ${YELLOW}(Type the URL in your browser, NOT here)${NC}  │"
+echo -e "  └─────────────────────────────────────────────┘"
 echo ""
