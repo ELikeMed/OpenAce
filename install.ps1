@@ -5,6 +5,9 @@
 
 $ErrorActionPreference = "Stop"
 
+# Allow scripts to run in this session (fixes npm.ps1 blocked error)
+try { Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force } catch {}
+
 Write-Host ""
 Write-Host "  ♠  OpenAce Installer" -ForegroundColor Cyan
 Write-Host "  ────────────────────" -ForegroundColor Cyan
@@ -67,13 +70,13 @@ if (Test-Path "$installDir\.git") {
 
 # ── Install Dependencies ──
 Write-Host "  → Installing dependencies (this may take a minute)..." -ForegroundColor Cyan
-npm install --no-audit --no-fund 2>&1 | Select-Object -Last 3
+npm.cmd install --no-audit --no-fund 2>&1 | Select-Object -Last 3
 
 # ── Build Dashboard ──
 Write-Host "  → Building dashboard..." -ForegroundColor Cyan
 Push-Location src/desktop/dashboard-ui
-npm install --no-audit --no-fund 2>&1 | Select-Object -Last 1
-npm run build 2>&1 | Select-Object -Last 1
+npm.cmd install --no-audit --no-fund 2>&1 | Select-Object -Last 1
+npm.cmd run build 2>&1 | Select-Object -Last 1
 Pop-Location
 
 Write-Host ""
