@@ -69,15 +69,27 @@ if (Test-Path "$installDir\.git") {
 }
 
 # ── Install Dependencies ──
+# npm writes warnings to stderr which PowerShell treats as errors — suppress that
+$ErrorActionPreference = "Continue"
 Write-Host "  → Installing dependencies (this may take a minute)..." -ForegroundColor Cyan
-npm.cmd install --no-audit --no-fund 2>&1 | Select-Object -Last 3
+& npm.cmd install --no-audit --no-fund 2>$null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "  ✗ npm install failed (exit code $LASTEXITCODE)" -ForegroundColor Red
+    exit 1
+}
+Write-Host "  ✓ Dependencies installed" -ForegroundColor Green
 
 # ── Build Dashboard ──
 Write-Host "  → Building dashboard..." -ForegroundColor Cyan
 Push-Location src/desktop/dashboard-ui
-npm.cmd install --no-audit --no-fund 2>&1 | Select-Object -Last 1
-npm.cmd run build 2>&1 | Select-Object -Last 1
+& npm.cmd install --no-audit --no-fund 2>$null
+& npm.cmd run build 2>$null
 Pop-Location
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "  ✗ Dashboard build failed" -ForegroundColor Red
+    exit 1
+}
+Write-Host "  ✓ Dashboard built" -ForegroundColor Green
 
 Write-Host ""
 Write-Host "  ♠  OpenAce installed successfully!" -ForegroundColor Green
