@@ -4,8 +4,6 @@
 # curl -fsSL https://raw.githubusercontent.com/ELikeMed/OpenAce/main/install.sh | bash
 # ============================================================
 
-set -e
-
 CYAN='\033[0;36m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -56,6 +54,11 @@ else
   export NVM_DIR="$HOME/.nvm"
   [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
   nvm install --lts 2>/dev/null
+  if ! command -v node &>/dev/null; then
+    echo -e "  ${RED}✗${NC} Node.js installation failed."
+    echo -e "  ${YELLOW}→${NC} Install manually from: https://nodejs.org"
+    exit 1
+  fi
   echo -e "  ${GREEN}✓${NC} Node.js $(node -v) installed"
 fi
 
@@ -67,24 +70,43 @@ if [ -d "$INSTALL_DIR/.git" ]; then
   git pull --ff-only 2>/dev/null || true
 else
   echo -e "  ${CYAN}→${NC} Cloning OpenAce..."
-  git clone https://github.com/ELikeMed/OpenAce.git "$INSTALL_DIR" 2>&1 | tail -1
+  if ! git clone https://github.com/ELikeMed/OpenAce.git "$INSTALL_DIR" 2>&1; then
+    echo -e "  ${RED}✗${NC} Git clone failed. Check your internet connection and GitHub access."
+    exit 1
+  fi
   cd "$INSTALL_DIR"
 fi
 
 # ── Install Dependencies ──
-echo -e "  ${CYAN}→${NC} Installing dependencies (this may take a minute)..."
-npm install --no-audit --no-fund 2>&1 | tail -3
+echo -e "  ${CYAN}→${NC} Installing dependencies (this may take a few minutes)..."
+if ! npm install --no-audit --no-fund 2>&1; then
+  echo -e "  ${RED}✗${NC} npm install failed. Check the errors above."
+  exit 1
+fi
+echo -e "  ${GREEN}✓${NC} Dependencies installed"
 
 # ── Build Dashboard ──
 echo -e "  ${CYAN}→${NC} Building dashboard..."
-cd src/desktop/dashboard-ui && npm install --no-audit --no-fund 2>&1 | tail -1 && npm run build 2>&1 | tail -1 && cd ../../..
+cd src/desktop/dashboard-ui
+npm install --no-audit --no-fund 2>&1 || true
+if ! npm run build 2>&1; then
+  echo -e "  ${RED}✗${NC} Dashboard build failed."
+  cd "$INSTALL_DIR"
+  exit 1
+fi
+cd "$INSTALL_DIR"
+echo -e "  ${GREEN}✓${NC} Dashboard built"
 
+# ── Done ──
 echo ""
 echo -e "  ${GREEN}${BOLD}♠  OpenAce installed successfully!${NC}"
 echo ""
-echo -e "  ${CYAN}→${NC} Starting OpenAce..."
+echo -e "  To start OpenAce, run:"
 echo ""
-
-# Auto-start — browser opens automatically
-cd "$INSTALL_DIR"
-npm start
+echo -e "    ${CYAN}cd ~/openace && npm start${NC}"
+echo ""
+echo -e "  Then open: ${CYAN}http://localhost:3333${NC}"
+echo ""
+echo -e "  ${YELLOW}Note:${NC} Desktop automation (mouse/keyboard) requires macOS."
+echo -e "  All other features work on macOS and Linux."
+echo ""
