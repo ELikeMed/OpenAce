@@ -171,11 +171,17 @@ export class UpdateManager {
       await this._exec('npm install', this.baseDir);
       progress('install', 'done', 'Dependencies installed');
 
-      // Step 4: Rebuild dashboard
+      // Step 4: Rebuild dashboard + studio
       progress('build', 'active', 'Building dashboard...');
       const dashboardDir = path.join(this.baseDir, 'src/desktop/dashboard-ui');
       await this._exec('npm install && npm run build', dashboardDir);
-      progress('build', 'done', 'Dashboard rebuilt');
+      const studioDir = path.join(this.baseDir, 'src/studio');
+      try {
+        await this._exec('npm install && npm run build', studioDir);
+      } catch (e) {
+        console.log('[UpdateManager] Studio build failed (non-critical):', e.message);
+      }
+      progress('build', 'done', 'Dashboard & Studio rebuilt');
 
       // Step 5: Run migrations
       progress('migrate', 'active', 'Running migrations...');

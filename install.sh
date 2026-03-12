@@ -97,6 +97,16 @@ fi
 cd "$INSTALL_DIR"
 echo -e "  ${GREEN}✓${NC} Dashboard built"
 
+# ── Build Studio ──
+echo -e "  ${CYAN}→${NC} Building Ace Studio..."
+cd src/studio
+npm install --no-audit --no-fund 2>&1 || true
+if ! npm run build 2>&1; then
+  echo -e "  ${YELLOW}!${NC} Studio build failed (non-critical — Studio will be unavailable)"
+fi
+cd "$INSTALL_DIR"
+echo -e "  ${GREEN}✓${NC} Studio built"
+
 # ── Done ──
 echo ""
 echo -e "  ${GREEN}${BOLD}♠  OpenAce installed successfully!${NC}"

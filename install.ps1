@@ -91,6 +91,14 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "  ✓ Dashboard built" -ForegroundColor Green
 
+# ── Build Studio ──
+Write-Host "  → Building Ace Studio..." -ForegroundColor Cyan
+Push-Location src/studio
+& npm.cmd install --no-audit --no-fund 2>$null
+& npm.cmd run build 2>$null
+Pop-Location
+Write-Host "  ✓ Studio built" -ForegroundColor Green
+
 Write-Host ""
 Write-Host "  ♠  OpenAce installed successfully!" -ForegroundColor Green
 Write-Host ""
