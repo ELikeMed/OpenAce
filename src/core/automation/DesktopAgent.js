@@ -10,15 +10,32 @@
 import { createRequire } from 'module';
 import { execSync } from 'child_process';
 const require = createRequire(import.meta.url);
-const robot = require('robotjs');
-const Jimp = require('jimp');
+
+let robot = null;
+try {
+  robot = require('robotjs');
+} catch {
+  // robotjs not available — macOS only, requires native compilation
+}
+
+let Jimp = null;
+try {
+  Jimp = require('jimp');
+} catch {
+  // jimp not available
+}
 
 export class DesktopAgent {
   constructor(options = {}) {
     this.onProgress = options.onProgress || ((msg) => console.log(`[DesktopAgent] ${msg}`));
     this.aiManager = options.aiManager || null;
-    this.screenSize = robot.getScreenSize();
-    this.onProgress(`🤖 Desktop Agent initialized. Screen size: ${this.screenSize.width}x${this.screenSize.height}`);
+    if (robot) {
+      this.screenSize = robot.getScreenSize();
+      this.onProgress(`🤖 Desktop Agent initialized. Screen size: ${this.screenSize.width}x${this.screenSize.height}`);
+    } else {
+      this.screenSize = { width: 1920, height: 1080 };
+      this.onProgress('🤖 Desktop Agent initialized (no robotjs — desktop control unavailable)');
+    }
   }
 
   // ═══════════════════════════════════════════

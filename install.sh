@@ -90,9 +90,19 @@ fi
 # ── Clone or Update OpenAce ──
 INSTALL_DIR="$HOME/openace"
 if [ -d "$INSTALL_DIR/.git" ]; then
-  echo -e "  ${GREEN}✓${NC} OpenAce found at $INSTALL_DIR"
+  echo -e "  ${GREEN}✓${NC} OpenAce found at $INSTALL_DIR — updating..."
   cd "$INSTALL_DIR"
   git pull --ff-only 2>/dev/null || true
+elif [ -d "$INSTALL_DIR" ]; then
+  # Directory exists but isn't a git repo (partial install) — remove and re-clone
+  echo -e "  ${YELLOW}→${NC} Removing incomplete install at $INSTALL_DIR..."
+  rm -rf "$INSTALL_DIR"
+  echo -e "  ${CYAN}→${NC} Cloning OpenAce..."
+  if ! git clone https://github.com/ELikeMed/OpenAce.git "$INSTALL_DIR" 2>&1; then
+    echo -e "  ${RED}✗${NC} Git clone failed. Check your internet connection."
+    exit 1
+  fi
+  cd "$INSTALL_DIR"
 else
   echo -e "  ${CYAN}→${NC} Cloning OpenAce..."
   if ! git clone https://github.com/ELikeMed/OpenAce.git "$INSTALL_DIR" 2>&1; then
@@ -105,8 +115,16 @@ fi
 # ── Install Dependencies ──
 echo -e "  ${CYAN}→${NC} Installing dependencies (this may take a few minutes)..."
 if ! npm install --no-audit --no-fund 2>&1; then
-  echo -e "  ${RED}✗${NC} npm install failed. Check the errors above."
-  exit 1
+  echo -e "  ${YELLOW}!${NC} Some native modules failed to build (this is OK on non-Mac systems)."
+  # Check if express got installed — that's the critical one
+  if [ ! -d "$INSTALL_DIR/node_modules/express" ]; then
+    echo -e "  ${YELLOW}→${NC} Retrying with --ignore-scripts..."
+    npm install --no-audit --no-fund --ignore-scripts 2>&1
+    if [ ! -d "$INSTALL_DIR/node_modules/express" ]; then
+      echo -e "  ${RED}✗${NC} npm install failed. Check the errors above."
+      exit 1
+    fi
+  fi
 fi
 echo -e "  ${GREEN}✓${NC} Dependencies installed"
 
@@ -139,12 +157,11 @@ echo ""
 echo -e "  ┌─────────────────────────────────────────────┐"
 echo -e "  │  ${BOLD}TO START OPENACE:${NC}                          │"
 echo -e "  │                                             │"
-echo -e "  │  1. Open a NEW terminal window              │"
-echo -e "  │  2. Run these commands:                     │"
+echo -e "  │  Run these commands:                        │"
 echo -e "  │                                             │"
 echo -e "  │     ${CYAN}cd ~/openace && npm start${NC}               │"
 echo -e "  │                                             │"
-echo -e "  │  3. Open your BROWSER (Chrome/Safari) to:   │"
+echo -e "  │  Then open your BROWSER (Chrome/Safari) to: │"
 echo -e "  │     ${CYAN}http://localhost:3333${NC}                    │"
 echo -e "  │                                             │"
 echo -e "  │  ${YELLOW}(Type the URL in your browser, NOT here)${NC}  │"

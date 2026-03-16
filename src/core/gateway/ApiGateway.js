@@ -1982,21 +1982,30 @@ export class ApiGateway {
     // GET /api/onboarding-status — check if first-run setup is needed
     this.app.get('/api/onboarding-status', this.wrap(async (req, res) => {
       try {
-        // Check new multi-business format first, then fall back to old
-        if (existsSync(profilesPath)) {
-          const raw = await fs.readFile(profilesPath, 'utf-8');
-          const profiles = JSON.parse(raw);
-          const needsOnboarding = !profiles.length || !profiles[0]?.name?.trim();
-          return res.json({ success: true, data: { needsOnboarding } });
+        // Method 1: Check in-memory business profiles (most reliable)
+        if (this.ace?.businessProfile?.profiles?.length > 0) {
+          const name = this.ace.businessProfile.profiles[0]?.name?.trim();
+          if (name) {
+            return res.json({ success: true, data: { needsOnboarding: false } });
+          }
         }
-        if (existsSync(profilePath)) {
-          const raw = await fs.readFile(profilePath, 'utf-8');
-          const profile = JSON.parse(raw);
-          const needsOnboarding = !profile.name || profile.name.trim() === '';
-          return res.json({ success: true, data: { needsOnboarding } });
+
+        // Method 2: Read directly from disk as fallback
+        for (const p of [profilesPath, profilePath]) {
+          try {
+            await fs.access(p);
+            const raw = await fs.readFile(p, 'utf-8');
+            const data = JSON.parse(raw);
+            const items = Array.isArray(data) ? data : [data];
+            if (items.length > 0 && items[0]?.name?.trim()) {
+              return res.json({ success: true, data: { needsOnboarding: false } });
+            }
+          } catch { /* file doesn't exist or can't be read, try next */ }
         }
+
         res.json({ success: true, data: { needsOnboarding: true } });
       } catch (err) {
+        console.error('Onboarding status check error:', err.message);
         res.json({ success: true, data: { needsOnboarding: true } });
       }
     }));

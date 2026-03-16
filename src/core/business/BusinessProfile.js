@@ -1,5 +1,4 @@
 import fs from 'fs/promises';
-import { existsSync } from 'fs';
 import path from 'path';
 
 /**
@@ -29,19 +28,34 @@ class BusinessManager {
   async load() {
     await fs.mkdir(this.dataDir, { recursive: true });
 
-    if (existsSync(this.profilesPath)) {
-      // New format — load profiles array
+    console.log(`[BusinessManager] Loading from: ${this.profilesPath}`);
+
+    // Try reading profiles.json directly (more reliable than existsSync)
+    let loaded = false;
+    try {
       const raw = await fs.readFile(this.profilesPath, 'utf-8');
       this.profiles = JSON.parse(raw);
-    } else {
-      // First boot — migrate from old profile.json
+      loaded = true;
+      console.log(`[BusinessManager] Loaded ${this.profiles.length} profiles from profiles.json`);
+    } catch (err) {
+      if (err.code === 'ENOENT') {
+        console.log('[BusinessManager] profiles.json not found, checking for migration...');
+      } else {
+        console.error(`[BusinessManager] Error reading profiles.json: ${err.message}`);
+      }
+    }
+
+    // If profiles.json didn't load, try migration from old profile.json
+    if (!loaded) {
       await this._migrate();
     }
 
     // Load active pointer
-    if (existsSync(this.activePath)) {
+    try {
       const raw = await fs.readFile(this.activePath, 'utf-8');
       this.activeId = JSON.parse(raw).activeId;
+    } catch {
+      // No active.json yet
     }
 
     // Fallback to first profile
@@ -50,6 +64,7 @@ class BusinessManager {
       await this._saveActive();
     }
 
+    console.log(`[BusinessManager] Ready — ${this.profiles.length} profiles, active: ${this.activeId}`);
     return this.getActive();
   }
 
@@ -58,10 +73,6 @@ class BusinessManager {
    */
   async _migrate() {
     const oldPath = path.join(this.dataDir, 'profile.json');
-    if (!existsSync(oldPath)) {
-      this.profiles = [];
-      return;
-    }
 
     try {
       const raw = await fs.readFile(oldPath, 'utf-8');
@@ -82,7 +93,11 @@ class BusinessManager {
       await this._saveProfiles();
       console.log(`[BusinessManager] Migrated profile.json → profiles.json (id: ${slug})`);
     } catch (e) {
-      console.error('[BusinessManager] Migration failed:', e.message);
+      if (e.code === 'ENOENT') {
+        console.log('[BusinessManager] No profile.json found — fresh install');
+      } else {
+        console.error('[BusinessManager] Migration failed:', e.message);
+      }
       this.profiles = [];
     }
   }
