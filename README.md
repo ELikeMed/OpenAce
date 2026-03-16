@@ -32,6 +32,13 @@ This will install Git and Node.js if needed, clone the repo, and build everythin
 
 > **First time?** When you open OpenAce, just type anything in the chat — Ace will walk you through getting your free API key and connecting it. Takes about 60 seconds.
 
+### Video Walkthroughs
+
+| | |
+|---|---|
+| [**Install on Mac**](https://youtu.be/vXy_UHe_ROA) | [**Install on Windows**](https://youtu.be/cNuhJ_pxaQw) |
+| [**Onboarding Walkthrough**](https://youtu.be/HcAnnAsZPbo) | From first launch to first conversation |
+
 ### Manual Install
 
 ```bash

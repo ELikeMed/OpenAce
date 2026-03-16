@@ -330,8 +330,14 @@ export default function OnboardingWizard({ onComplete }) {
                   Ace manages your business like a team of AI executives — handling strategy, marketing,
                   research, code, scheduling, and web browsing autonomously.
                 </Typography>
-                <Typography variant="body2" sx={{ color: BRAND.textMuted, mb: 4 }}>
+                <Typography variant="body2" sx={{ color: BRAND.textMuted, mb: 2 }}>
                   Let's set up your assistant. This takes about 2 minutes.
+                </Typography>
+                <Typography variant="body2" sx={{ mb: 4 }}>
+                  <a href="https://youtu.be/HcAnnAsZPbo" target="_blank" rel="noopener noreferrer"
+                    style={{ color: BRAND.secondary, textDecoration: 'none', fontWeight: 500 }}>
+                    ▶ Watch a quick walkthrough
+                  </a>
                 </Typography>
                 <Button
                   variant="contained" size="large"
