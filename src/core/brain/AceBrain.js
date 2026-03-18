@@ -584,8 +584,14 @@ That's it! Once connected, I can help you with research, email, social media, we
         const conv = this.conversations.get(channelId);
         const history = (Array.isArray(conv) ? conv : []).slice(-10);
 
+        // Detect training intent — signals UnifiedAgent to follow interview protocol
+        const trainingMode = /\b(teach|train|learn)\b/i.test(message) ||
+            /\bremember\s+(this|that|how|to|when|the)\b/i.test(message) ||
+            /\bcreate\s+(a\s+)?(procedure|playbook|workflow|sop)\b/i.test(message) ||
+            /\bshow\s+you\s+(how|my)\b/i.test(message);
+
         const result = await this.unifiedAgent.process(message, history, {
-          channelId, userName, source
+          channelId, userName, source, trainingMode
         });
 
         if (result) {

@@ -104,7 +104,7 @@ export class UnifiedAgent {
       contacts:  { name: 'Contacts',           tools: ['manage_contacts'], description: 'Manage contact book' },
       calendar:  { name: 'Calendar',           tools: ['list_calendar_events', 'create_calendar_event', 'delete_calendar_event'], description: 'Google Calendar events' },
       social:    { name: 'Social Media',       tools: ['post_social_media', 'schedule_social_post', 'create_content_plan', 'select_media_for_content'], description: 'Post and schedule on social platforms' },
-      sops:      { name: 'Playbooks / SOPs',   tools: ['list_sops', 'update_sop', 'create_sop', 'run_sop'], description: 'Manage and run standard procedures' },
+      sops:      { name: 'Playbooks / SOPs',   tools: ['list_sops', 'update_sop', 'create_sop', 'draft_sop', 'run_sop'], description: 'Manage and run standard procedures' },
       projects:  { name: 'Projects',           tools: ['create_project', 'write_project_file', 'list_projects', 'read_project_file', 'edit_project_file'], description: 'Code projects in Ace Studio' },
       forms:     { name: 'Forms & Quizzes',    tools: ['create_form', 'list_forms', 'get_form_submissions', 'get_form', 'update_form'], description: 'Create and manage forms' },
       workload:  { name: 'Workload / Knowledge', tools: ['search_workload', 'list_workload_sources', 'list_media'], description: 'Search ingested files and media' },
@@ -638,6 +638,24 @@ export class UnifiedAgent {
       });
 
       declarations.push({
+        name: 'draft_sop',
+        description: 'Preview an SOP before saving it. Shows the user a formatted preview with numbered steps, action types, variables, and trigger phrases. You MUST call this BEFORE create_sop during training conversations — never save without showing a preview first. Does NOT save anything.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            name: { type: 'STRING', description: 'Name of the procedure' },
+            description: { type: 'STRING', description: 'One-sentence description of what this procedure does' },
+            steps: { type: 'STRING', description: 'JSON array of step objects. Each step: {"action":"navigate|click_text|type|wait|...","description":"what happens","url":"for navigate steps","value":"for type steps","text":"for click_text steps"}' },
+            triggers: { type: 'STRING', description: 'JSON array of trigger phrases that activate this SOP' },
+            keywords: { type: 'STRING', description: 'JSON array of keywords for matching' },
+            variables: { type: 'STRING', description: 'JSON array of dynamic variables: [{"name":"city","description":"Target city","example":"Dallas"}]' },
+            category: { type: 'STRING', description: 'Category: general, custom, lead_generation, email, meetups' }
+          },
+          required: ['name', 'steps']
+        }
+      });
+
+      declarations.push({
         name: 'run_sop',
         description: 'Execute a saved SOP (Standard Operating Procedure). This runs the actual procedure — navigating websites, clicking buttons, filling forms. You can pass an exact SOP ID, or just pass the name/description and it will fuzzy-match. IMPORTANT: Only call this AFTER the user has confirmed they want to run it.',
         parameters: {
@@ -989,7 +1007,7 @@ export class UnifiedAgent {
       contacts:  ['manage_contacts'],
       calendar:  ['list_calendar_events', 'create_calendar_event', 'delete_calendar_event'],
       social:    ['post_social_media', 'schedule_social_post', 'create_content_plan', 'select_media_for_content'],
-      sops:      ['list_sops', 'update_sop', 'create_sop', 'run_sop'],
+      sops:      ['list_sops', 'update_sop', 'create_sop', 'draft_sop', 'run_sop'],
       projects:  ['create_project', 'write_project_file', 'list_projects', 'list_project_files', 'read_project_file', 'edit_project_file'],
       forms:     ['create_form', 'list_forms', 'get_form_submissions', 'get_form', 'update_form'],
       workload:  ['search_workload', 'list_workload_sources', 'list_media'],
@@ -1280,7 +1298,8 @@ When calling create_calendar_event, you MUST pass start_time as an ISO 8601 stri
 - **list_sops**: List all saved SOPs with their IDs, names, triggers, and step counts.
 - **run_sop**: Execute a saved SOP by ID or name. When the user clearly requests a procedure, call this directly.
 - **update_sop**: Update an existing SOP's steps, name, or triggers.
-- **create_sop**: Create a new SOP from a user-described procedure.
+- **draft_sop**: Preview an SOP before saving. MUST be called before create_sop during training. Shows formatted steps for user approval.
+- **create_sop**: Save a finalized SOP. During training, only call AFTER draft_sop and user confirmation.
 
 ${this._buildSOPSection()}
 
@@ -1340,7 +1359,7 @@ You have saved procedures (SOPs) for common tasks.
 - "next time, make sure to..." → Use update_sop to modify the steps.
 
 **When the user describes a new procedure:**
-- Use create_sop with clear steps, trigger phrases, and keywords.
+- Follow the SOP TRAINING INTERVIEW PROTOCOL. Interview → draft_sop (preview) → user confirms → create_sop.
 
 # AUTONOMOUS WORKFLOW STRATEGY
 
@@ -1730,30 +1749,108 @@ User: "Find contact info for companies on builtinaustin.com"
 
 `;
 
-    // Teach-me training flow
-    prompt += `# "TEACH ME" TRAINING FLOW
-When you're struggling with a task and can't figure it out after multiple attempts, you may offer the user a chance to teach you. Here's how the flow works:
+    // SOP Training Interview Protocol
+    prompt += `# SOP TRAINING INTERVIEW PROTOCOL
 
-**When the user selects "Teach me how you'd do this":**
-1. Ask them: "Walk me through the steps — how would YOU do this task? Just describe it in plain English, step by step."
-2. Listen to their description (they'll type it in chat)
-3. Parse their steps and call create_sop to save it as a playbook
-4. Confirm: "Got it! I've saved that as a playbook called '[name]'. Next time you ask me to do this, I'll follow your process."
-5. Then immediately try the task again using the steps they taught you
+When the user wants to teach you a procedure, create an SOP, or says things like "teach you how to", "create a procedure", "remember how to", "when I say X do Y", "let me show you my process", or selects "Teach me how you'd do this" — you MUST conduct a structured training interview. Follow this multi-turn protocol:
 
-**When the user selects "Try a different approach":**
-- Actually try a MEANINGFULLY different strategy — don't just repeat what already failed
-- If extraction failed, try clicking into individual items
-- If clicking failed, try opening URLs directly
-- If one website is a dead end, try a different source entirely (Google the info, check LinkedIn, etc.)
+## PHASE 1: UNDERSTAND THE PROCEDURE
+1. **Name it**: "What should I call this procedure?" (If the user already named it, confirm: "I'll call this '[name]' — sound right?")
+2. **Purpose**: "What does this accomplish in one sentence?" (This becomes the description)
+3. **Trigger phrases**: "What would you say to trigger this? Give me 2-3 short phrases like 'repost the meetup' or 'log new lead from call'."
 
-**When the user selects "Skip this and move on":**
-- Brief acknowledgement: "Got it, moving on."
-- Continue with the next item or task without dwelling on the failure
+## PHASE 2: STEP-BY-STEP WALKTHROUGH
+4. **Start**: "Walk me through it step by step — what's the very first thing you'd do?"
+5. **For EVERY step the user describes, ask targeted follow-ups:**
+   - "Go to a website" → "What's the exact URL?"
+   - "Click something" → "What's the exact text on the button or link?"
+   - "Type something" → "What text exactly? Does it change each time?" (→ {{variable}})
+   - "Fill out a form" → "Which fields? What goes in each one?"
+   - "Wait for something" → "What should appear before we continue?"
+   - "Log in" → "Which site? Should I use saved credentials?"
+   - "Call a number" / "Send an email" / "Save to CRM" → Capture the details: who, what content, which CRM fields
+   - Condition ("if X, then Y") → "What should I do in the other case?"
+6. **After EACH step, confirm**: "Got it — step N is [restate what you understood]. What's next?"
+7. **Keep asking "What's next?" until the user says they're done or "that's it".**
 
-**Important:** Handle all of this in chat. Don't redirect the user to the Playbooks tab. The training conversation happens right here.
+## PHASE 3: IDENTIFY DYNAMIC VARIABLES
+8. Review ALL steps for anything that changes per run: search terms, names, dates, cities, prices, URLs with parameters, email content.
+9. For each one, ask: "You mentioned [X] — does that change each time, or is it always the same?"
+10. For confirmed variables, use {{variable_name}} notation in the step.
+
+## PHASE 4: PREVIEW AND CONFIRM (MANDATORY)
+11. **You MUST call draft_sop** to generate a formatted preview. NEVER call create_sop directly without previewing first.
+12. Show the preview to the user: "Here's what I've captured — does this look right?"
+13. Offer options to approve or revise:
+
+[ACE_QUESTION]{"options":[
+  {"id":1,"label":"Looks good, save it","description":"Save this procedure exactly as shown"},
+  {"id":2,"label":"I need to change some steps","description":"Tell me what to adjust"},
+  {"id":3,"label":"Add more steps","description":"I forgot some steps, let me add them"}
+],"allowCustom":true}[/ACE_QUESTION]
+
+14. If the user wants changes, modify the draft and call draft_sop again.
+15. Only when the user confirms → call create_sop with the finalized data.
+
+## CRITICAL TRAINING RULES:
+- **NEVER call create_sop on the first message.** Always interview first — even if the user gives you all steps in one message, still do Phase 3 (variables) and Phase 4 (preview).
+- **NEVER invent steps the user didn't describe.** Only record what they tell you. Ask if you're unsure.
+- **NEVER skip the preview.** Always call draft_sop before create_sop.
+- **Capture the EXACT wording** the user gives you for button text, field names, and URLs. Don't paraphrase.
+- **Handle all training in chat.** Don't redirect users to the Playbooks tab.
+
+## WHEN A TASK FAILS AND USER TEACHES YOU:
+If you struggle with a task and the user selects "Teach me how you'd do this":
+1. Follow the full protocol above — interview them about their process
+2. After saving the SOP, immediately try the task again using the steps they taught you
+
+## ACTION TYPE REFERENCE (use the right one for each step):
+- **navigate**: Go to a URL (always followed by a wait)
+- **click_text**: Click visible text (button, link, menu item)
+- **click_submit**: Click the submit/save/send button
+- **smart_click**: AI finds and clicks element (when target is loosely described)
+- **type**: Type text into the currently focused field
+- **edit_field**: Modify existing text in a field (target + remove/add)
+- **press**: Press a key (Enter, Tab, Escape)
+- **scroll**: Scroll the page (up/down)
+- **select_option**: Pick from a dropdown menu
+- **wait**: Pause for a duration (ms) — ALWAYS add after navigate
+- **hover**: Hover over an element
+- **switch_tab**: Switch browser tabs
+- **go_back**: Browser back button
+- **copy_text**: Copy text from page
+- **right_click**: Right-click on element
+- **wait_navigation**: Wait for page to finish loading
+
+## EXAMPLE TRAINING CONVERSATION:
+User: "Let me teach you how I repost the meetup on eventbrite"
+Ace: "I'd love to learn that! Let me make sure I capture it perfectly.
+
+First — I'll call this **'Repost Meetup on Eventbrite'**. Sound right?
+
+And what 2-3 phrases should trigger this? For example, 'repost the meetup' or 'eventbrite repost'?"
+
+User: "Yeah that works. Triggers: repost meetup, eventbrite repost, repost the event"
+Ace: "Perfect. Now walk me through it — what's the very first thing you do?"
+
+User: "Go to eventbrite.com and log in"
+Ace: "Got it — Step 1 is navigate to eventbrite.com, Step 2 is log in with saved credentials. What's next?"
+
+User: "Click on my past events, then find the most recent one and click copy"
+Ace: "Step 3 is click 'Past Events' (that's the exact text on the button?), then Step 4 is click 'Copy' on the most recent event. What's next?"
+
+User: "Change the date to this Saturday and update the title with the new date"
+Ace: "Two questions — does the date change each time? And what format is the title?"
+User: "Yeah the date changes. Title is always like 'Dallas REI Meetup - March 22'"
+Ace: "Got it — I'll use {{event_date}} for the date and {{event_title}} for the title. What's next?"
+
+User: "That's it, just publish it"
+Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
+→ [calls draft_sop with all steps, shows preview]
+→ "Does this look right?"
 
 `;
+
 
     // Response format
     prompt += `# RESPONSE FORMAT
@@ -1963,8 +2060,13 @@ When you're struggling with a task and can't figure it out after multiple attemp
       });
     }
 
-    // Inject research context if recent
+    // Inject training mode signal — ensures Gemini follows the interview protocol
     let userContent = message;
+    if (channelContext.trainingMode) {
+      userContent = `[TRAINING MODE: The user wants to teach you a new procedure. Follow the SOP TRAINING INTERVIEW PROTOCOL in your instructions. Interview first — do NOT call create_sop yet. Use draft_sop to preview before saving.]\n\n${userContent}`;
+    }
+
+    // Inject research context if recent
     if (this._lastResearchContext?.synthesis) {
       const timeSince = Date.now() - (this._lastResearchContext.timestamp || 0);
       if (timeSince < 30 * 60 * 1000) {
@@ -2427,6 +2529,7 @@ When you're struggling with a task and can't figure it out after multiple attemp
       case 'list_sops': return await this._toolListSOPs(args);
       case 'update_sop': return await this._toolUpdateSOP(args);
       case 'create_sop': return await this._toolCreateSOP(args);
+      case 'draft_sop': return await this._toolDraftSOP(args);
       case 'run_sop': return await this._toolRunSOP(args);
       case 'save_note': return await this._toolSaveNote(args);
       case 'recall_notes': return await this._toolRecallNotes(args);
@@ -3526,6 +3629,101 @@ When you're struggling with a task and can't figure it out after multiple attemp
 
   // ── SOP Management Tools ──
 
+  /**
+   * Normalize an array of steps — handles both string steps and object steps.
+   * Gemini sometimes sends ["Go to facebook", "Click button"] instead of proper objects.
+   * Shared by _toolCreateSOP, _toolUpdateSOP, and _toolDraftSOP.
+   */
+  _normalizeStepArray(steps) {
+    if (!Array.isArray(steps)) return [];
+    return steps.map((step, i) => {
+      if (typeof step === 'string') {
+        const text = step.trim();
+        let action = 'smart_click';
+        if (/^(go to|open|navigate|visit|browse)\b/i.test(text)) action = 'navigate';
+        else if (/^(type|enter|input|fill|write|paste)\b/i.test(text)) action = 'type';
+        else if (/^(click|press|tap|hit|select)\b/i.test(text)) action = 'click_text';
+        else if (/^(wait|pause|delay)\b/i.test(text)) action = 'wait';
+        else if (/^(scroll)\b/i.test(text)) action = 'scroll';
+        return { action, description: text };
+      }
+      if (typeof step === 'object' && step !== null) {
+        if (!step.action) step.action = 'smart_click';
+        if (!step.description && step.target) step.description = step.target;
+        return step;
+      }
+      return { action: 'smart_click', description: `Step ${i + 1}` };
+    });
+  }
+
+  /**
+   * Clean up SOP data before saving — catches common AI mistakes.
+   * Ported from index.js _validateNewSOP. Used by draft_sop and create_sop.
+   */
+  _cleanupSOPSteps(sopData) {
+    const stopWords = new Set([
+      'the', 'a', 'an', 'to', 'for', 'on', 'in', 'of', 'we', 'any', 'how',
+      'is', 'it', 'and', 'or', 'but', 'if', 'at', 'by', 'with', 'from',
+      'that', 'this', 'they', 'them', 'then', 'be', 'do', 'has', 'have',
+      'was', 'were', 'will', 'can', 'could', 'should', 'would', 'not', 'no',
+      'so', 'up', 'out', 'all', 'just', 'also', 'into', 'its', 'our', 'your'
+    ]);
+
+    // Heading/instructional patterns that should never be click targets
+    const headingPatterns = [
+      /^step\s*\d/i, /^phase\s*\d/i, /^note:/i, /^important:/i,
+      /^exception/i, /^if found/i, /^if not found/i, /^if any/i,
+      /^final review/i, /^manual verification/i, /^data extraction/i,
+      /^completion$/i, /^initiation$/i, /^review all/i
+    ];
+
+    const cleanSteps = [];
+    for (let i = 0; i < sopData.steps.length; i++) {
+      const step = sopData.steps[i];
+
+      // Strip heading/instructional click_text steps
+      if (step.action === 'click_text' && step.text) {
+        if (headingPatterns.some(p => p.test(step.text.trim()))) continue;
+      }
+
+      // Fix invalid URLs in navigate steps
+      if (step.action === 'navigate' && step.url) {
+        if (!step.url.startsWith('http://') && !step.url.startsWith('https://')) {
+          step.url = 'https://' + step.url;
+        }
+        if (step.url.includes(' ') || !step.url.includes('.')) continue;
+      }
+
+      cleanSteps.push(step);
+
+      // Auto-insert wait after navigate if next step isn't already a wait
+      if (step.action === 'navigate') {
+        const nextStep = sopData.steps[i + 1];
+        if (!nextStep || nextStep.action !== 'wait') {
+          cleanSteps.push({ action: 'wait', ms: 3000, description: 'Wait for page to load' });
+        }
+      }
+    }
+    sopData.steps = cleanSteps;
+
+    // Clean keywords — remove stop words, deduplicate
+    if (sopData.keywords && Array.isArray(sopData.keywords)) {
+      sopData.keywords = [...new Set(
+        sopData.keywords.map(k => k.toLowerCase().trim()).filter(k => k.length > 1 && !stopWords.has(k))
+      )];
+    } else {
+      const allText = [sopData.name, ...(sopData.triggers || [])].join(' ').toLowerCase();
+      sopData.keywords = [...new Set(allText.split(/\s+/).filter(w => w.length > 2 && !stopWords.has(w)))];
+    }
+
+    // Clean triggers — lowercase, no empties
+    if (sopData.triggers && Array.isArray(sopData.triggers)) {
+      sopData.triggers = sopData.triggers.map(t => t.trim().toLowerCase()).filter(t => t.length > 0);
+    }
+
+    return sopData;
+  }
+
   async _toolListSOPs() {
     if (!this.sopManager) return JSON.stringify({ error: 'SOP Manager not available' });
 
@@ -3570,27 +3768,8 @@ When you're struggling with a task and can't figure it out after multiple attemp
         try {
           let newSteps = typeof args.steps === 'string' ? JSON.parse(args.steps) : args.steps;
           if (Array.isArray(newSteps)) {
-            // Normalize string elements to proper step objects
-            newSteps = newSteps.map((step, i) => {
-              if (typeof step === 'string') {
-                const text = step.trim();
-                let action = 'smart_click';
-                if (/^(go to|open|navigate|visit|browse)\b/i.test(text)) action = 'navigate';
-                else if (/^(type|enter|input|fill|write|paste)\b/i.test(text)) action = 'type';
-                else if (/^(click|press|tap|hit|select)\b/i.test(text)) action = 'click_text';
-                else if (/^(wait|pause|delay)\b/i.test(text)) action = 'wait';
-                else if (/^(scroll)\b/i.test(text)) action = 'scroll';
-                return { action, description: text };
-              }
-              if (typeof step === 'object' && step !== null) {
-                if (!step.action) step.action = 'smart_click';
-                if (!step.description && step.target) step.description = step.target;
-                return step;
-              }
-              return { action: 'smart_click', description: `Step ${i + 1}` };
-            });
-            sop.steps = newSteps;
-            changes.push(`steps updated (${newSteps.length} steps)`);
+            sop.steps = this._normalizeStepArray(newSteps);
+            changes.push(`steps updated (${sop.steps.length} steps)`);
           }
         } catch (e) {
           return JSON.stringify({ error: `Invalid steps JSON: ${e.message}` });
@@ -3637,79 +3816,159 @@ When you're struggling with a task and can't figure it out after multiple attemp
     }
   }
 
-  async _toolCreateSOP(args) {
-    if (!this.sopManager) return JSON.stringify({ error: 'SOP Manager not available' });
-
+  async _toolDraftSOP(args) {
     const { name } = args;
     if (!name) return JSON.stringify({ error: 'name is required' });
 
     let steps = [];
     if (args.steps) {
       try {
-        // Handle both JSON string and already-parsed array from Gemini
         steps = typeof args.steps === 'string' ? JSON.parse(args.steps) : args.steps;
       } catch (e) {
         return JSON.stringify({ error: `Invalid steps JSON: ${e.message}` });
       }
     }
-
-    // Ensure each step is a proper object with action/description — Gemini sometimes
-    // sends steps as plain strings like ["Go to facebook", "Click button"] instead of objects
-    if (Array.isArray(steps)) {
-      steps = steps.map((step, i) => {
-        if (typeof step === 'string') {
-          // Convert plain text to a step object
-          const text = step.trim();
-          let action = 'smart_click';
-          if (/^(go to|open|navigate|visit|browse)\b/i.test(text)) action = 'navigate';
-          else if (/^(type|enter|input|fill|write|paste)\b/i.test(text)) action = 'type';
-          else if (/^(click|press|tap|hit|select)\b/i.test(text)) action = 'click_text';
-          else if (/^(wait|pause|delay)\b/i.test(text)) action = 'wait';
-          else if (/^(scroll)\b/i.test(text)) action = 'scroll';
-          return { action, description: text };
-        }
-        // Already an object — ensure it has action and description
-        if (typeof step === 'object' && step !== null) {
-          if (!step.action) step.action = 'smart_click';
-          if (!step.description && step.target) step.description = step.target;
-          return step;
-        }
-        return { action: 'smart_click', description: `Step ${i + 1}` };
-      });
-    }
+    steps = this._normalizeStepArray(steps);
 
     let triggers = [];
     if (args.triggers) {
-      try {
-        triggers = JSON.parse(args.triggers);
-      } catch (e) {
-        triggers = [name.toLowerCase()];
+      try { triggers = typeof args.triggers === 'string' ? JSON.parse(args.triggers) : args.triggers; }
+      catch (e) { triggers = [name.toLowerCase()]; }
+    } else { triggers = [name.toLowerCase()]; }
+
+    let keywords = [];
+    if (args.keywords) {
+      try { keywords = typeof args.keywords === 'string' ? JSON.parse(args.keywords) : args.keywords; }
+      catch (e) { keywords = name.toLowerCase().split(/\s+/).filter(w => w.length > 3); }
+    } else { keywords = name.toLowerCase().split(/\s+/).filter(w => w.length > 3); }
+
+    // Apply cleanup validation
+    const cleaned = this._cleanupSOPSteps({
+      name,
+      description: args.description || '',
+      steps,
+      triggers,
+      keywords,
+      category: args.category || 'custom',
+    });
+
+    // Parse or auto-detect variables
+    let variables = [];
+    if (args.variables) {
+      try { variables = typeof args.variables === 'string' ? JSON.parse(args.variables) : args.variables; }
+      catch (e) { /* ignore */ }
+    }
+    if (variables.length === 0) {
+      const varSet = new Set();
+      for (const step of cleaned.steps) {
+        const text = JSON.stringify(step);
+        const matches = text.matchAll(/\{\{(\w+)\}\}/g);
+        for (const match of matches) varSet.add(match[1]);
       }
+      variables = [...varSet].map(v => ({ name: v, description: '', example: '' }));
+    }
+
+    // Build formatted preview
+    let preview = `**${cleaned.name}**\n`;
+    if (cleaned.description) preview += `*${cleaned.description}*\n`;
+    preview += `\n**Steps (${cleaned.steps.length}):**\n`;
+
+    cleaned.steps.forEach((step, i) => {
+      const action = step.action || 'action';
+      let desc = step.description || step.target || step.text || '';
+      if (step.url) desc += ` → ${step.url}`;
+      if (step.value) desc += ` (value: "${step.value}")`;
+      if (step.ms) desc += ` (${step.ms}ms)`;
+      preview += `${i + 1}. **[${action}]** ${desc}\n`;
+    });
+
+    if (variables.length > 0) {
+      preview += `\n**Dynamic Variables:**\n`;
+      variables.forEach(v => {
+        preview += `- \`{{${v.name}}}\` — ${v.description || 'provided at runtime'}${v.example ? ` (e.g., "${v.example}")` : ''}\n`;
+      });
+    }
+
+    preview += `\n**Triggers:** ${cleaned.triggers.map(t => `"${t}"`).join(', ')}`;
+    if (cleaned.keywords.length > 0) {
+      preview += `\n**Keywords:** ${cleaned.keywords.join(', ')}`;
+    }
+
+    // Store draft so create_sop can use it
+    this._pendingSOPDraft = { ...cleaned, variables };
+
+    return JSON.stringify({
+      success: true,
+      preview,
+      stepCount: cleaned.steps.length,
+      variableCount: variables.length,
+      message: 'SOP draft ready. Show the preview to the user and ask for confirmation before calling create_sop.'
+    });
+  }
+
+  async _toolCreateSOP(args) {
+    if (!this.sopManager) return JSON.stringify({ error: 'SOP Manager not available' });
+
+    // If there's a pending draft and no steps provided, use the draft
+    let sopArgs = args;
+    if (this._pendingSOPDraft && !args.steps) {
+      sopArgs = {
+        name: args.name || this._pendingSOPDraft.name,
+        steps: JSON.stringify(this._pendingSOPDraft.steps),
+        triggers: JSON.stringify(this._pendingSOPDraft.triggers),
+        keywords: JSON.stringify(this._pendingSOPDraft.keywords),
+        category: args.category || this._pendingSOPDraft.category,
+        description: args.description || this._pendingSOPDraft.description,
+      };
+    }
+
+    const name = sopArgs.name;
+    if (!name) return JSON.stringify({ error: 'name is required' });
+
+    let steps = [];
+    if (sopArgs.steps) {
+      try {
+        steps = typeof sopArgs.steps === 'string' ? JSON.parse(sopArgs.steps) : sopArgs.steps;
+      } catch (e) {
+        return JSON.stringify({ error: `Invalid steps JSON: ${e.message}` });
+      }
+    }
+
+    steps = this._normalizeStepArray(steps);
+
+    let triggers = [];
+    if (sopArgs.triggers) {
+      try { triggers = typeof sopArgs.triggers === 'string' ? JSON.parse(sopArgs.triggers) : sopArgs.triggers; }
+      catch (e) { triggers = [name.toLowerCase()]; }
     } else {
       triggers = [name.toLowerCase()];
     }
 
     let keywords = [];
-    if (args.keywords) {
-      try {
-        keywords = JSON.parse(args.keywords);
-      } catch (e) {
-        keywords = name.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-      }
+    if (sopArgs.keywords) {
+      try { keywords = typeof sopArgs.keywords === 'string' ? JSON.parse(sopArgs.keywords) : sopArgs.keywords; }
+      catch (e) { keywords = name.toLowerCase().split(/\s+/).filter(w => w.length > 3); }
     } else {
       keywords = name.toLowerCase().split(/\s+/).filter(w => w.length > 3);
     }
 
+    // Apply cleanup validation before saving
+    const cleaned = this._cleanupSOPSteps({ name, steps, triggers, keywords });
+
     try {
       const sop = await this.sopManager.createSOP({
         name,
-        steps,
-        triggers,
-        keywords,
-        category: args.category || 'custom',
+        description: sopArgs.description || '',
+        steps: cleaned.steps,
+        triggers: cleaned.triggers,
+        keywords: cleaned.keywords,
+        category: sopArgs.category || 'custom',
       });
 
-      this.onProgress(`Created SOP: ${sop.name} (${steps.length} steps)`);
+      // Clear any pending draft
+      this._pendingSOPDraft = null;
+
+      this.onProgress(`Created SOP: ${sop.name} (${sop.steps.length} steps)`);
       return JSON.stringify({
         success: true,
         sopId: sop.id,
@@ -5292,7 +5551,7 @@ When you're struggling with a task and can't figure it out after multiple attemp
       get_site_memory: 'research',
       send_email: 'email',
       save_leads: 'pipeline', get_pipeline: 'pipeline', move_lead: 'pipeline', set_lead_dnc: 'pipeline',
-      list_sops: 'sop', update_sop: 'sop', create_sop: 'sop', run_sop: 'sop',
+      list_sops: 'sop', update_sop: 'sop', create_sop: 'sop', draft_sop: 'sop', run_sop: 'sop',
     };
     return map[toolName] || 'other';
   }
