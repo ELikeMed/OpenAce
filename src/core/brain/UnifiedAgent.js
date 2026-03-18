@@ -678,14 +678,14 @@ export class UnifiedAgent {
     if (this.subsystems.codeAgent) {
       declarations.push({
         name: 'create_project',
-        description: 'Create a new web project in Ace Studio. Use when the user asks you to build a form, landing page, website, app, or any code project. The project will be viewable in Studio at /studio.',
+        description: 'Create a new web project in Ace Studio. Follow the PROJECT BUILDER PROTOCOL: use business context for real content, include full SEO (meta tags, OG, JSON-LD schema, semantic HTML), and split code into separate files. ALWAYS provide the "files" parameter. The system auto-generates robots.txt and sitemap.xml.',
         parameters: {
           type: 'OBJECT',
           properties: {
             name: { type: 'STRING', description: 'Project name (e.g. "quiz-form", "landing-page"). Gets sanitized to kebab-case.' },
             project_type: { type: 'STRING', description: 'Type: "landing-page", "webapp", "static-site", "react-app", "widget", or any custom type for AI scaffolding.' },
             description: { type: 'STRING', description: 'Detailed description of what to build. Be specific about features, layout, and functionality.' },
-            files: { type: 'STRING', description: 'JSON array of files to create: [{"path":"index.html","content":"<!DOCTYPE html>..."},{"path":"styles.css","content":"..."}]. YOU MUST generate the complete code yourself and pass it here. ALWAYS provide this parameter — do NOT leave it empty.' }
+            files: { type: 'STRING', description: 'JSON array — REQUIRED, minimum 3 files: [{"path":"index.html","content":"<!DOCTYPE html>...full SEO head + semantic body..."},{"path":"styles.css","content":"...all responsive styles..."},{"path":"script.js","content":"...interactivity..."}]. Use BUSINESS CONTEXT for real content. Include title, meta description, OG tags, JSON-LD schema, one h1, semantic elements. NEVER placeholder text.' }
           },
           required: ['name', 'project_type', 'description']
         }
@@ -693,7 +693,7 @@ export class UnifiedAgent {
 
       declarations.push({
         name: 'write_project_file',
-        description: 'Write or update a single file in an existing project. Use for iterating on a project — fixing bugs, adding features, updating styles. The file will be created or overwritten.',
+        description: 'Write or overwrite a single file in an existing project. Use for new files or complete rewrites. When adding HTML pages, include full SEO head (title, meta description, OG tags, canonical). Maintain consistent nav/footer across pages. Use read_project_file FIRST to understand the existing project.',
         parameters: {
           type: 'OBJECT',
           properties: {
@@ -717,7 +717,7 @@ export class UnifiedAgent {
 
       declarations.push({
         name: 'list_project_files',
-        description: 'List all files in a specific project with their sizes. Call this FIRST before editing so you know what files exist and their structure.',
+        description: 'List all files in a specific project with their sizes. Call this FIRST before editing or adding files so you know what exists. Check for missing SEO files (robots.txt, sitemap.xml) and suggest creating them.',
         parameters: {
           type: 'OBJECT',
           properties: {
@@ -1156,7 +1156,7 @@ export class UnifiedAgent {
     return section;
   }
 
-  _buildSystemPrompt(userMessage = '') {
+  async _buildSystemPrompt(userMessage = '') {
     const soul = this._soulConfig;
     let prompt = '';
 
@@ -1164,8 +1164,37 @@ export class UnifiedAgent {
     const studioMatch = userMessage.match(/\[Studio Project:\s*(.+?)\]/);
     if (studioMatch) {
       const projectName = studioMatch[1].trim();
-      prompt += `# ⚠️ STUDIO PROJECT MODE — "${projectName}"
 
+      // Read project file structure for context
+      let fileStructure = '';
+      try {
+        const codeAgent = this.subsystems.codeAgent;
+        const sanitized = codeAgent ? codeAgent.sanitizeProjectName(projectName) : projectName;
+        const projectDir = path.join(PROJECT_ROOT, 'projects', sanitized);
+        const files = [];
+        const walk = async (dir, prefix = '') => {
+          const entries = await fs.readdir(dir, { withFileTypes: true });
+          for (const entry of entries) {
+            if (['project.json', '.history', 'node_modules', '.git'].includes(entry.name)) continue;
+            const relPath = prefix ? `${prefix}/${entry.name}` : entry.name;
+            if (entry.isDirectory()) {
+              await walk(path.join(dir, entry.name), relPath);
+            } else {
+              try {
+                const stat = await fs.stat(path.join(dir, entry.name));
+                files.push(`${relPath} (${stat.size} bytes)`);
+              } catch { files.push(relPath); }
+            }
+          }
+        };
+        await walk(projectDir);
+        if (files.length > 0) {
+          fileStructure = `\n## PROJECT FILES (${files.length} files):\n${files.map(f => `- ${f}`).join('\n')}\n`;
+        }
+      } catch { /* project dir not found, skip */ }
+
+      prompt += `# ⚠️ STUDIO PROJECT MODE — "${projectName}"
+${fileStructure}
 ## HOW TO EDIT (follow this EVERY time):
 1. SEARCH first: read_project_file with search="the text to find" — returns matching lines with line numbers
 2. EDIT by line number: edit_project_file with delete_lines or replace_lines using the line numbers from step 1
@@ -1184,11 +1213,20 @@ User: "Change heading to Hello World" → search="<h1" → finds line 45 → rep
 User: "Remove the testimonials section" → search="testimonial" → finds section lines 100-130 → delete_lines 100-130
 User: "Make Net Profits purple" → search="Net Profits" → finds line 52 → replace_lines to wrap in <span style="color:#7C6FE0">
 
+## SEO MAINTENANCE (when editing existing projects):
+- NEVER remove or weaken existing <title>, <meta description>, OG tags, or JSON-LD schema
+- When adding new HTML pages, include full SEO head (title, meta description, OG tags, canonical URL)
+- When changing headings, maintain h1 → h2 → h3 hierarchy (one h1 per page)
+- When adding images, always include descriptive alt text with relevant keywords
+- When adding links, use descriptive anchor text (not "click here")
+- If the project is missing SEO elements (no meta description, no schema, no sitemap), proactively suggest adding them
+
 ## RULES:
 - ALWAYS use project_name="${projectName}"
 - NEVER describe what you would do — CALL THE TOOLS
 - NEVER use placeholder URLs — use inline SVGs or CSS
 - NEVER paraphrase user text — write exactly what they said
+- Before ANY edit, use read_project_file to understand what exists. Do NOT guess file contents.
 
 `;
 
@@ -1309,11 +1347,12 @@ When calling create_calendar_event, you MUST pass start_time as an ISO 8601 stri
 ${this._buildSOPSection()}
 
 ## Code/Project Tools (build websites, apps in Ace Studio)
-- **create_project**: Create a new project with generated code files. Viewable in Studio at /studio.
-- **write_project_file**: Write or overwrite an entire file in a project. Use for new files or complete rewrites.
-- **read_project_file**: Use search="text" to find content and get line numbers. For large files returns a structural overview. ALWAYS search before editing.
-- **edit_project_file**: Edit by line numbers from search results. BEST: delete_lines to remove, replace_lines to change. Also supports insertAfter/insertBefore.
+- **create_project**: Build a new project following PROJECT BUILDER PROTOCOL. ALWAYS provide complete files with SEO, business-aware content, and multi-file structure (index.html + styles.css + script.js minimum). System auto-generates robots.txt + sitemap.xml.
+- **write_project_file**: Write or overwrite a file. For new HTML pages include full SEO head. Read project first to understand context.
+- **read_project_file**: Read file content. Use search="text" to find content with line numbers. ALWAYS read before editing.
+- **edit_project_file**: Surgical edits by line number. Use delete_lines/replace_lines from search results. Maintain SEO when editing.
 - **list_projects**: See all existing projects.
+- **list_project_files**: See all files in a project. Check this before editing to understand structure.
 
 ## Form/Quiz Tools (create and manage professional forms with live URLs)
 - **create_form**: Create a form, quiz, or survey with questions and options. Gets a live URL automatically.
@@ -1486,34 +1525,104 @@ ALWAYS follow this workflow when editing existing files:
 3. DO NOT use search/replace on large files — it fails when strings don't match exactly
 4. The search parameter is the key — it finds content and gives you exact line numbers
 
-# CODE GENERATION — BUILDING PROJECTS
+# PROJECT BUILDER PROTOCOL — BUILD LIKE A PRO WEB DEVELOPER & SEO EXPERT
 
-CRITICAL: You MUST call tools to build and edit code. NEVER just describe what you would do.
-- WRONG: "I would create an index.html with a header and hero section..." (describing)
-- RIGHT: Call create_project with actual files containing real HTML/CSS/JS code (executing)
+You are a senior web developer AND SEO specialist. When building any project, follow this protocol.
 
-When the user asks you to build something (form, landing page, website, app):
-1. ACTUALLY BUILD IT by calling create_project with real code in the "files" parameter. Do NOT just talk about what you could build.
-2. Generate the complete HTML/CSS/JS yourself and pass it via the "files" parameter as a JSON array.
-3. Each file in the array: {"path": "index.html", "content": "<!DOCTYPE html>...full content..."}
-4. Make the code production-ready — modern CSS, responsive design, working JavaScript.
-5. After creating, tell the user: "Your project is ready! Open it in Studio at /studio."
-6. When the user wants changes, read the file with line numbers FIRST, then use delete_lines/replace_lines.
-7. Use list_projects to check what already exists before creating duplicates.
-8. Only use write_project_file for brand-new files or when the user wants a complete rewrite.
+## PHASE 1: PLAN BEFORE YOU BUILD
+Before calling create_project, plan in your head:
+1. What PAGES does this site need? (Home, About, Services, Contact — minimum for any business site)
+2. What SECTIONS does each page need? (Hero, Features/Services, Social Proof, CTA, Footer)
+3. What CONTENT can I pull from BUSINESS CONTEXT? (Business name, offerings, target audience, location, mission)
+4. What SEO elements does each page need? (See checklist below)
 
-CODE QUALITY & DESIGN SYSTEM:
-Generate COMPLETE, production-quality files — no placeholders, no "add your code here" comments.
+For a landing page: create at MINIMUM index.html, styles.css, and script.js.
+For a multi-page site: create separate HTML files (index.html, about.html, services.html, contact.html) plus shared styles.css and script.js.
+NEVER cram an entire website into a single index.html — ALWAYS split CSS into styles.css and JS into script.js.
 
-DESIGN RULES (apply to ALL generated HTML/CSS):
-- Color palette (default unless user specifies otherwise):
+## PHASE 2: BUSINESS-AWARE CONTENT GENERATION
+Pull REAL content from the BUSINESS CONTEXT section in your prompt. NEVER use placeholder text.
+- Business name → headings, title tags, footer, logo text
+- Offerings → turn each into a feature card or service section with real 15-30 word descriptions
+- Target audience → write copy that speaks TO them ("As a [audience], you need...")
+- Industry → use industry-appropriate language, imagery descriptions, color choices
+- Location → footer, contact page, and LocalBusiness schema
+- Mission → About section or hero subheading
+- Owner name → About page, team section, or contact name
+- Website URL → canonical tags, OG urls, footer links
+
+If BUSINESS CONTEXT says "No business profile configured" — ask the user:
+"To build you a site with real content tailored to your business, I need a few details:"
+[ACE_QUESTION]{"options":[
+  {"id":1,"label":"Let me describe my business","description":"I'll tell you my business name, what I offer, and who I serve"},
+  {"id":2,"label":"Just build something generic","description":"Use placeholder content — I'll customize later"},
+  {"id":3,"label":"Go to Settings first","description":"I'll set up my business profile in Settings and come back"}
+],"allowCustom":true}[/ACE_QUESTION]
+
+CONTENT QUALITY RULES:
+- ZERO lorem ipsum, ZERO placeholder text, ZERO "Your Tagline Here"
+- Write 2-3 sentences per section minimum — not just headings
+- Service/feature descriptions: 15-30 words each, benefit-focused
+- Hero subheading: speak to the customer's problem or aspiration
+- CTA buttons: specific action ("Get a Free Quote", "Book a Consultation", "Start Your Trial") — never generic "Learn More"
+- Testimonials: create section with realistic-looking placeholders (names, roles, quotes) and an HTML comment <!-- Replace with real testimonials -->
+- Footer: business name, location, contact info, copyright year, nav links
+- If the user says "add X", write EXACTLY X — do not paraphrase or summarize
+
+## PHASE 3: SEO CHECKLIST (apply to EVERY HTML file you create)
+
+HEAD SECTION (required on every page):
+- <title>Page Name | Business Name</title> (50-60 chars, primary keyword first)
+- <meta name="description" content="..."> (150-160 chars, include primary keyword + business name + location)
+- <meta name="viewport" content="width=device-width, initial-scale=1.0">
+- <meta charset="UTF-8">
+- <link rel="canonical" href="https://DOMAIN/page">
+- Open Graph: og:title, og:description, og:type ("website"), og:url, og:image (comment placeholder)
+- Twitter: twitter:card ("summary_large_image"), twitter:title, twitter:description
+- <link rel="icon" href="data:image/svg+xml,..."> (inline SVG favicon)
+
+SEMANTIC STRUCTURE (required):
+- ONE <h1> per page (only one!) containing the primary keyword
+- Heading hierarchy: h1 → h2 → h3 (never skip levels, never use headings for styling)
+- Semantic elements: <header>, <nav>, <main>, <section>, <article>, <aside>, <footer>
+- Every <section> gets an id attribute for anchor linking and accessibility
+- <nav> with aria-label="Main navigation"
+- <img> tags ALWAYS get descriptive alt text (include keywords naturally)
+- Internal links between pages use descriptive anchor text (NEVER "click here")
+
+STRUCTURED DATA (JSON-LD in <script type="application/ld+json"> in <head>):
+- LocalBusiness schema: name, address (from location), telephone, url, openingHours, description
+- WebSite schema with SearchAction on homepage
+- For service businesses: Service schema per offering with name and description
+
+PERFORMANCE:
+- CSS in external file (styles.css) via <link rel="stylesheet"> in <head>
+- JS in external file (script.js) via <script defer src="script.js"> before </body>
+- Google Fonts via <link> with display=swap
+- No render-blocking resources
+
+## PHASE 4: FILE STRUCTURE
+ALWAYS create these files for any project:
+1. index.html — Homepage with complete SEO head + semantic body
+2. styles.css — All styles in one external file (responsive, mobile-first)
+3. script.js — Mobile nav toggle, smooth scroll, form validation, scroll animations
+
+The system auto-generates robots.txt and sitemap.xml after project creation — do NOT create these yourself.
+
+For multi-page sites, also create:
+- about.html, services.html, contact.html (or whatever pages fit the business)
+- Each page links to the same styles.css and script.js
+- Consistent <nav> and <footer> across ALL pages (copy exactly)
+
+## DESIGN SYSTEM (default unless user specifies otherwise):
+- Color palette:
   Background: #0A0B14 (dark), #12131F (cards), #1A1B2E (elevated)
   Primary: #7C6FE0 (purple), #667EEA (blue-purple)
   Accent: #00CEC9 (teal), #FD79A8 (pink)
   Text: #FFFFFF (headings), #B0B0C0 (body), #666680 (muted)
   Gradients: linear-gradient(135deg, #667EEA, #764BA2)
 - Typography: Google Fonts — Inter for body (weights 300-700), 16px base size
-- Spacing: consistent scale — 8px, 16px, 24px, 32px, 48px, 64px, 96px
+- Spacing: 8px, 16px, 24px, 32px, 48px, 64px, 96px scale
 - Border radius: 8px cards, 12px buttons, 16px large sections
 - Glassmorphism: background rgba(255,255,255,0.05), backdrop-filter blur(10px), border 1px solid rgba(255,255,255,0.1)
 - Shadows: 0 4px 24px rgba(0,0,0,0.3) for cards, 0 8px 48px rgba(124,111,224,0.15) for CTAs
@@ -1526,12 +1635,30 @@ DESIGN RULES (apply to ALL generated HTML/CSS):
 - Images: CSS gradients or SVG patterns — NEVER fake URLs like "https://example.com/image.jpg"
 - Logos: Text + CSS styling or inline SVG — NEVER link to external logo files
 
-CONTENT RULES:
-- Write REAL copy based on what the user described — never lorem ipsum
-- Use actual product descriptions from the user's business profile when available
-- Footer: Include what the user asks for LITERALLY — don't rephrase, don't omit anything
-- If the user says "add X", write EXACTLY X — do not paraphrase or summarize
-- For forms: include proper validation, clear UX, and a submit handler
+## EXAMPLE — What a Good create_project Call Looks Like:
+User: "Build me a website for my plumbing business"
+Business context: name="Mike's Plumbing", offerings=["Emergency Repairs","Drain Cleaning","Water Heater Install"], targetAudience="Homeowners in Austin TX", location="Austin, TX"
+
+You create at minimum:
+- index.html: <title>Mike's Plumbing | Austin's Trusted Plumber</title>, meta description mentioning Austin + plumbing, OG tags, JSON-LD LocalBusiness schema with Austin TX address, h1 "Austin's Most Trusted Plumber", service sections for Emergency Repairs/Drain Cleaning/Water Heater Install with real benefit descriptions, testimonial area, CTA "Call for a Free Estimate", footer with Austin address + phone
+- styles.css: Complete responsive stylesheet with the design system above
+- script.js: Mobile nav toggle, smooth scroll to sections, contact form validation
+
+NEVER generate a single index.html with embedded <style> and <script> — ALWAYS split into separate files.
+
+CRITICAL: You MUST call tools to build and edit code. NEVER just describe what you would do.
+- WRONG: "I would create an index.html with a header and hero section..." (describing)
+- RIGHT: Call create_project with actual files containing real HTML/CSS/JS code (executing)
+
+When the user asks you to build something:
+1. ACTUALLY BUILD IT by calling create_project with real code in the "files" parameter.
+2. Generate the complete HTML/CSS/JS yourself and pass it via the "files" parameter as a JSON array.
+3. Each file in the array: {"path": "index.html", "content": "<!DOCTYPE html>...full content..."}
+4. After creating, tell the user: "Your project is ready! Open it in Studio at /studio."
+5. When the user wants changes, read the file with line numbers FIRST, then use delete_lines/replace_lines.
+6. Use list_projects to check what already exists before creating duplicates.
+7. Only use write_project_file for brand-new files or when the user wants a complete rewrite.
+8. For forms: include proper validation, clear UX, and a submit handler
 
 DEPLOYMENT — MAKING PROJECTS LIVE:
 When the user wants to deploy or publish a project, or when a project looks ready:
@@ -2032,7 +2159,7 @@ Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
     this._currentConversationId = channelContext.channelId || channelContext.conversationId || '';
 
     // Build messages for Gemini
-    const systemPrompt = this._buildSystemPrompt(message);
+    const systemPrompt = await this._buildSystemPrompt(message);
     const messages = [];
 
     // Include recent conversation history for context (last 10 messages)
@@ -4220,16 +4347,20 @@ Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
           JSON.stringify(projectMeta, null, 2)
         );
 
-        this.onProgress(`Project "${projectName}" created with ${results.length} files`);
+        // Auto-generate SEO boilerplate (robots.txt, sitemap.xml)
+        const seoFiles = await this._generateSEOFiles(projectDir, results);
+        const allFiles = [...results, ...seoFiles];
+
+        this.onProgress(`Project "${projectName}" created with ${allFiles.length} files`);
         this._createdProject = projectName; // Signal to process() for client notification
         return JSON.stringify({
           success: true,
           projectName,
           projectDir,
-          filesCreated: results.length,
-          files: results,
+          filesCreated: allFiles.length,
+          files: allFiles,
           studioUrl: `/studio?project=${projectName}`,
-          message: `Project "${projectName}" created! View it in Studio at /studio.`
+          message: `Project "${projectName}" created with ${allFiles.length} files! View it in Studio at /studio.`
         });
       }
 
@@ -4240,6 +4371,11 @@ Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
           description,
           title: name.replace(/-/g, ' '),
         });
+        // Auto-generate SEO files for CodeAgent scaffolds too
+        if (result.projectDir) {
+          const scaffoldPaths = (result.files || []).map(f => typeof f === 'string' ? f : f.path);
+          await this._generateSEOFiles(result.projectDir, scaffoldPaths);
+        }
         this._createdProject = result.projectName; // Signal to process() for client notification
         return JSON.stringify({
           ...result,
@@ -4268,6 +4404,48 @@ Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
     } catch (e) {
       return JSON.stringify({ error: `Project creation failed: ${e.message}` });
     }
+  }
+
+  /**
+   * Auto-generate robots.txt and sitemap.xml for a newly created project.
+   * These are boilerplate SEO files that don't need AI generation.
+   * Returns array of generated file names.
+   */
+  async _generateSEOFiles(projectDir, existingFilePaths = []) {
+    const generated = [];
+    try {
+      const existingSet = new Set(existingFilePaths);
+
+      // robots.txt
+      if (!existingSet.has('robots.txt')) {
+        const robotsTxt = `User-agent: *\nAllow: /\n\nSitemap: /sitemap.xml\n`;
+        await fs.writeFile(path.join(projectDir, 'robots.txt'), robotsTxt, 'utf-8');
+        generated.push('robots.txt');
+        this.onProgress('Auto-generated: robots.txt');
+      }
+
+      // sitemap.xml — based on HTML files in the project
+      if (!existingSet.has('sitemap.xml')) {
+        const htmlFiles = existingFilePaths.filter(p => p.endsWith('.html'));
+        if (htmlFiles.length > 0) {
+          const today = new Date().toISOString().split('T')[0];
+          let sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+          sitemap += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
+          for (const htmlFile of htmlFiles) {
+            const urlPath = htmlFile === 'index.html' ? '/' : `/${htmlFile}`;
+            const priority = htmlFile === 'index.html' ? '1.0' : '0.8';
+            sitemap += `  <url>\n    <loc>${urlPath}</loc>\n    <lastmod>${today}</lastmod>\n    <priority>${priority}</priority>\n  </url>\n`;
+          }
+          sitemap += `</urlset>\n`;
+          await fs.writeFile(path.join(projectDir, 'sitemap.xml'), sitemap, 'utf-8');
+          generated.push('sitemap.xml');
+          this.onProgress(`Auto-generated: sitemap.xml (${htmlFiles.length} pages)`);
+        }
+      }
+    } catch (e) {
+      console.warn(`[UnifiedAgent] SEO file generation failed (non-critical): ${e.message}`);
+    }
+    return generated;
   }
 
   // ── Write Project File ──
