@@ -8,6 +8,7 @@
 
 import { ResponseParser } from './ResponseParser.js';
 import { GmailSMTPService } from '../integrations/GmailSMTPService.js';
+import { SOPParser } from '../automation/SOPParser.js';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -23,6 +24,10 @@ export class UnifiedAgent {
     this.sopManager = sopManager;
     this.correctionMemory = correctionMemory;
     this._executeSOP = executeSOP;
+
+    // SOPParser — dedicated parsing engine for converting natural language to structured SOP steps
+    // Uses 23 regex patterns + AI fallback. Way more reliable than having Gemini format step objects.
+    this.sopParser = new SOPParser({ aiManager });
 
     // Research context for follow-ups
     this._lastResearchContext = null;
@@ -623,12 +628,12 @@ export class UnifiedAgent {
 
       declarations.push({
         name: 'create_sop',
-        description: 'Create a new SOP from a procedure the user describes. Use when the user teaches you a new workflow like "when I say X, do these steps: ..." or "create a procedure that...".',
+        description: 'Create a new SOP from a procedure the user describes. Use when the user teaches you a new workflow like "when I say X, do these steps: ..." or "create a procedure that...". If a draft_sop was already previewed and approved, call this with just the name — the draft will be used automatically.',
         parameters: {
           type: 'OBJECT',
           properties: {
             name: { type: 'STRING', description: 'Name for the new SOP' },
-            steps: { type: 'STRING', description: 'JSON array of step objects. Each step MUST be an object: [{"action":"navigate","description":"Go to https://example.com"},{"action":"click_text","description":"Click the Submit button"},{"action":"type","description":"Type the search query","value":"{{query}}"}]. Valid actions: navigate, click_text, click_submit, smart_click, type, scroll, wait. Do NOT pass plain strings — always use objects with action and description.' },
+            steps: { type: 'STRING', description: 'Plain English steps, one per line. Example: "Go to eventbrite.com\\nLog in with saved credentials\\nClick Past Events\\nClick Copy on the most recent event\\nChange the date to {{event_date}}\\nClick Publish". The system automatically converts these into structured automation steps. Do NOT format as JSON — just write naturally.' },
             triggers: { type: 'STRING', description: 'JSON array of trigger phrases that should activate this SOP' },
             keywords: { type: 'STRING', description: 'JSON array of keywords for matching' },
             category: { type: 'STRING', description: 'Category: "general", "custom", "lead_generation", "email", "meetups". Default "custom".' }
@@ -645,7 +650,7 @@ export class UnifiedAgent {
           properties: {
             name: { type: 'STRING', description: 'Name of the procedure' },
             description: { type: 'STRING', description: 'One-sentence description of what this procedure does' },
-            steps: { type: 'STRING', description: 'JSON array of step objects. Each step: {"action":"navigate|click_text|type|wait|...","description":"what happens","url":"for navigate steps","value":"for type steps","text":"for click_text steps"}' },
+            steps: { type: 'STRING', description: 'Plain English steps, one per line. Example: "Go to eventbrite.com\\nLog in with saved credentials\\nClick Past Events\\nClick Copy on the most recent event". The system automatically converts these into structured automation steps. Do NOT format as JSON — just write naturally.' },
             triggers: { type: 'STRING', description: 'JSON array of trigger phrases that activate this SOP' },
             keywords: { type: 'STRING', description: 'JSON array of keywords for matching' },
             variables: { type: 'STRING', description: 'JSON array of dynamic variables: [{"name":"city","description":"Target city","example":"Dallas"}]' },
@@ -1780,8 +1785,9 @@ When the user wants to teach you a procedure, create an SOP, or says things like
 
 ## PHASE 4: PREVIEW AND CONFIRM (MANDATORY)
 11. **You MUST call draft_sop** to generate a formatted preview. NEVER call create_sop directly without previewing first.
-12. Show the preview to the user: "Here's what I've captured — does this look right?"
-13. Offer options to approve or revise:
+12. When calling draft_sop, pass the steps as **plain English text — one step per line**. Do NOT format steps as JSON objects. The system has a dedicated parsing engine (SOPParser) that converts your natural language into properly structured automation steps with the correct action types, URLs, wait times, etc. Just write what the user told you.
+13. Show the preview to the user: "Here's what I've captured — does this look right?"
+14. Offer options to approve or revise:
 
 [ACE_QUESTION]{"options":[
   {"id":1,"label":"Looks good, save it","description":"Save this procedure exactly as shown"},
@@ -1789,8 +1795,8 @@ When the user wants to teach you a procedure, create an SOP, or says things like
   {"id":3,"label":"Add more steps","description":"I forgot some steps, let me add them"}
 ],"allowCustom":true}[/ACE_QUESTION]
 
-14. If the user wants changes, modify the draft and call draft_sop again.
-15. Only when the user confirms → call create_sop with the finalized data.
+15. If the user wants changes, modify the draft and call draft_sop again.
+16. Only when the user confirms → call create_sop with just the name (the approved draft is used automatically).
 
 ## CRITICAL TRAINING RULES:
 - **NEVER call create_sop on the first message.** Always interview first — even if the user gives you all steps in one message, still do Phase 3 (variables) and Phase 4 (preview).
@@ -1798,29 +1804,13 @@ When the user wants to teach you a procedure, create an SOP, or says things like
 - **NEVER skip the preview.** Always call draft_sop before create_sop.
 - **Capture the EXACT wording** the user gives you for button text, field names, and URLs. Don't paraphrase.
 - **Handle all training in chat.** Don't redirect users to the Processes tab.
+- **Write steps in plain English** when calling draft_sop. The system parses them automatically. Example:
+  "Go to eventbrite.com\\nLog in with saved credentials\\nClick Past Events\\nClick Copy on the most recent event\\nFill in the date field with {{event_date}}\\nClick Publish"
 
 ## WHEN A TASK FAILS AND USER TEACHES YOU:
 If you struggle with a task and the user selects "Teach me how you'd do this":
 1. Follow the full protocol above — interview them about their process
 2. After saving the SOP, immediately try the task again using the steps they taught you
-
-## ACTION TYPE REFERENCE (use the right one for each step):
-- **navigate**: Go to a URL (always followed by a wait)
-- **click_text**: Click visible text (button, link, menu item)
-- **click_submit**: Click the submit/save/send button
-- **smart_click**: AI finds and clicks element (when target is loosely described)
-- **type**: Type text into the currently focused field
-- **edit_field**: Modify existing text in a field (target + remove/add)
-- **press**: Press a key (Enter, Tab, Escape)
-- **scroll**: Scroll the page (up/down)
-- **select_option**: Pick from a dropdown menu
-- **wait**: Pause for a duration (ms) — ALWAYS add after navigate
-- **hover**: Hover over an element
-- **switch_tab**: Switch browser tabs
-- **go_back**: Browser back button
-- **copy_text**: Copy text from page
-- **right_click**: Right-click on element
-- **wait_navigation**: Wait for page to finish loading
 
 ## EXAMPLE TRAINING CONVERSATION:
 User: "Let me teach you how I repost the meetup on eventbrite"
@@ -1846,7 +1836,8 @@ Ace: "Got it — I'll use {{event_date}} for the date and {{event_title}} for th
 
 User: "That's it, just publish it"
 Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
-→ [calls draft_sop with all steps, shows preview]
+→ [calls draft_sop with steps: "Go to eventbrite.com\\nLog in with saved credentials\\nClick Past Events\\nClick Copy on the most recent event\\nFill in the date field with {{event_date}}\\nFill in the title with {{event_title}}\\nClick Publish"]
+→ System parses into structured automation steps automatically
 → "Does this look right?"
 
 `;
@@ -3765,14 +3756,27 @@ Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
       }
 
       if (args.steps) {
-        try {
-          let newSteps = typeof args.steps === 'string' ? JSON.parse(args.steps) : args.steps;
-          if (Array.isArray(newSteps)) {
-            sop.steps = this._normalizeStepArray(newSteps);
+        const stepsInput = typeof args.steps === 'string' ? args.steps.trim() : '';
+        const looksLikeJSON = stepsInput.startsWith('[');
+
+        if (looksLikeJSON) {
+          try {
+            let newSteps = JSON.parse(stepsInput);
+            newSteps = this._normalizeStepArray(newSteps);
+            sop.steps = this.sopParser._validateAndFixSteps(newSteps);
             changes.push(`steps updated (${sop.steps.length} steps)`);
+          } catch (e) {
+            return JSON.stringify({ error: `Invalid steps JSON: ${e.message}` });
           }
-        } catch (e) {
-          return JSON.stringify({ error: `Invalid steps JSON: ${e.message}` });
+        } else if (stepsInput) {
+          // Plain English — route through SOPParser
+          const result = await this.sopParser.parseWithAI(stepsInput);
+          if (result.steps.length > 0) {
+            sop.steps = result.steps;
+            changes.push(`steps updated (${sop.steps.length} steps)`);
+          } else {
+            return JSON.stringify({ error: 'Could not parse the new steps. Please describe them in plain English.' });
+          }
         }
       }
 
@@ -3820,15 +3824,34 @@ Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
     const { name } = args;
     if (!name) return JSON.stringify({ error: 'name is required' });
 
-    let steps = [];
+    // ═══ Parse steps through SOPParser (the reliable engine) ═══
+    let parsedSteps = [];
     if (args.steps) {
-      try {
-        steps = typeof args.steps === 'string' ? JSON.parse(args.steps) : args.steps;
-      } catch (e) {
-        return JSON.stringify({ error: `Invalid steps JSON: ${e.message}` });
+      const stepsInput = typeof args.steps === 'string' ? args.steps.trim() : '';
+      const looksLikeJSON = stepsInput.startsWith('[');
+
+      if (looksLikeJSON) {
+        // AI sent JSON array — parse it, then validate through SOPParser
+        try {
+          const rawSteps = JSON.parse(stepsInput);
+          parsedSteps = this._normalizeStepArray(rawSteps);
+          // Still run through SOPParser's validation
+          parsedSteps = this.sopParser._validateAndFixSteps(parsedSteps);
+        } catch (e) {
+          // JSON parse failed — treat as plain text and route through SOPParser
+          const result = await this.sopParser.parseWithAI(stepsInput);
+          parsedSteps = result.steps;
+        }
+      } else {
+        // Plain English text — route through SOPParser's full pipeline (23 regex + AI)
+        const result = await this.sopParser.parseWithAI(stepsInput);
+        parsedSteps = result.steps;
       }
     }
-    steps = this._normalizeStepArray(steps);
+
+    if (parsedSteps.length === 0) {
+      return JSON.stringify({ error: 'No valid steps could be parsed. Please describe the steps in plain English.' });
+    }
 
     let triggers = [];
     if (args.triggers) {
@@ -3842,11 +3865,11 @@ Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
       catch (e) { keywords = name.toLowerCase().split(/\s+/).filter(w => w.length > 3); }
     } else { keywords = name.toLowerCase().split(/\s+/).filter(w => w.length > 3); }
 
-    // Apply cleanup validation
+    // Apply cleanup validation on top of SOPParser output
     const cleaned = this._cleanupSOPSteps({
       name,
       description: args.description || '',
-      steps,
+      steps: parsedSteps,
       triggers,
       keywords,
       category: args.category || 'custom',
@@ -3875,10 +3898,7 @@ Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
 
     cleaned.steps.forEach((step, i) => {
       const action = step.action || 'action';
-      let desc = step.description || step.target || step.text || '';
-      if (step.url) desc += ` → ${step.url}`;
-      if (step.value) desc += ` (value: "${step.value}")`;
-      if (step.ms) desc += ` (${step.ms}ms)`;
+      let desc = step.description || this.sopParser.describeStep(step);
       preview += `${i + 1}. **[${action}]** ${desc}\n`;
     });
 
@@ -3909,65 +3929,92 @@ Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
   async _toolCreateSOP(args) {
     if (!this.sopManager) return JSON.stringify({ error: 'SOP Manager not available' });
 
-    // If there's a pending draft and no steps provided, use the draft
-    let sopArgs = args;
+    // ═══ Best path: use the pending draft from draft_sop (already parsed by SOPParser) ═══
     if (this._pendingSOPDraft && !args.steps) {
-      sopArgs = {
-        name: args.name || this._pendingSOPDraft.name,
-        steps: JSON.stringify(this._pendingSOPDraft.steps),
-        triggers: JSON.stringify(this._pendingSOPDraft.triggers),
-        keywords: JSON.stringify(this._pendingSOPDraft.keywords),
-        category: args.category || this._pendingSOPDraft.category,
-        description: args.description || this._pendingSOPDraft.description,
-      };
-    }
-
-    const name = sopArgs.name;
-    if (!name) return JSON.stringify({ error: 'name is required' });
-
-    let steps = [];
-    if (sopArgs.steps) {
+      const draft = this._pendingSOPDraft;
       try {
-        steps = typeof sopArgs.steps === 'string' ? JSON.parse(sopArgs.steps) : sopArgs.steps;
+        const sop = await this.sopManager.createSOP({
+          name: args.name || draft.name,
+          description: args.description || draft.description || '',
+          steps: draft.steps,
+          triggers: draft.triggers,
+          keywords: draft.keywords,
+          category: args.category || draft.category || 'custom',
+        });
+
+        this._pendingSOPDraft = null;
+        this.onProgress(`Created SOP: ${sop.name} (${sop.steps.length} steps)`);
+        return JSON.stringify({
+          success: true,
+          sopId: sop.id,
+          sopName: sop.name,
+          stepCount: sop.steps.length,
+          triggers: sop.triggers,
+        });
       } catch (e) {
-        return JSON.stringify({ error: `Invalid steps JSON: ${e.message}` });
+        return JSON.stringify({ error: e.message });
       }
     }
 
-    steps = this._normalizeStepArray(steps);
+    // ═══ Fallback: no draft — parse steps through SOPParser ═══
+    const name = args.name;
+    if (!name) return JSON.stringify({ error: 'name is required' });
+
+    let parsedSteps = [];
+    if (args.steps) {
+      const stepsInput = typeof args.steps === 'string' ? args.steps.trim() : '';
+      const looksLikeJSON = stepsInput.startsWith('[');
+
+      if (looksLikeJSON) {
+        try {
+          const rawSteps = JSON.parse(stepsInput);
+          parsedSteps = this._normalizeStepArray(rawSteps);
+          parsedSteps = this.sopParser._validateAndFixSteps(parsedSteps);
+        } catch (e) {
+          const result = await this.sopParser.parseWithAI(stepsInput);
+          parsedSteps = result.steps;
+        }
+      } else {
+        // Plain English — route through SOPParser's full pipeline
+        const result = await this.sopParser.parseWithAI(stepsInput);
+        parsedSteps = result.steps;
+      }
+    }
+
+    if (parsedSteps.length === 0) {
+      return JSON.stringify({ error: 'No valid steps could be parsed. Please describe the steps in plain English.' });
+    }
 
     let triggers = [];
-    if (sopArgs.triggers) {
-      try { triggers = typeof sopArgs.triggers === 'string' ? JSON.parse(sopArgs.triggers) : sopArgs.triggers; }
+    if (args.triggers) {
+      try { triggers = typeof args.triggers === 'string' ? JSON.parse(args.triggers) : args.triggers; }
       catch (e) { triggers = [name.toLowerCase()]; }
     } else {
       triggers = [name.toLowerCase()];
     }
 
     let keywords = [];
-    if (sopArgs.keywords) {
-      try { keywords = typeof sopArgs.keywords === 'string' ? JSON.parse(sopArgs.keywords) : sopArgs.keywords; }
+    if (args.keywords) {
+      try { keywords = typeof args.keywords === 'string' ? JSON.parse(args.keywords) : args.keywords; }
       catch (e) { keywords = name.toLowerCase().split(/\s+/).filter(w => w.length > 3); }
     } else {
       keywords = name.toLowerCase().split(/\s+/).filter(w => w.length > 3);
     }
 
     // Apply cleanup validation before saving
-    const cleaned = this._cleanupSOPSteps({ name, steps, triggers, keywords });
+    const cleaned = this._cleanupSOPSteps({ name, steps: parsedSteps, triggers, keywords });
 
     try {
       const sop = await this.sopManager.createSOP({
         name,
-        description: sopArgs.description || '',
+        description: args.description || '',
         steps: cleaned.steps,
         triggers: cleaned.triggers,
         keywords: cleaned.keywords,
-        category: sopArgs.category || 'custom',
+        category: args.category || 'custom',
       });
 
-      // Clear any pending draft
       this._pendingSOPDraft = null;
-
       this.onProgress(`Created SOP: ${sop.name} (${sop.steps.length} steps)`);
       return JSON.stringify({
         success: true,
