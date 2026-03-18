@@ -104,7 +104,7 @@ export class UnifiedAgent {
       contacts:  { name: 'Contacts',           tools: ['manage_contacts'], description: 'Manage contact book' },
       calendar:  { name: 'Calendar',           tools: ['list_calendar_events', 'create_calendar_event', 'delete_calendar_event'], description: 'Google Calendar events' },
       social:    { name: 'Social Media',       tools: ['post_social_media', 'schedule_social_post', 'create_content_plan', 'select_media_for_content'], description: 'Post and schedule on social platforms' },
-      sops:      { name: 'Playbooks / SOPs',   tools: ['list_sops', 'update_sop', 'create_sop', 'draft_sop', 'run_sop'], description: 'Manage and run standard procedures' },
+      sops:      { name: 'Processes',           tools: ['list_sops', 'update_sop', 'create_sop', 'draft_sop', 'run_sop'], description: 'Manage and run standard procedures' },
       projects:  { name: 'Projects',           tools: ['create_project', 'write_project_file', 'list_projects', 'read_project_file', 'edit_project_file'], description: 'Code projects in Ace Studio' },
       forms:     { name: 'Forms & Quizzes',    tools: ['create_form', 'list_forms', 'get_form_submissions', 'get_form', 'update_form'], description: 'Create and manage forms' },
       workload:  { name: 'Workload / Knowledge', tools: ['search_workload', 'list_workload_sources', 'list_media'], description: 'Search ingested files and media' },
@@ -1797,7 +1797,7 @@ When the user wants to teach you a procedure, create an SOP, or says things like
 - **NEVER invent steps the user didn't describe.** Only record what they tell you. Ask if you're unsure.
 - **NEVER skip the preview.** Always call draft_sop before create_sop.
 - **Capture the EXACT wording** the user gives you for button text, field names, and URLs. Don't paraphrase.
-- **Handle all training in chat.** Don't redirect users to the Playbooks tab.
+- **Handle all training in chat.** Don't redirect users to the Processes tab.
 
 ## WHEN A TASK FAILS AND USER TEACHES YOU:
 If you struggle with a task and the user selects "Teach me how you'd do this":
@@ -5650,7 +5650,7 @@ Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
     }
 
     // Check: claims of SOP execution without run_sop tool
-    if ((lower.includes('ran the procedure') || lower.includes('executed the sop') || lower.includes('procedure has been run') || lower.includes('sop completed') || lower.includes('playbook has been'))
+    if ((lower.includes('ran the procedure') || lower.includes('executed the sop') || lower.includes('procedure has been run') || lower.includes('sop completed') || lower.includes('playbook has been') || lower.includes('process has been'))
         && !toolsUsed.includes('run_sop')) {
       console.warn('[UnifiedAgent] ⚠️ HALLUCINATION CAUGHT: Claimed SOP execution without run_sop tool');
       text += '\n\n⚠️ *Note: I described running a procedure, but I didn\'t actually use the SOP tool. Want me to run it for real?*';

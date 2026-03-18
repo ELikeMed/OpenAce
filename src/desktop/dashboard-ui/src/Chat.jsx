@@ -1617,7 +1617,7 @@ function Chat() {
               stepNum: i + 1, action: '', description: `Step ${i + 1}`, status: 'pending',
             })),
           };
-          setMessages(prev => [...prev, { sender: 'Ace', text: `Running playbook: **${sopExec.sopName}**`, sopExecution: sopExec }]);
+          setMessages(prev => [...prev, { sender: 'Ace', text: `Running process: **${sopExec.sopName}**`, sopExecution: sopExec }]);
           break;
         }
         case 'sop:step:started': {
@@ -2290,7 +2290,7 @@ function Chat() {
   const featureCards = [
     { icon: '💬', title: 'Chat', desc: 'Ask Ace anything — research, email, browse the web, find leads' },
     { icon: '📊', title: 'Pipeline', desc: 'Track your leads & deals from first contact to close' },
-    { icon: '📋', title: 'Playbooks', desc: 'Teach Ace step-by-step processes it can repeat for you' },
+    { icon: '📋', title: 'Processes', desc: 'Teach Ace step-by-step processes it can repeat for you' },
     { icon: '⏰', title: 'Routines', desc: 'Schedule daily tasks — Ace works even when you\'re away' },
     { icon: '🎯', title: 'Goals', desc: 'Set targets like "find 10 leads/day" and track progress' },
   ];

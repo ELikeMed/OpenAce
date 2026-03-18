@@ -556,15 +556,15 @@ That's it! Once connected, I can help you with research, email, social media, we
           const sop = this.sopManager.getSOP(sopId);
           if (sop) {
             const sopName = sop.name || sopId;
-            this.addToConversation(channelId, 'assistant', `I found a matching playbook: **${sopName}**`, { type: 'sop_suggestion' });
+            this.addToConversation(channelId, 'assistant', `I found a matching process: **${sopName}**`, { type: 'sop_suggestion' });
             return {
-              text: `I found a matching playbook: **${sopName}** (${sop.steps?.length || 0} steps). Want me to run it?`,
+              text: `I found a matching process: **${sopName}** (${sop.steps?.length || 0} steps). Want me to run it?`,
               actions: [], data: {},
               thinking: [`Fuzzy SOP match: "${sopName}" (${(sopMatch.confidence * 100).toFixed(0)}% confidence)`, 'Asking user to confirm'],
               question: {
                 options: [
                   { id: 1, label: 'Yes, run it', description: `Execute "${sopName}"` },
-                  { id: 2, label: 'No, just answer my question', description: 'Skip the playbook' },
+                  { id: 2, label: 'No, just answer my question', description: 'Skip the process' },
                 ],
                 allowCustom: true,
               },

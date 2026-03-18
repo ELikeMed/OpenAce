@@ -702,7 +702,7 @@ export default function Integrations() {
               {linkedSOPs.length > 0 && (
                 <Box sx={{ mb: 2.5 }}>
                   <Typography sx={{ fontWeight: 600, fontSize: '0.82rem', mb: 1, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <PlaylistPlayIcon sx={{ fontSize: 18 }} /> Linked Playbooks ({linkedSOPs.length})
+                    <PlaylistPlayIcon sx={{ fontSize: 18 }} /> Linked Processes ({linkedSOPs.length})
                   </Typography>
                   {linkedSOPs.map(sop => (
                     <Chip
