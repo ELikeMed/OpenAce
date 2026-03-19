@@ -283,8 +283,8 @@ export class UpdateManager {
 
     await fs.mkdir(this.backupDir, { recursive: true });
 
-    // Copy data directory
-    await this._exec(`cp -r "${dataDir}" "${backupPath}"`, this.baseDir);
+    // Copy data directory — use fs.cp (cross-platform, works on Windows + macOS)
+    await fs.cp(dataDir, backupPath, { recursive: true });
 
     // Prune old backups (keep last MAX_BACKUPS)
     const backups = (await fs.readdir(this.backupDir))
