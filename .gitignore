@@ -66,7 +66,10 @@ ace-local.sh
 docs/*.md
 ecosystem.config.cjs
 
-# Test/demo scripts (keep start-dashboard, setup, event-monitor, update)
+# Compiled native binaries (compiled per-machine by DesktopTrainer)
+scripts/event-monitor
+
+# Test/demo scripts (keep start-dashboard, setup, event-monitor.swift, update)
 scripts/ace-browser-demo.js
 scripts/ace-email.js
 scripts/ace-work.js

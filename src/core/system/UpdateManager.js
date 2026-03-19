@@ -290,8 +290,28 @@ export class UpdateManager {
 
     await fs.mkdir(this.backupDir, { recursive: true });
 
-    // Copy data directory — use fs.cp (cross-platform, works on Windows + macOS)
-    await fs.cp(dataDir, backupPath, { recursive: true });
+    // Skip ephemeral files: Chrome sessions (lock files, sockets), temp files
+    const skipNames = new Set([
+      'SingletonLock', 'SingletonSocket', 'SingletonCookie',
+      'RunningChromeVersion', 'DevToolsActivePort', 'BrowserMetrics-spare.pma',
+    ]);
+
+    // Copy data directory — cross-platform, skip Chrome lock files
+    await fs.cp(dataDir, backupPath, {
+      recursive: true,
+      filter: (src) => {
+        const name = path.basename(src);
+        if (skipNames.has(name)) return false;
+        // Skip Chrome session directories entirely (large + ephemeral)
+        if (src.includes('social/sessions/') && src !== dataDir) {
+          const rel = src.replace(dataDir, '');
+          // Allow the top-level social/sessions dir but skip deep Chrome profile data
+          const depth = rel.split(path.sep).filter(Boolean).length;
+          if (depth > 2) return false;
+        }
+        return true;
+      },
+    });
 
     // Prune old backups (keep last MAX_BACKUPS)
     const backups = (await fs.readdir(this.backupDir))

@@ -209,17 +209,33 @@ export class DesktopTrainer {
    * Compile the Swift event monitor if it doesn't exist.
    */
   async _ensureEventMonitor() {
+    let needsCompile = false;
+
     try {
       await fs.access(EVENT_MONITOR_PATH);
-      return; // Already compiled
+      // Binary exists — verify it matches this machine's architecture
+      try {
+        const { execSync: execSyncCheck } = await import('child_process');
+        const fileInfo = execSyncCheck(`file "${EVENT_MONITOR_PATH}"`, { encoding: 'utf8', timeout: 5000 });
+        const arch = process.arch === 'arm64' ? 'arm64' : 'x86_64';
+        if (!fileInfo.includes(arch)) {
+          this.onProgress(`🔧 Event monitor was compiled for a different architecture, recompiling...`);
+          needsCompile = true;
+        }
+      } catch {
+        needsCompile = true;
+      }
     } catch {
-      // Need to compile
-      this.onProgress('🔧 Compiling native event monitor (first time only)...');
+      needsCompile = true;
+    }
+
+    if (needsCompile) {
+      this.onProgress('🔧 Compiling native event monitor for this Mac...');
       try {
         execSync(`swiftc "${EVENT_MONITOR_SRC}" -o "${EVENT_MONITOR_PATH}"`, { timeout: 30000 });
         this.onProgress('✅ Event monitor compiled');
       } catch (e) {
-        throw new Error(`Failed to compile event monitor: ${e.message}`);
+        throw new Error(`Failed to compile event monitor: ${e.message}. Make sure Xcode Command Line Tools are installed (xcode-select --install).`);
       }
     }
   }
