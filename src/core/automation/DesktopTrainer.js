@@ -81,15 +81,22 @@ export class DesktopTrainer {
       this.recordingResolution = { width: 1920, height: 1080 }; // Reasonable default
     }
 
-    // ── Compile event monitor if needed ──
-    await this._ensureEventMonitor();
+    // ── Compile event monitor if needed (non-fatal: falls back to screenshot-only) ──
+    let eventMonitorAvailable = true;
+    try {
+      await this._ensureEventMonitor();
+    } catch (e) {
+      eventMonitorAvailable = false;
+      this.onProgress(`⚠️ ${e.message}`);
+      this.onProgress('⚠️ Recording will use screenshot-only mode (no native click capture).');
+    }
 
     // ── Capture starting state: which app is active, what URL is in Chrome ──
     this.startingState = await this._captureStartingState();
     this.onProgress(`📍 Starting state: ${this.startingState.app || 'unknown app'}${this.startingState.url ? ' — ' + this.startingState.url : ''}`);
 
-    // ── Start native event monitor — FAIL FAST if Accessibility is missing ──
-    try {
+    // ── Start native event monitor — FAIL FAST only if Accessibility is missing ──
+    if (eventMonitorAvailable) try {
       await this._startEventMonitor();
     } catch (e) {
       const isAccessibility = e.message && (e.message.includes('Accessibility') || e.message.includes('event tap') || e.message.includes('permission'));
@@ -100,12 +107,9 @@ export class DesktopTrainer {
           error: 'Grant Accessibility permission to Terminal (or VS Code) in System Settings → Privacy & Security → Accessibility, then try again. Without this, Ace cannot see your clicks.'
         };
       }
-      // Non-permission errors (e.g. compilation failed)
-      this.onProgress(`❌ Event monitor failed: ${e.message}`);
-      return {
-        success: false,
-        error: `Event monitor failed to start: ${e.message}. Try restarting OpenAce.`
-      };
+      // Non-permission errors — continue with screenshot-only mode
+      this.onProgress(`⚠️ Event monitor failed: ${e.message}`);
+      this.onProgress('⚠️ Continuing with screenshot-only recording.');
     }
 
     // ── Capture screenshots + Chrome URL every 3 seconds ──
@@ -235,7 +239,20 @@ export class DesktopTrainer {
         execSync(`swiftc "${EVENT_MONITOR_SRC}" -o "${EVENT_MONITOR_PATH}"`, { timeout: 30000 });
         this.onProgress('✅ Event monitor compiled');
       } catch (e) {
-        throw new Error(`Failed to compile event monitor: ${e.message}. Make sure Xcode Command Line Tools are installed (xcode-select --install).`);
+        const msg = e.message || e.stderr?.toString() || '';
+        // Detect Xcode SDK / Swift version mismatch
+        if (msg.includes('SDK is not supported by the compiler') || msg.includes('redefinition of module')) {
+          throw new Error(
+            'Swift compiler and Xcode Command Line Tools are out of sync on this Mac. ' +
+            'Fix it by running this command in Terminal:\n\n' +
+            '  sudo rm -rf /Library/Developer/CommandLineTools && xcode-select --install\n\n' +
+            'Then restart Ace and try again.'
+          );
+        }
+        throw new Error(
+          `Failed to compile event monitor: ${msg.slice(0, 200)}. ` +
+          'Make sure Xcode Command Line Tools are installed: xcode-select --install'
+        );
       }
     }
   }
@@ -1038,10 +1055,16 @@ Return ONLY the JSON, no markdown.`;
     const guideDir = path.join(process.cwd(), 'data/sops', sopId, 'guides');
     await fs.mkdir(guideDir, { recursive: true });
 
-    await this._ensureEventMonitor();
+    let eventMonitorAvailable = true;
+    try {
+      await this._ensureEventMonitor();
+    } catch (e) {
+      eventMonitorAvailable = false;
+      this.onProgress(`⚠️ ${e.message}`);
+    }
     this.startingState = await this._captureStartingState();
 
-    try {
+    if (eventMonitorAvailable) try {
       await this._startEventMonitor();
     } catch (e) {
       this.onProgress(`⚠️ Event monitor failed: ${e.message}`);
