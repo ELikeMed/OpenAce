@@ -62,19 +62,32 @@ export async function clipboardRead() {
 }
 
 /**
- * Focus Chrome: Windows uses PowerShell COM automation.
+ * Focus Chrome (or Edge): Windows uses PowerShell COM automation.
+ * Also ensures CDP is available for browser control.
  */
 export async function focusChrome() {
   const { execSync } = await import('child_process');
   try {
-    // Try to activate existing Chrome window
+    // Try Chrome first
     execSync(
       'powershell -command "(New-Object -ComObject WScript.Shell).AppActivate(\'Google Chrome\')"',
       { timeout: 5000 }
     );
   } catch {
-    // If Chrome isn't running, launch it
-    execSync('start chrome', { timeout: 5000 });
+    try {
+      // Fall back to Edge (always installed on Windows 10+)
+      execSync(
+        'powershell -command "(New-Object -ComObject WScript.Shell).AppActivate(\'Microsoft Edge\')"',
+        { timeout: 5000 }
+      );
+    } catch {
+      // Neither running — launch with CDP
+      try {
+        await launchChromeWithCDP();
+      } catch {
+        execSync('start chrome', { timeout: 5000 });
+      }
+    }
   }
   await new Promise(r => setTimeout(r, 500));
 }
@@ -195,6 +208,126 @@ export async function getScreenBounds() {
   );
   const bounds = JSON.parse(result);
   return { x: bounds.X, y: bounds.Y, width: bounds.Width, height: bounds.Height };
+}
+
+// ═══════════════════════════════════════════
+// CDP CHROME/EDGE LAUNCHER
+// ═══════════════════════════════════════════
+
+const CDP_PORT = 9222;
+
+/**
+ * Launch Chrome (or Edge) with CDP remote debugging enabled.
+ * If Chrome/Edge is already running with CDP, skips launch.
+ * Returns true if CDP is available after this call.
+ */
+export async function launchChromeWithCDP(port = CDP_PORT) {
+  const http = await import('http');
+
+  // Check if CDP is already running
+  const isRunning = await new Promise(resolve => {
+    http.get(`http://127.0.0.1:${port}/json/version`, res => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => resolve(true));
+    }).on('error', () => resolve(false));
+  });
+
+  if (isRunning) return true;
+
+  // Find Chrome or Edge executable
+  const { execSync, spawn: spawnProc } = await import('child_process');
+  const fs = await import('fs');
+
+  const chromePaths = [
+    process.env.LOCALAPPDATA + '\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+  ];
+  const edgePaths = [
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+  ];
+
+  let browserExe = null;
+  for (const p of [...chromePaths, ...edgePaths]) {
+    try {
+      if (fs.existsSync(p)) { browserExe = p; break; }
+    } catch { /* skip */ }
+  }
+
+  if (!browserExe) {
+    // Last resort: try 'start chrome' which uses PATH
+    try {
+      execSync('where chrome', { timeout: 3000 });
+      browserExe = 'chrome';
+    } catch {
+      try {
+        execSync('where msedge', { timeout: 3000 });
+        browserExe = 'msedge';
+      } catch {
+        throw new Error('Cannot find Chrome or Edge. Please install Google Chrome.');
+      }
+    }
+  }
+
+  // Launch with CDP
+  const args = [
+    `--remote-debugging-port=${port}`,
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--start-maximized',
+  ];
+
+  const child = spawnProc(browserExe, args, {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: false,
+  });
+  child.unref();
+
+  // Wait for CDP to become available (up to 8 seconds)
+  for (let i = 0; i < 16; i++) {
+    await new Promise(r => setTimeout(r, 500));
+    const ready = await new Promise(resolve => {
+      http.get(`http://127.0.0.1:${port}/json/version`, res => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => resolve(true));
+      }).on('error', () => resolve(false));
+    });
+    if (ready) return true;
+  }
+
+  throw new Error('Chrome launched but CDP did not become available within 8 seconds');
+}
+
+/**
+ * Create a new browser tab via CDP.
+ * Returns the tab info object.
+ */
+export async function cdpCreateTab(url) {
+  const http = await import('http');
+  return new Promise((resolve, reject) => {
+    const reqUrl = `http://127.0.0.1:${CDP_PORT}/json/new?${encodeURI(url)}`;
+    http.get(reqUrl, res => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch { resolve({ url }); }
+      });
+    }).on('error', err => {
+      reject(new Error(`CDP create tab failed: ${err.message}`));
+    });
+  });
+}
+
+/**
+ * Navigate the active tab to a URL via CDP JS execution.
+ */
+export async function cdpNavigate(url) {
+  return executeJsInChrome(`window.location.href = ${JSON.stringify(url)}`);
 }
 
 /**

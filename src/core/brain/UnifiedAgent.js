@@ -103,7 +103,7 @@ export class UnifiedAgent {
       memory:    { name: 'Memory',            tools: ['save_note', 'recall_notes', 'recall_research', 'get_site_memory'], description: 'Save and recall notes, research, and site knowledge', alwaysOn: true },
       research:  { name: 'Research',           tools: ['web_search', 'read_webpage'], description: 'Search the web and read pages' },
       browser:   { name: 'Browser Control',    tools: ['open_browser', 'browser_click', 'browser_type', 'take_screenshot', 'scroll_page', 'read_screen', 'extract_page_data', 'go_back', 'browse_and_extract'], description: 'Control Chrome browser with AI vision' },
-      pipeline:  { name: 'Pipeline / CRM',     tools: ['save_leads', 'get_pipeline', 'move_lead', 'set_lead_dnc'], description: 'Manage leads and sales pipeline' },
+      pipeline:  { name: 'Pipeline / CRM',     tools: ['find_leads', 'save_leads', 'get_pipeline', 'move_lead', 'set_lead_dnc'], description: 'Find, manage, and track leads and sales pipeline' },
       email:     { name: 'Email',              tools: ['send_email'], description: 'Send emails via Gmail' },
       phone:     { name: 'Phone / SMS',        tools: ['send_sms', 'make_call', 'dispatch_phone_call'], description: 'Send SMS and make phone calls via Twilio or AI agents' },
       contacts:  { name: 'Contacts',           tools: ['manage_contacts'], description: 'Manage contact book' },
@@ -127,7 +127,7 @@ export class UnifiedAgent {
    */
   async _getDesktopBrowser() {
     if (this._desktopBrowser) return this._desktopBrowser;
-    if (process.platform !== 'darwin') return null;
+    if (process.platform !== 'darwin' && process.platform !== 'win32') return null;
     const desktopAgent = this.subsystems.desktopAgent;
     if (!desktopAgent) return null;
     try {
@@ -420,6 +420,21 @@ export class UnifiedAgent {
         }
       });
     }
+
+    // Lead Discovery — works on ALL platforms, no browser needed
+    declarations.push({
+      name: 'find_leads',
+      description: 'Discover real businesses by industry and location. Searches Yelp, Bing, Google Places, and other directories via fetch — no browser needed. Returns real company names, phone numbers, addresses, and websites. Use this when the user wants to find leads, prospects, or businesses in a specific area.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          industry: { type: 'STRING', description: 'Business type or industry (e.g. "plumbers", "real estate agents", "restaurants", "dentists")' },
+          location: { type: 'STRING', description: 'City, state, or region (e.g. "Austin TX", "Miami FL", "Palm Beach County")' },
+          count: { type: 'INTEGER', description: 'Number of leads to find (default 5, max 20)' }
+        },
+        required: ['industry', 'location']
+      }
+    });
 
     // Contacts
     if (this.subsystems.contactManager) {
@@ -1017,7 +1032,7 @@ export class UnifiedAgent {
       memory:    ['save_note', 'recall_notes', 'recall_research', 'get_site_memory'],
       research:  ['web_search', 'read_webpage'],
       browser:   ['open_browser', 'browser_click', 'browser_type', 'take_screenshot', 'scroll_page', 'read_screen', 'extract_page_data', 'go_back', 'browse_and_extract'],
-      pipeline:  ['save_leads', 'get_pipeline', 'move_lead', 'set_lead_dnc'],
+      pipeline:  ['find_leads', 'save_leads', 'get_pipeline', 'move_lead', 'set_lead_dnc'],
       email:     ['send_email'],
       phone:     ['send_sms', 'make_call', 'dispatch_phone_call'],
       contacts:  ['manage_contacts'],
@@ -1333,10 +1348,13 @@ When calling create_calendar_event, you MUST pass start_time as an ISO 8601 stri
 - **take_screenshot**: Quick screenshot with basic analysis.
 - **browse_and_extract**: HIGH-LEVEL autonomous browsing — give it a goal like "find properties under $500k on crexi.com" and it navigates, clicks, scrolls, and extracts data on its own. Use for complex multi-page tasks.
 
-## Action Tools
-- **send_email**: Send email via Gmail SMTP. Use when asked to email findings or contact someone.
+## Lead Discovery & Pipeline Tools
+- **find_leads**: Discover real businesses by industry and location. Searches Yelp, Bing, Google Places, and other directories directly — no browser needed. Use this FIRST when the user wants to find leads, prospects, or businesses. Returns real company names, phone numbers, addresses, and websites. Then use save_leads to add them to the pipeline.
 - **save_leads / get_pipeline**: CRM/pipeline management. Save research as leads.
 - **move_lead**: Move a lead between pipeline stages (new → contacted → qualified → proposal → negotiation → won/lost).
+
+## Action Tools
+- **send_email**: Send email via Gmail SMTP. Use when asked to email findings or contact someone.
 - **set_lead_dnc**: Toggle do-not-contact on a lead. Protected leads cannot be emailed and are skipped in routines. Use when user says "don't contact them" or when form-submission leads shouldn't get sales outreach.
 - **manage_contacts**: Add, search, or list contacts.
 - **schedule_task**: Create recurring scheduled tasks.
@@ -2660,6 +2678,7 @@ Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
       case 'send_sms': return await this._toolSendSMS(args);
       case 'make_call': return await this._toolMakeCall(args);
       case 'dispatch_phone_call': return await this._toolDispatchPhoneCall(args);
+      case 'find_leads': return await this._toolFindLeads(args);
       case 'save_leads': return await this._toolSaveLeads(args);
       case 'get_pipeline': return await this._toolGetPipeline(args);
       case 'move_lead': return await this._toolMoveLead(args);
@@ -3220,6 +3239,63 @@ Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
       return JSON.stringify({ success: true, to, callId: result.callId, provider: result.provider, message: 'AI agent call dispatched' });
     } catch (e) {
       return JSON.stringify({ error: `Dispatch failed: ${e.message}` });
+    }
+  }
+
+  // ── Find Leads (fetch-based — works on ALL platforms) ──
+  async _toolFindLeads(args) {
+    const { industry, location, count: rawCount } = args;
+    const count = Math.min(Math.max(parseInt(rawCount) || 5, 1), 20);
+
+    this.onProgress(`Finding ${count} ${industry} businesses in ${location}...`);
+
+    try {
+      const { LeadFinder } = await import('../engine/LeadFinder.js');
+      const finder = new LeadFinder({
+        config: this.config || {},
+        onProgress: this.onProgress,
+      });
+
+      const leads = await finder.findLeads(industry, location, count);
+
+      // Filter out generated fallback leads — only return real scraped results
+      const realLeads = leads.filter(l => l.source !== 'generated_fallback');
+
+      if (realLeads.length === 0) {
+        return JSON.stringify({
+          success: false,
+          industry,
+          location,
+          leads: [],
+          message: `Could not find real ${industry} businesses in ${location}. Try a more specific location or different industry term.`
+        });
+      }
+
+      this.onProgress(`Found ${realLeads.length} real businesses`);
+
+      return JSON.stringify({
+        success: true,
+        industry,
+        location,
+        count: realLeads.length,
+        leads: realLeads.map(l => ({
+          company: l.company || l.name,
+          phone: l.phone || '',
+          email: l.email || '',
+          website: l.website || '',
+          address: l.address || '',
+          source: l.source || 'web_search',
+          notes: l.notes || ''
+        })),
+        hint: 'Use save_leads to add these to the pipeline. Present the results to the user first.'
+      });
+    } catch (e) {
+      console.error(`[UnifiedAgent] find_leads error:`, e.message);
+      return JSON.stringify({
+        success: false,
+        error: `Lead search failed: ${e.message}`,
+        hint: 'Try web_search with a Google query like "plumbers in Austin TX" as a fallback.'
+      });
     }
   }
 

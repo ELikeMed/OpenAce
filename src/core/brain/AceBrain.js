@@ -209,8 +209,8 @@ export class AceBrain {
       let desktopAgent = null;
       let desktopController = null;
 
-      if (process.platform !== 'darwin') {
-        console.log('🖥️ Desktop automation is macOS-only. Chat, AI, pipeline, email, and web features work on all platforms.');
+      if (process.platform !== 'darwin' && process.platform !== 'win32') {
+        console.log('🖥️ Desktop automation requires macOS or Windows. Chat, AI, pipeline, email, and web features work on all platforms.');
       } else if (!desktopConsentGiven) {
         console.log('🔒 Desktop control disabled. Enable it in Settings → Organization → Desktop Control');
       } else {

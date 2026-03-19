@@ -175,7 +175,7 @@ export class DesktopBrowser {
 
     const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
 
-    this.onProgress(`📍 Opening Google search via AppleScript...`);
+    this.onProgress(`📍 Opening Google search...`);
     await this._chromeOpenUrl(searchUrl);
     this.isChromeFocused = true;
     
@@ -201,31 +201,54 @@ export class DesktopBrowser {
    */
   async readScreen() {
     this.onProgress('👁️ Reading screen...');
-    
+
     try {
-      // Always bring Chrome to front BEFORE capturing — without this,
-      // robot.screen.capture() grabs the dashboard instead of the browser
+      // Always bring Chrome to front BEFORE capturing
       await this._focusChrome();
-      
-      const jimpImage = await this.desktop.seeScreen();
-      
-      // Save screenshot
+
+      let filepath;
+      let base64;
+
+      // Try robotjs (DesktopAgent) first, then platform screenshot fallback
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const filename = `desktop_${timestamp}.png`;
-      const filepath = path.join(this.screenshotDir, filename);
+      filepath = path.join(this.screenshotDir, filename);
       await fs.mkdir(this.screenshotDir, { recursive: true });
-      await jimpImage.write(filepath);
-      
-      // Cleanup old screenshots — keep only last 50 to prevent disk fill
-      this._cleanupScreenshots().catch(() => {}); // fire-and-forget
 
-      // Convert to base64 for AI vision
-      const buffer = await jimpImage.getBuffer('image/png');
-      const base64 = buffer.toString('base64');
+      if (this.desktop) {
+        try {
+          const jimpImage = await this.desktop.seeScreen();
+          await jimpImage.write(filepath);
+          const buffer = await jimpImage.getBuffer('image/png');
+          base64 = buffer.toString('base64');
+        } catch (e) {
+          this.onProgress(`⚠️ robotjs screenshot failed: ${e.message}, trying platform fallback...`);
+        }
+      }
 
-      // Quick screen analysis
+      // Fallback: platform-specific screenshot (Windows PowerShell, etc.)
+      if (!base64) {
+        try {
+          const { loadPlatform } = await import('./platforms/PlatformAdapter.js');
+          const plat = await loadPlatform();
+          await plat.takeScreenshot(filepath);
+          const fileBuffer = await fs.readFile(filepath);
+          base64 = fileBuffer.toString('base64');
+        } catch (e2) {
+          this.onProgress(`⚠️ Platform screenshot also failed: ${e2.message}`);
+          return {
+            imagePath: null,
+            summary: `Screen capture failed on this platform. Try using read_webpage instead.`,
+            rawAnalysis: '',
+            base64: null
+          };
+        }
+      }
+
+      this._cleanupScreenshots().catch(() => {});
+
       const analysis = await this._analyzeScreenshot(base64);
-      
+
       return {
         imagePath: filepath,
         summary: analysis.summary || 'Screen captured',
@@ -1622,6 +1645,9 @@ Be concise — 2-3 sentences max.`;
    * Run an AppleScript command. Returns stdout on success.
    */
   async _runAppleScript(script) {
+    if (process.platform !== 'darwin') {
+      throw new Error('AppleScript not available on this platform');
+    }
     const { exec } = require('child_process');
     return new Promise((resolve, reject) => {
       exec(`osascript -e '${script.replace(/'/g, "'\\''")}'`, (err, stdout, stderr) => {
@@ -1642,6 +1668,14 @@ Be concise — 2-3 sentences max.`;
    * Callers should catch errors and fall back to keyboard shortcuts.
    */
   async _executeJsInChrome(jsCode) {
+    if (process.platform === 'win32') {
+      // Windows: use CDP via PlatformAdapter
+      const { loadPlatform } = await import('./platforms/PlatformAdapter.js');
+      const plat = await loadPlatform();
+      return plat.executeJsInChrome(jsCode);
+    }
+
+    // macOS: AppleScript (unchanged)
     const os = require('os');
     const fsMod = require('fs');
     const { execSync } = require('child_process');
@@ -1665,14 +1699,26 @@ Be concise — 2-3 sentences max.`;
    */
   async _getScreenBounds() {
     if (this._screenBounds) return this._screenBounds;
-    try {
-      const result = await this._runAppleScript('tell application "Finder" to get bounds of window of desktop');
-      // Returns "0, 0, 1920, 1080" format
-      const parts = result.split(',').map(s => parseInt(s.trim(), 10));
-      if (parts.length === 4 && parts[2] > 0) {
-        this._screenBounds = { x: parts[0], y: parts[1], w: parts[2], h: parts[3] };
-      }
-    } catch (e) { /* fall through */ }
+
+    if (process.platform === 'win32') {
+      // Windows: use PowerShell .NET
+      try {
+        const { loadPlatform } = await import('./platforms/PlatformAdapter.js');
+        const plat = await loadPlatform();
+        const bounds = await plat.getScreenBounds();
+        this._screenBounds = { x: bounds.x, y: bounds.y, w: bounds.width, h: bounds.height };
+      } catch { /* fall through */ }
+    } else {
+      // macOS: AppleScript
+      try {
+        const result = await this._runAppleScript('tell application "Finder" to get bounds of window of desktop');
+        const parts = result.split(',').map(s => parseInt(s.trim(), 10));
+        if (parts.length === 4 && parts[2] > 0) {
+          this._screenBounds = { x: parts[0], y: parts[1], w: parts[2], h: parts[3] };
+        }
+      } catch { /* fall through */ }
+    }
+
     if (!this._screenBounds) {
       this._screenBounds = { x: 0, y: 0, w: 1920, h: 1080 };
     }
@@ -1685,19 +1731,31 @@ Be concise — 2-3 sentences max.`;
    * Only resizes once per session — subsequent calls just activate.
    */
   async _ensureChromeWindow() {
+    if (process.platform === 'win32') {
+      // Windows: launch Chrome/Edge with CDP enabled
+      try {
+        const { loadPlatform } = await import('./platforms/PlatformAdapter.js');
+        const plat = await loadPlatform();
+        await plat.launchChromeWithCDP();
+        await plat.focusChrome();
+        this.chromeMaximized = true;
+        this.onProgress('🖥️ Chrome/Edge launched with CDP on Windows');
+      } catch (e) {
+        this.onProgress(`⚠️ Chrome launch failed: ${e.message}`);
+      }
+      return;
+    }
+
+    // macOS: AppleScript (unchanged)
     const { exec } = require('child_process');
 
-    // Step 1: Launch or activate Chrome
     await new Promise((resolve) => {
       exec('open -a "Google Chrome"', () => resolve());
     });
     await this._wait(500);
 
-    // Step 2: Get actual screen bounds from macOS (not robotjs)
     const screen = await this._getScreenBounds();
 
-    // Step 3: Maximize Chrome window to fill the screen
-    // y=25 for menu bar, h-2 to avoid Dock overlap
     try {
       await this._runAppleScript(`
 tell application "Google Chrome"
@@ -1720,7 +1778,26 @@ end tell
    * Open a URL in Chrome and ensure Chrome stays in front.
    */
   async _chromeOpenUrl(url) {
-    // Open URL in a NEW tab — never replace the current tab (could be the dashboard)
+    if (process.platform === 'win32') {
+      // Windows: create new tab via CDP
+      try {
+        const { loadPlatform } = await import('./platforms/PlatformAdapter.js');
+        const plat = await loadPlatform();
+        await plat.cdpCreateTab(url);
+      } catch (e) {
+        this.onProgress(`⚠️ CDP new tab failed: ${e.message}`);
+        // Fallback: navigate current tab
+        try {
+          const { loadPlatform } = await import('./platforms/PlatformAdapter.js');
+          const plat = await loadPlatform();
+          await plat.cdpNavigate(url);
+        } catch { /* last resort handled by caller */ }
+      }
+      await this._wait(300);
+      return;
+    }
+
+    // macOS: AppleScript (unchanged)
     const escaped = url.replace(/"/g, '\\"');
     try {
       await this._runAppleScript(`
@@ -1734,7 +1811,6 @@ end tell
         end tell
       `);
     } catch (e) {
-      // Fallback: use open command (may reuse tab but better than nothing)
       this.onProgress(`⚠️ AppleScript new tab failed, using fallback: ${e.message}`);
       const { exec } = require('child_process');
       await new Promise((resolve) => {
@@ -1749,6 +1825,19 @@ end tell
    * Used by executeGoal() to avoid tab sprawl.
    */
   async _chromeSetCurrentTabUrl(url) {
+    if (process.platform === 'win32') {
+      // Windows: navigate via CDP JS execution
+      try {
+        const { loadPlatform } = await import('./platforms/PlatformAdapter.js');
+        const plat = await loadPlatform();
+        await plat.cdpNavigate(url);
+      } catch (e) {
+        this.onProgress(`⚠️ CDP navigate failed: ${e.message}`);
+      }
+      return;
+    }
+
+    // macOS: AppleScript
     const escaped = url.replace(/"/g, '\\"');
     try {
       await this._runAppleScript(`
@@ -1762,7 +1851,6 @@ end tell
         end tell
       `);
     } catch (e) {
-      // Fallback: use the address bar (Cmd+L, type URL, Enter)
       this.onProgress(`⚠️ AppleScript URL set failed, using address bar: ${e.message}`);
       const robot = require('robotjs');
       robot.keyTap('l', 'command');
@@ -1778,8 +1866,19 @@ end tell
    * Called after a search task completes so the user sees their dashboard, not stale search tabs.
    */
   async _returnToDashboard() {
+    if (process.platform === 'win32') {
+      // Windows: navigate active tab back to dashboard via CDP
+      try {
+        await this._executeJsInChrome(`window.location.href = 'http://localhost:3333'`);
+        this.onProgress('🏠 Returned to dashboard tab');
+      } catch {
+        this.onProgress('ℹ️ Could not switch back to dashboard');
+      }
+      return;
+    }
+
+    // macOS: AppleScript
     try {
-      // Close the current (search) tab, then switch to the localhost dashboard tab
       await this._runAppleScript(`tell application "Google Chrome"
   activate
   -- Close the current search tab (only if there's more than 1 tab)
@@ -1799,7 +1898,6 @@ end tell
 end tell`);
       this.onProgress('🏠 Returned to dashboard tab');
     } catch (e) {
-      // Best-effort — don't fail the search if tab cleanup fails
       this.onProgress(`ℹ️ Could not switch back to dashboard: ${e.message}`);
     }
   }
@@ -1809,10 +1907,20 @@ end tell`);
    * Lightweight — just activates, doesn't resize (already maximized by _ensureChromeWindow).
    */
   async _focusChrome() {
+    if (process.platform === 'win32') {
+      try {
+        const { loadPlatform } = await import('./platforms/PlatformAdapter.js');
+        const plat = await loadPlatform();
+        await plat.focusChrome();
+      } catch { /* best-effort */ }
+      await this._wait(200);
+      return;
+    }
+
+    // macOS: AppleScript
     try {
-      // Single AppleScript call — activate is enough to bring Chrome to front
       await this._runAppleScript('tell application "Google Chrome" to activate');
-    } catch (e) { /* best-effort */ }
+    } catch { /* best-effort */ }
     await this._wait(200);
   }
 
@@ -1822,6 +1930,14 @@ end tell`);
    * This is critical when multiple tabs are open — ensures we type into the right one.
    */
   async _focusChromeTab(urlContains) {
+    if (process.platform === 'win32') {
+      // Windows: just focus Chrome — CDP doesn't support tab switching by URL easily
+      await this._focusChrome();
+      await this._wait(600);
+      return;
+    }
+
+    // macOS: AppleScript tab search
     const safeUrl = urlContains.replace(/"/g, '');
     const script = `tell application "Google Chrome"
   activate

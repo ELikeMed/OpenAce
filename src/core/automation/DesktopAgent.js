@@ -137,9 +137,18 @@ export class DesktopAgent {
    */
   async _focusChrome() {
     try {
-      execSync('osascript -e \'tell application "Google Chrome" to activate\'', { timeout: 3000 });
+      if (process.platform === 'win32') {
+        // Windows: use PowerShell COM
+        execSync(
+          'powershell -command "(New-Object -ComObject WScript.Shell).AppActivate(\'Google Chrome\')"',
+          { timeout: 3000 }
+        );
+      } else {
+        // macOS: AppleScript
+        execSync('osascript -e \'tell application "Google Chrome" to activate\'', { timeout: 3000 });
+      }
       await new Promise(r => setTimeout(r, 300));
-    } catch (e) { /* best-effort — Chrome may not be running */ }
+    } catch { /* best-effort — Chrome may not be running */ }
   }
 
   // ═══════════════════════════════════════════
