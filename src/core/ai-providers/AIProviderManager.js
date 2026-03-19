@@ -684,6 +684,37 @@ CRITICAL RULES:
    * Falls back to another enabled provider if the primary is down
    */
   async verifyActiveProvider() {
+    // Verify Gemini connectivity (most common provider)
+    if (this.providers.gemini) {
+      try {
+        const config = this.config.ai_providers.providers.gemini;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        // Lightweight test: list models endpoint (minimal token usage)
+        const resp = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models?key=${config.api_key}&pageSize=1`,
+          { signal: controller.signal }
+        );
+        clearTimeout(timeout);
+        if (resp.ok) {
+          console.log(`✅ Gemini API is reachable (model: ${config.model || 'gemini-2.5-flash'})`);
+        } else if (resp.status === 400 || resp.status === 403) {
+          console.warn(`⚠️ Gemini API key issue (HTTP ${resp.status}). Check your API key at https://aistudio.google.com/apikey`);
+        } else {
+          console.warn(`⚠️ Gemini API returned HTTP ${resp.status}. API calls may fail.`);
+        }
+      } catch (err) {
+        const msg = err.name === 'AbortError' ? 'timed out after 8 seconds' : err.message;
+        console.warn(`⚠️ Cannot reach Gemini API: ${msg}`);
+        console.warn('   Check your internet connection and firewall settings.');
+        console.warn('   The domain generativelanguage.googleapis.com must be accessible on port 443.');
+        if (process.platform === 'win32') {
+          console.warn('   Windows users: check Windows Firewall and any VPN/proxy settings.');
+          console.warn('   Run this in PowerShell to test: Invoke-WebRequest -Uri "https://generativelanguage.googleapis.com" -UseBasicParsing');
+        }
+      }
+    }
+
     if (this.activeProvider === 'ollama') {
       const baseUrl = this.config.ai_providers.providers.ollama.base_url || 'http://localhost:11434/v1';
       const healthUrl = baseUrl.replace('/v1', '');

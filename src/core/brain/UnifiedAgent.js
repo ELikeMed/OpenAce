@@ -685,7 +685,18 @@ export class UnifiedAgent {
             name: { type: 'STRING', description: 'Project name (e.g. "quiz-form", "landing-page"). Gets sanitized to kebab-case.' },
             project_type: { type: 'STRING', description: 'Type: "landing-page", "webapp", "static-site", "react-app", "widget", or any custom type for AI scaffolding.' },
             description: { type: 'STRING', description: 'Detailed description of what to build. Be specific about features, layout, and functionality.' },
-            files: { type: 'STRING', description: 'JSON array — REQUIRED, minimum 3 files: [{"path":"index.html","content":"<!DOCTYPE html>...full SEO head + semantic body..."},{"path":"styles.css","content":"...all responsive styles..."},{"path":"script.js","content":"...interactivity..."}]. Use BUSINESS CONTEXT for real content. Include title, meta description, OG tags, JSON-LD schema, one h1, semantic elements. NEVER placeholder text.' }
+            files: {
+              type: 'ARRAY',
+              description: 'REQUIRED. Array of files to create. Minimum 3: index.html, styles.css, script.js. Use BUSINESS CONTEXT for real content. Include title, meta description, OG tags, JSON-LD schema, one h1, semantic elements. NEVER placeholder text.',
+              items: {
+                type: 'OBJECT',
+                properties: {
+                  path: { type: 'STRING', description: 'File path relative to project root, e.g. "index.html", "styles.css", "script.js", "about.html"' },
+                  content: { type: 'STRING', description: 'Complete file content. For HTML: full document with SEO head. For CSS: all styles. For JS: all interactivity.' }
+                },
+                required: ['path', 'content']
+              }
+            }
           },
           required: ['name', 'project_type', 'description']
         }
@@ -1652,8 +1663,8 @@ CRITICAL: You MUST call tools to build and edit code. NEVER just describe what y
 
 When the user asks you to build something:
 1. ACTUALLY BUILD IT by calling create_project with real code in the "files" parameter.
-2. Generate the complete HTML/CSS/JS yourself and pass it via the "files" parameter as a JSON array.
-3. Each file in the array: {"path": "index.html", "content": "<!DOCTYPE html>...full content..."}
+2. Generate the complete HTML/CSS/JS yourself and pass it via the "files" parameter as an array of objects.
+3. Each file object: {path: "index.html", content: "<!DOCTYPE html>...full content..."} — the system handles the rest.
 4. After creating, tell the user: "Your project is ready! Open it in Studio at /studio."
 5. When the user wants changes, read the file with line numbers FIRST, then use delete_lines/replace_lines.
 6. Use list_projects to check what already exists before creating duplicates.
@@ -2589,17 +2600,39 @@ Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
     } catch (error) {
       console.error('[UnifiedAgent] Process error:', error.message);
 
-      // Graceful fallback — don't crash, explain the error
-      const soul = this._soulConfig;
-      const errorMsg = soul
-        ? `Something went wrong on my end — ${error.message}. Let me try a different approach. Can you tell me what you're trying to do?`
-        : `Error: ${error.message}. Please try again.`;
+      // Provide actionable error messages instead of raw SDK errors
+      let errorMsg;
+      const errStr = error.message || '';
+
+      if (errStr.includes('fetch failed') || errStr.includes('ENOTFOUND') || errStr.includes('ECONNREFUSED')) {
+        // Network-level failure — Gemini API unreachable
+        errorMsg = `I'm having trouble connecting to the AI service (Gemini). This is usually a network issue on your end. Please check:\n\n` +
+          `1. **Internet connection** — make sure you're online\n` +
+          `2. **Firewall/VPN** — your firewall or VPN may be blocking generativelanguage.googleapis.com\n` +
+          `3. **API key** — verify your Gemini API key is correct in Settings\n` +
+          `4. **Node.js version** — run \`node --version\` in your terminal (must be 18 or higher)\n\n` +
+          `Try restarting Ace after checking these. If you're on a corporate network, you may need to allowlist Google's API domain.`;
+      } else if (errStr.includes('API_KEY') || errStr.includes('403') || errStr.includes('PERMISSION_DENIED')) {
+        errorMsg = `Your Gemini API key doesn't have the right permissions. Please check:\n\n` +
+          `1. Go to https://aistudio.google.com/apikey and verify your key is active\n` +
+          `2. Make sure billing is enabled on your Google Cloud project\n` +
+          `3. Update your API key in Settings if needed`;
+      } else if (errStr.includes('429') || errStr.includes('RESOURCE_EXHAUSTED')) {
+        errorMsg = `I've hit the Gemini API rate limit. The free tier allows 15 requests per minute. Please wait a moment and try again, or upgrade to a paid tier at https://aistudio.google.com for higher limits.`;
+      } else if (errStr.includes('quota')) {
+        errorMsg = `Your Gemini API quota has been exhausted. Check your usage at https://aistudio.google.com and consider upgrading your plan.`;
+      } else {
+        const soul = this._soulConfig;
+        errorMsg = soul
+          ? `Something went wrong on my end — ${errStr}. Let me try a different approach. Can you tell me what you're trying to do?`
+          : `Error: ${errStr}. Please try again.`;
+      }
 
       return {
         text: errorMsg,
         actions: [],
         data: {},
-        thinking: [...thinking, `❌ Error: ${error.message}`],
+        thinking: [...thinking, `❌ Error: ${errStr}`],
       };
     }
   }
@@ -2651,7 +2684,11 @@ Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
       case 'run_sop': return await this._toolRunSOP(args);
       case 'save_note': return await this._toolSaveNote(args);
       case 'recall_notes': return await this._toolRecallNotes(args);
-      case 'create_project': return await this._toolCreateProject(args);
+      case 'create_project': {
+        const filesType = args.files ? (Array.isArray(args.files) ? `array[${args.files.length}]` : typeof args.files) : 'none';
+        console.log(`[UnifiedAgent] create_project: name="${args.name}", files=${filesType}`);
+        return await this._toolCreateProject(args);
+      }
       case 'write_project_file': return await this._toolWriteProjectFile(args);
       case 'list_projects': return await this._toolListProjects(args);
       case 'list_project_files': return await this._toolListProjectFiles(args);
@@ -2682,65 +2719,64 @@ Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
     const query = args.query;
     this.onProgress(`Searching: ${query}`);
 
-    // Use Google in Chrome — real browser, no bot detection
-    const browser = await this._getDesktopBrowser();
-    if (!browser) {
-      return JSON.stringify({ error: 'Desktop browser not available. Cannot perform web search.', hint: 'Try open_browser with a Google search URL instead.' });
-    }
-
-    const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
-    await browser.navigateTo(googleUrl);
-
-    // Wait a moment for results to render
-    await new Promise(r => setTimeout(r, 2000));
-
-    // Extract search results directly from Google's DOM via JavaScript
-    this.onProgress('Reading Google results...');
-    const extractJs = `(function(){
-      var results = [];
-      var items = document.querySelectorAll('div.g, div[data-hveid] div.g');
-      if (!items.length) items = document.querySelectorAll('[data-sokoban-container] a[href]');
-      items.forEach(function(el, i) {
-        if (i >= 10) return;
-        var a = el.querySelector('a[href]');
-        var h3 = el.querySelector('h3');
-        var snip = el.querySelector('[data-sncf], .VwiC3b, [style*="-webkit-line-clamp"]');
-        if (!a || !h3) return;
-        var url = a.href;
-        if (!url || url.includes('google.com/search')) return;
-        results.push({
-          title: h3.innerText || '',
-          url: url,
-          snippet: snip ? snip.innerText.substring(0, 300) : ''
-        });
-      });
-      return JSON.stringify(results);
-    })()`;
-
     let results = [];
-    try {
-      const raw = await browser._executeJsInChrome(extractJs);
-      if (raw) results = JSON.parse(raw);
-    } catch (e) {
-      this.onProgress(`DOM extraction failed: ${e.message}`);
+
+    // Try Chrome browser search first (macOS with DesktopBrowser)
+    const browser = await this._getDesktopBrowser();
+    if (browser) {
+      const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+      await browser.navigateTo(googleUrl);
+      await new Promise(r => setTimeout(r, 2000));
+
+      this.onProgress('Reading Google results...');
+      const extractJs = `(function(){
+        var results = [];
+        var items = document.querySelectorAll('div.g, div[data-hveid] div.g');
+        if (!items.length) items = document.querySelectorAll('[data-sokoban-container] a[href]');
+        items.forEach(function(el, i) {
+          if (i >= 10) return;
+          var a = el.querySelector('a[href]');
+          var h3 = el.querySelector('h3');
+          var snip = el.querySelector('[data-sncf], .VwiC3b, [style*="-webkit-line-clamp"]');
+          if (!a || !h3) return;
+          var url = a.href;
+          if (!url || url.includes('google.com/search')) return;
+          results.push({ title: h3.innerText || '', url: url, snippet: snip ? snip.innerText.substring(0, 300) : '' });
+        });
+        return JSON.stringify(results);
+      })()`;
+
+      try {
+        const raw = await browser._executeJsInChrome(extractJs);
+        if (raw) results = JSON.parse(raw);
+      } catch (e) {
+        this.onProgress(`DOM extraction failed: ${e.message}`);
+      }
+
+      if (results.length === 0) {
+        try {
+          const pageText = await browser._executeJsInChrome(
+            `(function(){ return document.body.innerText.substring(0, 8000); })()`
+          );
+          if (pageText && pageText.length > 100) {
+            results = [{ title: 'Google Search Results', url: googleUrl, snippet: pageText.substring(0, 2000) }];
+          }
+        } catch (e) { /* fall through to DuckDuckGo */ }
+      }
     }
 
-    // If DOM extraction got nothing, fall back to reading the visible page text
+    // Fallback: DuckDuckGo fetch-based search (works on ALL platforms, no browser needed)
     if (results.length === 0) {
-      this.onProgress('DOM extraction empty, reading page text...');
+      this.onProgress('Searching DuckDuckGo...');
       try {
-        const pageText = await browser._executeJsInChrome(
-          `(function(){ return document.body.innerText.substring(0, 8000); })()`
-        );
-        if (pageText && pageText.length > 100) {
-          results = [{ title: 'Google Search Results', url: googleUrl, snippet: pageText.substring(0, 2000) }];
-        }
-      } catch (e) { /* fall through */ }
+        results = await this._searchDuckDuckGo(query, 10);
+      } catch (e) {
+        console.warn(`[UnifiedAgent] DuckDuckGo search failed: ${e.message}`);
+      }
     }
 
     // Number results
     results = results.map((r, i) => ({ position: i + 1, ...r }));
-
     this.onProgress(`Found ${results.length} results`);
 
     // Store for research context
@@ -2753,10 +2789,72 @@ Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
     };
 
     if (results.length === 0) {
-      return JSON.stringify({ query, resultCount: 0, results: [], hint: 'Google returned no extractable results. Try read_screen to visually see the page, or rephrase the query.' });
+      return JSON.stringify({ query, resultCount: 0, results: [], hint: 'No results found. Try rephrasing the query or use read_webpage with a specific URL.' });
     }
 
     return JSON.stringify({ query, resultCount: results.length, results });
+  }
+
+  /**
+   * DuckDuckGo HTML search via fetch — works on ALL platforms, no browser needed.
+   * Used as fallback when DesktopBrowser (Chrome/AppleScript) isn't available.
+   */
+  async _searchDuckDuckGo(query, maxResults = 10) {
+    const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const resp = await fetch(searchUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+      }
+    });
+    if (!resp.ok) throw new Error(`DuckDuckGo HTTP ${resp.status}`);
+
+    const html = await resp.text();
+    const results = [];
+
+    // Parse DuckDuckGo HTML results
+    const resultRegex = /<a[^>]+class="result__a"[^>]+href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
+    let match;
+    while ((match = resultRegex.exec(html)) !== null && results.length < maxResults) {
+      let url = match[1];
+      const title = match[2].replace(/<[^>]+>/g, '').trim();
+      const snippet = match[3].replace(/<[^>]+>/g, '').trim();
+      // Extract actual URL from DuckDuckGo redirect
+      if (url.includes('uddg=')) {
+        const urlMatch = url.match(/uddg=([^&]+)/);
+        if (urlMatch) url = decodeURIComponent(urlMatch[1]);
+      }
+      if (url.startsWith('http') && !url.includes('duckduckgo.com')) {
+        results.push({ title, url, snippet, source: 'duckduckgo' });
+      }
+    }
+
+    // Simpler fallback regex if the main one didn't match
+    if (results.length === 0) {
+      const simpleRegex = /<a[^>]+class="result__a"[^>]+href="([^"]*)"[^>]*>/gi;
+      const titleRegex = /<a[^>]+class="result__a"[^>]*>([\s\S]*?)<\/a>/gi;
+      const urls = [], titles = [];
+      let m;
+      while ((m = simpleRegex.exec(html)) !== null) {
+        let u = m[1];
+        if (u.includes('uddg=')) {
+          const um = u.match(/uddg=([^&]+)/);
+          if (um) u = decodeURIComponent(um[1]);
+        }
+        urls.push(u);
+      }
+      while ((m = titleRegex.exec(html)) !== null) {
+        titles.push(m[1].replace(/<[^>]+>/g, '').trim());
+      }
+      for (let i = 0; i < Math.min(urls.length, maxResults); i++) {
+        if (urls[i].startsWith('http') && !urls[i].includes('duckduckgo.com')) {
+          results.push({ title: titles[i] || '', url: urls[i], snippet: '', source: 'duckduckgo' });
+        }
+      }
+    }
+
+    return results;
   }
 
   // ── Read Webpage ──
@@ -2836,7 +2934,23 @@ Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
         this._browserState = { url, action: 'opened', timestamp: Date.now(), conversationId: this._currentConversationId };
         return JSON.stringify({ success: true, url, message: `Opened ${url} in Chrome. Call read_screen NOW in this same response to see the page content, then present the user with [ACE_QUESTION] options for next steps.` });
       }
-      return JSON.stringify({ error: 'Desktop browser control not available' });
+
+      // Last resort: open URL in system default browser (works on all platforms)
+      try {
+        const { exec } = await import('child_process');
+        const openCmd = process.platform === 'win32' ? `start "" "${url}"`
+          : process.platform === 'darwin' ? `open "${url}"`
+          : `xdg-open "${url}"`;
+        await new Promise((resolve, reject) => {
+          exec(openCmd, (err) => err ? reject(err) : resolve());
+        });
+        this._browserState = { url, action: 'opened', timestamp: Date.now(), conversationId: this._currentConversationId };
+        return JSON.stringify({ success: true, url, message: `Opened ${url} in your default browser. I can't control the browser directly on this platform, but I can still read webpages. Use read_webpage to extract content from any URL.` });
+      } catch (openErr) {
+        console.warn(`[UnifiedAgent] System open failed: ${openErr.message}`);
+      }
+
+      return JSON.stringify({ error: 'Desktop browser control not available. Use read_webpage to fetch and read any URL content.' });
     } catch (e) {
       return JSON.stringify({ error: e.message });
     }
@@ -4303,73 +4417,91 @@ Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
     const codeAgent = this.subsystems.codeAgent;
     if (!codeAgent) return JSON.stringify({ error: 'CodeAgent not available' });
 
-    const { name, project_type, description, files } = args;
-    this.onProgress(`Creating project: ${name} (${project_type})`);
+    const { project_type, description, files } = args;
+    // Defensive: ensure name is never null (Gemini occasionally omits required params)
+    const projectName = codeAgent.sanitizeProjectName(args.name) || `project-${Date.now()}`;
+    this.onProgress(`Creating project: ${projectName} (${project_type || 'landing-page'})`);
 
     try {
       // If Gemini provided files directly, write them to the project
       if (files) {
         let fileList;
         try {
+          // files comes as native ARRAY from Gemini function calling (preferred),
+          // or as a JSON string from older calls / other providers
           fileList = typeof files === 'string' ? JSON.parse(files) : files;
+          if (!Array.isArray(fileList)) fileList = null;
         } catch (e) {
-          return JSON.stringify({ error: `Invalid files JSON: ${e.message}` });
+          console.warn(`[UnifiedAgent] create_project: files parse failed (${e.message}), falling through to scaffolding`);
+          fileList = null; // Fall through to CodeAgent fallback below
         }
 
-        const projectName = codeAgent.sanitizeProjectName(name);
-        const projectDir = path.join(PROJECT_ROOT, 'projects', projectName);
-        await fs.mkdir(projectDir, { recursive: true });
+        if (fileList && fileList.length > 0) {
+          const projectDir = path.join(PROJECT_ROOT, 'projects', projectName);
+          await fs.mkdir(projectDir, { recursive: true });
 
-        const results = [];
-        for (const file of fileList) {
-          if (file.path && file.content) {
-            const filePath = path.join(projectDir, file.path);
-            await fs.mkdir(path.dirname(filePath), { recursive: true });
-            await fs.writeFile(filePath, file.content, 'utf-8');
-            results.push(file.path);
-            this.onProgress(`Created: ${file.path}`);
+          const results = [];
+          for (const file of fileList) {
+            // Accept multiple property name conventions from AI
+            const fp = file.path || file.file_path || file.filename || file.name;
+            const fc = file.content || file.code || file.source;
+            if (fp && fc) {
+              const filePath = path.join(projectDir, String(fp));
+              await fs.mkdir(path.dirname(filePath), { recursive: true });
+              await fs.writeFile(filePath, String(fc), 'utf-8');
+              results.push(String(fp));
+              this.onProgress(`Created: ${fp}`);
+            } else {
+              console.warn(`[UnifiedAgent] create_project: skipping file with missing path/content:`, JSON.stringify(file).substring(0, 200));
+            }
+          }
+
+          if (results.length === 0) {
+            console.warn(`[UnifiedAgent] create_project: all ${fileList.length} files had null paths, falling through`);
+            // Fall through to CodeAgent fallback
+          } else {
+            // Create project.json metadata
+            const projectMeta = {
+              name: projectName,
+              type: project_type || 'landing-page',
+              description: description,
+              created: new Date().toISOString(),
+              updated: new Date().toISOString(),
+              framework: 'vanilla',
+              entryPoint: 'index.html',
+              status: 'active'
+            };
+            await fs.writeFile(
+              path.join(projectDir, 'project.json'),
+              JSON.stringify(projectMeta, null, 2)
+            );
+
+            // Auto-generate SEO boilerplate (robots.txt, sitemap.xml)
+            const seoFiles = await this._generateSEOFiles(projectDir, results);
+            const allFiles = [...results, ...seoFiles];
+
+            this.onProgress(`Project "${projectName}" created with ${allFiles.length} files`);
+            this._createdProject = projectName; // Signal to process() for client notification
+            return JSON.stringify({
+              success: true,
+              projectName,
+              projectDir,
+              filesCreated: allFiles.length,
+              files: allFiles,
+              studioUrl: `/studio?project=${projectName}`,
+              message: `Project "${projectName}" created with ${allFiles.length} files! View it in Studio at /studio.`
+            });
           }
         }
-
-        // Create project.json metadata
-        const projectMeta = {
-          name: projectName,
-          type: project_type,
-          description: description,
-          created: new Date().toISOString(),
-          updated: new Date().toISOString(),
-          framework: 'vanilla',
-          entryPoint: 'index.html',
-          status: 'active'
-        };
-        await fs.writeFile(
-          path.join(projectDir, 'project.json'),
-          JSON.stringify(projectMeta, null, 2)
-        );
-
-        // Auto-generate SEO boilerplate (robots.txt, sitemap.xml)
-        const seoFiles = await this._generateSEOFiles(projectDir, results);
-        const allFiles = [...results, ...seoFiles];
-
-        this.onProgress(`Project "${projectName}" created with ${allFiles.length} files`);
-        this._createdProject = projectName; // Signal to process() for client notification
-        return JSON.stringify({
-          success: true,
-          projectName,
-          projectDir,
-          filesCreated: allFiles.length,
-          files: allFiles,
-          studioUrl: `/studio?project=${projectName}`,
-          message: `Project "${projectName}" created with ${allFiles.length} files! View it in Studio at /studio.`
-        });
+        // fileList was null/empty/all-null-paths — fall through to CodeAgent fallback
       }
 
       // Fallback: try CodeAgent scaffolding
       try {
-        const result = await codeAgent.createProject(project_type, {
-          name,
+        const result = await codeAgent.createProject(project_type || 'landing-page', {
+          name: projectName,
           description,
-          title: name.replace(/-/g, ' '),
+          title: projectName.replace(/-/g, ' '),
         });
         // Auto-generate SEO files for CodeAgent scaffolds too
         if (result.projectDir) {
@@ -4384,13 +4516,13 @@ Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
         });
       } catch (scaffoldErr) {
         // Last resort: create empty project with placeholder so it shows in Studio
-        const projectName = codeAgent.sanitizeProjectName(name);
         const projectDir = path.join(PROJECT_ROOT, 'projects', projectName);
         await fs.mkdir(projectDir, { recursive: true });
-        const placeholder = `<!DOCTYPE html><html><head><title>${name}</title></head><body><h1>${name}</h1><p>${description || 'Project created — edit files in Studio.'}</p></body></html>`;
+        const displayName = projectName.replace(/-/g, ' ');
+        const placeholder = `<!DOCTYPE html><html><head><title>${displayName}</title></head><body><h1>${displayName}</h1><p>${description || 'Project created — edit files in Studio.'}</p></body></html>`;
         await fs.writeFile(path.join(projectDir, 'index.html'), placeholder, 'utf-8');
         await fs.writeFile(path.join(projectDir, 'project.json'), JSON.stringify({
-          name: projectName, type: project_type, description, created: new Date().toISOString(),
+          name: projectName, type: project_type || 'landing-page', description, created: new Date().toISOString(),
           updated: new Date().toISOString(), framework: 'vanilla', entryPoint: 'index.html', status: 'active'
         }, null, 2));
         this.onProgress(`Created placeholder project "${projectName}" (scaffolding failed: ${scaffoldErr.message})`);

@@ -10,7 +10,7 @@ import fs from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
 import { exec, spawn } from 'child_process';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -247,7 +247,7 @@ export class UpdateManager {
 
       try {
         const migrationPath = path.join(this.migrationsDir, file);
-        const migration = (await import(migrationPath)).default;
+        const migration = (await import(pathToFileURL(migrationPath).href)).default;
 
         if (migration.version <= this.state.dataSchemaVersion && applied.size > 0) continue;
 
