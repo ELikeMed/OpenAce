@@ -946,9 +946,17 @@ function App() {
             </Typography>
           )}
           {updateProgress.find(p => p.status === 'error') && (
-            <Typography sx={{ mt: 2, fontSize: '0.85rem', color: BRAND.error }}>
-              Update failed. Your data has been backed up. Try again or update manually.
-            </Typography>
+            <Box sx={{ mt: 2 }}>
+              <Typography sx={{ fontSize: '0.85rem', color: BRAND.error, fontWeight: 600 }}>
+                Update failed: {updateProgress.find(p => p.status === 'error')?.detail || 'Unknown error'}
+              </Typography>
+              <Typography sx={{ fontSize: '0.8rem', color: BRAND.textMuted, mt: 1 }}>
+                Run this in your OpenAce folder to update manually:
+              </Typography>
+              <Box sx={{ mt: 0.5, p: 1.5, background: 'rgba(0,0,0,0.3)', borderRadius: 1, fontFamily: 'monospace', fontSize: '0.75rem', color: BRAND.textPrimary, userSelect: 'all', cursor: 'text' }}>
+                git pull origin main && npm install && npm start
+              </Box>
+            </Box>
           )}
         </DialogContent>
         {!updating && (

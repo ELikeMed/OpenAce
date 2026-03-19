@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="spadeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6C5CE7"/>
+      <stop offset="100%" stop-color="#00CEC9"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#0F0F1A"/>
+  <path d="M32 8L30.5 10C28.5 13 18 25 16.5 29.5C15.5 32.5 16.2 35 17.5 36.8C18.8 38.6 21 39.2 23 38.5C24.8 37.8 26.3 36.2 27.2 34C26.4 37 25 40 22.5 43H29V48H35V43H41.5C39 40 37.6 37 36.8 34C37.7 36.2 39.2 37.8 41 38.5C43 39.2 45.2 38.6 46.5 36.8C47.8 35 48.5 32.5 47.5 29.5C46 25 35.5 13 33.5 10L32 8Z" fill="url(#spadeGrad)"/>
+</svg>

@@ -153,10 +153,15 @@ export class UpdateManager {
     };
 
     try {
-      // Step 1: Backup data
+      // Step 1: Backup data (NON-FATAL — don't block update if backup fails)
       progress('backup', 'active', 'Backing up data...');
-      await this._backupData();
-      progress('backup', 'done', 'Data backed up');
+      try {
+        await this._backupData();
+        progress('backup', 'done', 'Data backed up');
+      } catch (backupErr) {
+        console.warn('[UpdateManager] Backup failed (continuing anyway):', backupErr.message);
+        progress('backup', 'done', 'Backup skipped — continuing update');
+      }
 
       // Step 2: Git pull
       progress('pull', 'active', 'Pulling latest code...');
@@ -221,9 +226,11 @@ export class UpdateManager {
 
       return { success: true, version: this.currentVersion };
     } catch (error) {
-      progress('error', 'error', error.message);
-      console.error('[UpdateManager] Update failed:', error);
-      return { success: false, error: error.message };
+      const msg = error.message || 'Unknown error';
+      // Send detailed error with the step that failed
+      progress('error', 'error', msg);
+      console.error('[UpdateManager] Update failed:', msg);
+      return { success: false, error: msg };
     }
   }
 
