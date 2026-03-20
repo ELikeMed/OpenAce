@@ -1702,11 +1702,16 @@ end tell
         if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.getAttribute('contenteditable')) {
           el.focus();
         }
+        var r = el.getBoundingClientRect();
+        var cx = r.left + r.width/2, cy = r.top + r.height/2;
+        // Fire mousedown/mouseup first (React apps need these), then normal click
+        var evtOpts = {bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy};
+        el.dispatchEvent(new MouseEvent('mousedown', evtOpts));
+        el.dispatchEvent(new MouseEvent('mouseup', evtOpts));
         ${isDouble
           ? `el.dispatchEvent(new MouseEvent('dblclick', {bubbles: true, cancelable: true}));`
           : `el.click();`}
-        var r = el.getBoundingClientRect();
-        return 'clicked:' + Math.round(r.left + r.width/2) + ',' + Math.round(r.top + r.height/2) + ':' + (label || '').substring(0, 80);
+        return 'clicked:' + Math.round(cx) + ',' + Math.round(cy) + ':' + (label || '').substring(0, 80);
       }
 
       // ── Phase 0: Form field search (highest priority) ──
