@@ -2998,10 +2998,21 @@ Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
         try { urlBefore = await browser._executeJsInChrome('window.location.href'); } catch {}
       }
 
-      // Take screenshot, use AI vision to find the target, then click
-      const result = await desktop.findAndClick(target, {
-        isAborted: () => this._abortRequested,
-      });
+      // Strategy 1: Try DOM-based click first (fast, precise, works for forms/buttons/links)
+      const runner = this.subsystems.brain?._desktopRunner;
+      let domClicked = false;
+      if (runner?._clickWebElement) {
+        domClicked = await runner._clickWebElement(target);
+        if (domClicked) this.onProgress(`DOM click: "${target}"`);
+      }
+
+      // Strategy 2: Fall back to AI vision click (for icon buttons, complex UIs, non-text elements)
+      let result = { success: domClicked };
+      if (!domClicked) {
+        result = await desktop.findAndClick(target, {
+          isAborted: () => this._abortRequested,
+        });
+      }
 
       if (!result.success) {
         return JSON.stringify({ success: false, target, error: result.error || 'Could not find or click the target', hint: 'Try: (1) scroll_page down first, (2) different target description, (3) read_screen to see what is on screen, (4) open URL directly with open_browser.' });

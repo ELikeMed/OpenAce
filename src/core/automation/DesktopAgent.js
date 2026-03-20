@@ -165,14 +165,36 @@ export class DesktopAgent {
     this.onProgress('👁️ Looking at the screen...');
     const img = robot.screen.capture(0, 0, this.screenSize.width, this.screenSize.height);
 
+    // Detect Retina/HiDPI: robotjs may report logical dimensions (1920x1080) but
+    // the buffer contains physical pixels (3840x2160 on 2x Retina). If dimensions
+    // don't match the buffer size, calculate real dimensions from the buffer.
+    let imgWidth = img.width;
+    let imgHeight = img.height;
+    const expectedBytes = img.width * img.height * (img.bytesPerPixel || 4);
+    const actualBytes = img.image.length;
+
+    if (actualBytes > expectedBytes && actualBytes > 0) {
+      // Buffer is larger than reported dimensions — Retina display
+      const ratio = Math.sqrt(actualBytes / expectedBytes);
+      imgWidth = Math.round(img.width * ratio);
+      imgHeight = Math.round(img.height * ratio);
+      // Store the pixel ratio for coordinate mapping
+      if (!this._pixelRatio) {
+        this._pixelRatio = ratio;
+        this.onProgress(`🖥️ Retina display detected (${ratio}x) — real resolution: ${imgWidth}x${imgHeight}`);
+      }
+    } else if (!this._pixelRatio) {
+      this._pixelRatio = 1;
+    }
+
     const jimpImage = new Jimp.Jimp({
       data: img.image,
-      width: img.width,
-      height: img.height,
+      width: imgWidth,
+      height: imgHeight,
     });
 
     // Robotjs buffer is BGRA, Jimp expects RGBA — swap channels
-    jimpImage.scan(0, 0, img.width, img.height, function (x, y, idx) {
+    jimpImage.scan(0, 0, imgWidth, imgHeight, function (x, y, idx) {
       const red = this.bitmap.data[idx + 2];
       const green = this.bitmap.data[idx + 1];
       const blue = this.bitmap.data[idx + 0];
@@ -183,6 +205,11 @@ export class DesktopAgent {
       this.bitmap.data[idx + 2] = blue;
       this.bitmap.data[idx + 3] = alpha;
     });
+
+    // Resize to logical resolution for AI vision (Retina images are too large)
+    if (this._pixelRatio > 1) {
+      jimpImage.resize({ w: this.screenSize.width, h: this.screenSize.height });
+    }
 
     this.onProgress('✅ Screen captured.');
     return jimpImage;
@@ -227,7 +254,14 @@ RULES:
 - x: 0 to ${width}, y: 0 to ${height}. Top-left is (0,0).
 - If the element is clearly visible, return: {"x": 640, "y": 350, "visible": true}
 - If the element is NOT visible anywhere on this screen, return: {"x": -1, "y": -1, "visible": false}
-- Return ONLY the JSON object, nothing else.`;
+- Return ONLY the JSON object, nothing else.
+
+IMPORTANT for accuracy:
+- If this is a FORM FIELD or INPUT BOX: click the empty text input area itself, NOT the label text above/beside it.
+- If there are MANY similar fields (e.g. a form with 20+ fields), carefully read each label to find the exact match.
+- If the target is an ICON BUTTON (no text, just a symbol like ↑ ▶ ✕ ⋮ 📎), look for small clickable icons.
+- If the target is a COPY or SEND button, look for icon buttons near the content area.
+- Be PRECISE — even 30px off can hit the wrong element on a crowded page.`;
 
       try {
         this.onProgress(`📡 Sending to AI vision (${this.aiManager.providers.gemini ? 'gemini' : this.aiManager.activeProvider})...`);
@@ -263,6 +297,46 @@ RULES:
         // Clamp to screen bounds
         coords.x = Math.max(0, Math.min(width - 1, Math.round(coords.x)));
         coords.y = Math.max(0, Math.min(height - 1, Math.round(coords.y)));
+
+        // Crop-and-zoom verification: on crowded pages, re-check with a cropped region
+        // for more precise coordinates (only on first attempt to avoid slowing retries)
+        if (attempt === 0 && Jimp) {
+          try {
+            const cropSize = 500;
+            const cropX = Math.max(0, Math.min(width - cropSize, coords.x - cropSize / 2));
+            const cropY = Math.max(0, Math.min(height - cropSize, coords.y - cropSize / 2));
+            const cropped = image.clone().crop({ x: cropX, y: cropY, w: cropSize, h: cropSize });
+            const cropBase64 = await cropped.getBase64('image/png');
+
+            const cropPrompt = `You are looking at a ${cropSize}x${cropSize} pixel CROPPED region of a screen.
+Find the PIXEL coordinates (x, y) of the CENTER of: "${description}" within THIS cropped image.
+Coordinates are relative to this crop: x: 0 to ${cropSize}, y: 0 to ${cropSize}.
+If visible, return: {"x": 250, "y": 250, "visible": true}
+If NOT visible in this crop, return: {"x": -1, "y": -1, "visible": false}
+Return ONLY the JSON object.`;
+
+            const cropResp = await this.aiManager.chatWithVision(cropPrompt, cropBase64);
+            const cropContent = cropResp.content || cropResp.text || '';
+            const cropJson = cropContent.match(/\{[\s\S]*\}/);
+            if (cropJson) {
+              const cropCoords = JSON.parse(cropJson[0]);
+              if (cropCoords.visible !== false && cropCoords.x >= 0 && cropCoords.y >= 0) {
+                // Map crop-relative coords back to screen coords
+                const refinedX = Math.round(cropX + cropCoords.x);
+                const refinedY = Math.round(cropY + cropCoords.y);
+                // Only use refined coords if they differ meaningfully (>15px)
+                const drift = Math.abs(refinedX - coords.x) + Math.abs(refinedY - coords.y);
+                if (drift > 15 && drift < cropSize) {
+                  this.onProgress(`🔬 Zoom refined: (${coords.x},${coords.y}) → (${refinedX},${refinedY})`);
+                  coords.x = Math.max(0, Math.min(width - 1, refinedX));
+                  coords.y = Math.max(0, Math.min(height - 1, refinedY));
+                }
+              }
+            }
+          } catch (e) {
+            // Crop verification failed — proceed with original coords
+          }
+        }
 
         this.onProgress(`🎯 Found "${description}" at (${coords.x}, ${coords.y})`);
 

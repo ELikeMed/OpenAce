@@ -325,10 +325,30 @@ export class DesktopBrowser {
     }
 
     try {
-      // Get visible text content — innerText excludes hidden elements, scripts, styles
-      // Truncate to 20K chars to stay within AI token limits
+      // Smart content extraction — try to get the focused/main content area first,
+      // not the entire page (which includes sidebars, headers, nav, etc.)
       pageText = await this._executeJsInChrome(
         `(function(){` +
+        // Try main content area first (articles, main, conversations)
+        `var selectors = ['main article', '[role="main"]', 'main', 'article', '.conversation', '.chat-messages', '[class*="conversation"]', '[class*="message"]'];` +
+        `for (var i = 0; i < selectors.length; i++) {` +
+        `  var els = document.querySelectorAll(selectors[i]);` +
+        `  if (els.length > 0) {` +
+        // Get text from all matching elements (e.g., all messages in a conversation)
+        `    var texts = [];` +
+        `    for (var j = 0; j < els.length; j++) {` +
+        `      var t = els[j].innerText.trim();` +
+        `      if (t.length > 30) texts.push(t);` +
+        `    }` +
+        `    if (texts.length > 0) {` +
+        `      var result = texts.join('\\n---\\n');` +
+        // Keep last 18K to prioritize recent content (bottom of conversation)
+        `      if (result.length > 18000) result = '...(truncated)...\\n' + result.slice(-18000);` +
+        `      return result;` +
+        `    }` +
+        `  }` +
+        `}` +
+        // Fallback: full page text, but prioritize visible viewport area
         `var t = document.body.innerText || '';` +
         `return t.substring(0, 20000);` +
         `})()`

@@ -841,19 +841,51 @@ export class DesktopTaskRunner {
             if (searchText) {
               const jsCode = `(function() {
                 var target = ${JSON.stringify(searchText.toLowerCase())};
-                var all = document.querySelectorAll('*');
-                for (var i = 0; i < all.length; i++) {
-                  var el = all[i];
-                  if (el.children.length > 5) continue;
-                  var text = el.textContent.trim().toLowerCase();
-                  if (text.includes(target) && el.offsetParent) {
-                    var range = document.createRange();
-                    range.selectNodeContents(el);
-                    var sel = window.getSelection();
-                    sel.removeAllRanges();
-                    sel.addRange(range);
-                    return 'selected:' + el.textContent.trim().substring(0, 200);
+                var terms = target.split(/\\s+/).filter(function(w) { return w.length > 1; });
+
+                function textMatch(text) {
+                  var lower = text.toLowerCase().trim();
+                  if (lower.includes(target)) return 3;
+                  var hits = 0;
+                  for (var i = 0; i < terms.length; i++) {
+                    if (lower.includes(terms[i])) hits++;
                   }
+                  return (terms.length > 0 && hits >= Math.ceil(terms.length * 0.6)) ? 2 : 0;
+                }
+
+                // Strategy 1: Find the best matching content element (prefer smaller/more specific)
+                var best = null, bestScore = 0, bestLen = Infinity;
+                var candidates = document.querySelectorAll('p, pre, code, blockquote, article, [class*="message"], [class*="answer"], [class*="response"], [class*="content"], [class*="text"], td, li, div');
+                for (var i = 0; i < candidates.length; i++) {
+                  var el = candidates[i];
+                  var text = el.textContent.trim();
+                  if (text.length < 5 || !el.offsetParent) continue;
+                  var score = textMatch(text);
+                  // Prefer higher score; on tie, prefer smaller elements (more specific match)
+                  if (score > bestScore || (score === bestScore && score > 0 && text.length < bestLen)) {
+                    best = el; bestScore = score; bestLen = text.length;
+                  }
+                }
+
+                // Strategy 2: If no match by text, try aria-label and title attrs
+                if (!best) {
+                  var all = document.querySelectorAll('*');
+                  for (var i = 0; i < all.length; i++) {
+                    var el = all[i];
+                    var ariaLabel = el.getAttribute('aria-label') || '';
+                    var title = el.getAttribute('title') || '';
+                    var score = Math.max(textMatch(ariaLabel), textMatch(title));
+                    if (score > bestScore && el.offsetParent) { best = el; bestScore = score; }
+                  }
+                }
+
+                if (best) {
+                  var range = document.createRange();
+                  range.selectNodeContents(best);
+                  var sel = window.getSelection();
+                  sel.removeAllRanges();
+                  sel.addRange(range);
+                  return 'selected:' + best.textContent.trim().substring(0, 200);
                 }
                 return 'not_found';
               })()`;
@@ -1639,12 +1671,16 @@ end tell
     if (!searchText || searchText.length < 2) return false;
 
     // Build JavaScript that searches Chrome's DOM for the element
+    // Phase 0: Form fields (label→input, placeholder, aria-label, adjacent inputs)
+    // Phase 1: Clickable elements (buttons, links, roles)
+    // Phase 2: Generic text elements (span, div, etc.)
     const jsCode = `(function() {
       var target = ${JSON.stringify(searchText.toLowerCase())};
       var terms = target.split(/\\s+/).filter(function(w) { return w.length > 1; });
 
       function textMatch(text) {
         var lower = text.toLowerCase().trim();
+        if (lower === target) return 4;
         if (lower.includes(target)) return 3;
         var hits = 0;
         for (var i = 0; i < terms.length; i++) {
@@ -1654,22 +1690,84 @@ end tell
       }
 
       function isVisible(el) {
-        if (!el.offsetParent && el.tagName !== 'BODY' && el.tagName !== 'HTML') return false;
+        var style = window.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+        if (!el.offsetParent && el.tagName !== 'BODY' && el.tagName !== 'HTML' && style.position !== 'fixed' && style.position !== 'sticky') return false;
         var r = el.getBoundingClientRect();
         return r.width > 0 && r.height > 0 && r.top < window.innerHeight && r.bottom > 0;
       }
 
-      var best = null, bestScore = 0;
+      function clickEl(el, label) {
+        el.scrollIntoView({block: 'center', behavior: 'instant'});
+        if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.getAttribute('contenteditable')) {
+          el.focus();
+        }
+        ${isDouble
+          ? `el.dispatchEvent(new MouseEvent('dblclick', {bubbles: true, cancelable: true}));`
+          : `el.click();`}
+        var r = el.getBoundingClientRect();
+        return 'clicked:' + Math.round(r.left + r.width/2) + ',' + Math.round(r.top + r.height/2) + ':' + (label || '').substring(0, 80);
+      }
 
+      // ── Phase 0: Form field search (highest priority) ──
+      // Check labels → find associated input
+      var labels = document.querySelectorAll('label');
+      for (var i = 0; i < labels.length; i++) {
+        var lbl = labels[i];
+        var lblText = lbl.textContent.trim();
+        if (textMatch(lblText) < 2) continue;
+        // Method 1: label[for] → input[id]
+        var forId = lbl.getAttribute('for');
+        if (forId) {
+          var inp = document.getElementById(forId);
+          if (inp && isVisible(inp)) return clickEl(inp, lblText);
+        }
+        // Method 2: label wraps the input
+        var wrapped = lbl.querySelector('input, textarea, select, [contenteditable="true"]');
+        if (wrapped && isVisible(wrapped)) return clickEl(wrapped, lblText);
+        // Method 3: input is next sibling
+        var sib = lbl.nextElementSibling;
+        if (sib && /^(INPUT|TEXTAREA|SELECT)$/.test(sib.tagName) && isVisible(sib)) return clickEl(sib, lblText);
+        // Method 4: input nearby in same container
+        var par = lbl.parentElement;
+        if (par) {
+          var nearby = par.querySelector('input, textarea, select, [contenteditable="true"]');
+          if (nearby && isVisible(nearby)) return clickEl(nearby, lblText);
+        }
+      }
+
+      // Check inputs directly by placeholder, aria-label, title, name, id
+      var inputs = document.querySelectorAll('input, textarea, select, [contenteditable="true"]');
+      for (var i = 0; i < inputs.length; i++) {
+        var el = inputs[i];
+        if (!isVisible(el)) continue;
+        var attrs = [
+          el.getAttribute('placeholder') || '',
+          el.getAttribute('aria-label') || '',
+          el.getAttribute('title') || '',
+          (el.getAttribute('name') || '').replace(/[-_]/g, ' '),
+          (el.getAttribute('id') || '').replace(/[-_]/g, ' ')
+        ];
+        for (var a = 0; a < attrs.length; a++) {
+          if (attrs[a] && textMatch(attrs[a]) >= 2) return clickEl(el, attrs[a]);
+        }
+      }
+
+      // ── Phase 1: Clickable elements (buttons, links, roles, icons) ──
+      var best = null, bestScore = 0;
       var clickables = document.querySelectorAll('a, button, [role="button"], [role="menuitem"], [role="option"], [role="tab"], [role="link"], input[type="submit"], input[type="button"], [onclick], [data-action], summary');
       for (var i = 0; i < clickables.length; i++) {
         var el = clickables[i];
-        var text = (el.textContent || el.value || el.getAttribute('aria-label') || '').trim();
-        if (text.length > 300) continue;
-        var score = textMatch(text);
+        var text = (el.textContent || el.value || '').trim();
+        var ariaLabel = el.getAttribute('aria-label') || '';
+        var title = el.getAttribute('title') || '';
+        var testStr = text.length < 300 ? text : '';
+        // Check text content, aria-label, and title
+        var score = Math.max(textMatch(testStr), textMatch(ariaLabel), textMatch(title));
         if (score > bestScore && isVisible(el)) { best = el; bestScore = score; }
       }
 
+      // ── Phase 2: Generic text elements ──
       if (!best) {
         var all = document.querySelectorAll('span, div, td, th, li, p, label, h1, h2, h3, h4, h5, h6, [class*="btn"], [class*="button"], [class*="action"], [class*="menu-item"]');
         for (var i = 0; i < all.length; i++) {
@@ -1677,19 +1775,14 @@ end tell
           if (el.children.length > 8) continue;
           var text = el.textContent.trim();
           if (text.length > 300 || text.length < 1) continue;
-          var score = textMatch(text);
+          var ariaLabel = el.getAttribute('aria-label') || '';
+          var title = el.getAttribute('title') || '';
+          var score = Math.max(textMatch(text), textMatch(ariaLabel), textMatch(title));
           if (score > bestScore && isVisible(el)) { best = el; bestScore = score; }
         }
       }
 
-      if (best) {
-        best.scrollIntoView({block: 'center', behavior: 'instant'});
-        ${isDouble
-          ? `best.dispatchEvent(new MouseEvent('dblclick', {bubbles: true, cancelable: true}));`
-          : `best.click();`}
-        var r = best.getBoundingClientRect();
-        return 'clicked:' + Math.round(r.left + r.width/2) + ',' + Math.round(r.top + r.height/2) + ':' + (best.textContent || '').trim().substring(0, 80);
-      }
+      if (best) return clickEl(best, (best.textContent || '').trim());
       return 'not_found';
     })()`;
 
