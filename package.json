@@ -1,6 +1,6 @@
 {
   "name": "openace",
-  "version": "1.5.6",
+  "version": "1.6.0",
   "description": "OpenAce - Your AI Executive Assistant for CMO, CTO, and COO tasks",
   "main": "src/core/index.js",
   "type": "module",
@@ -22,7 +22,8 @@
     "work": "node scripts/ace-work.js",
     "code": "node scripts/ace-work.js --mode=code",
     "email": "node scripts/ace-email.js",
-    "test-google": "node scripts/test-google.js"
+    "test-google": "node scripts/test-google.js",
+    "package:mac": "bash scripts/build-macos-app.sh"
   },
   "keywords": [
     "ai",

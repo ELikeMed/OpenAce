@@ -1922,28 +1922,41 @@ When the user wants to teach you a procedure, create an SOP, or says things like
 
 ## PHASE 2: STEP-BY-STEP WALKTHROUGH
 4. **Start**: "Walk me through it step by step — what's the very first thing you'd do?"
-5. **For EVERY step the user describes, ask targeted follow-ups:**
-   - "Go to a website" → "What's the exact URL?"
-   - "Click something" → "What's the exact text on the button or link?"
-   - "Type something" → "What text exactly? Does it change each time?" (→ {{variable}})
-   - "Fill out a form" → "Which fields? What goes in each one?"
+5. **For EVERY step, demand executable specifics — vague steps WILL fail at runtime:**
+   - "Go to a website" → "What's the EXACT URL? Like https://eventbrite.com/myevents"
+   - "Click something" → "What's the EXACT text on the button or link? Read it to me word for word."
+   - "Click the first result" → "What text should I look for in the result? I can't count positions on a page."
+   - "Search for something" → "What exact search query? If it changes each time, I'll make it a variable."
+   - "Fill out a form" → "List EACH field name (the label above/beside the field) and what goes in it."
+   - "Type some info" → "What exactly? If it changes, I'll use a variable like {{company_name}}."
    - "Wait for something" → "What should appear before we continue?"
    - "Log in" → "Which site? Should I use saved credentials?"
-   - "Call a number" / "Send an email" / "Save to CRM" → Capture the details: who, what content, which CRM fields
-   - Condition ("if X, then Y") → "What should I do in the other case?"
-6. **After EACH step, confirm**: "Got it — step N is [restate what you understood]. What's next?"
-7. **Keep asking "What's next?" until the user says they're done or "that's it".**
+   - "Do whatever we need" or "do what we ask" → This is TOO VAGUE. Push back: "I need the specific action — what would you click, type, or look for?"
+6. **REJECT VAGUE STEPS.** If the user says something like "search what we ask for" or "click on 1 URL at a time" or "send back the info", DO NOT accept it. Push back immediately:
+   "I need more detail to do this reliably. When you say '[vague phrase]' — can you be more specific about what I should click/type/look for?"
+7. **After EACH step, confirm with the exact executable detail**: "Got it — Step N: I'll click the button labeled **'Create Event'** on the page. Correct?"
+8. **Keep asking "What's next?" until the user says they're done or "that's it".**
+
+## PHASE 2.5: SPECIFICITY CHECK
+After gathering all steps, silently review each one. For ANY step where you don't have:
+- A specific URL (for navigate)
+- Exact button/link text in quotes (for clicks)
+- Exact field label + what to type (for edit_field/type)
+- A {{variable}} name (for dynamic values)
+
+Go back and ask: "Quick follow-up on step N — [specific question about the missing detail]"
 
 ## PHASE 3: IDENTIFY DYNAMIC VARIABLES
-8. Review ALL steps for anything that changes per run: search terms, names, dates, cities, prices, URLs with parameters, email content.
-9. For each one, ask: "You mentioned [X] — does that change each time, or is it always the same?"
-10. For confirmed variables, use {{variable_name}} notation in the step.
+9. Review ALL steps for anything that changes per run: search terms, names, dates, cities, prices, URLs with parameters, email content.
+10. For each one, ask: "You mentioned [X] — does that change each time, or is it always the same?"
+11. For confirmed variables, use {{variable_name}} notation in the step.
 
 ## PHASE 4: PREVIEW AND CONFIRM (MANDATORY)
-11. **You MUST call draft_sop** to generate a formatted preview. NEVER call create_sop directly without previewing first.
-12. When calling draft_sop, pass the steps as **plain English text — one step per line**. Do NOT format steps as JSON objects. The system has a dedicated parsing engine (SOPParser) that converts your natural language into properly structured automation steps with the correct action types, URLs, wait times, etc. Just write what the user told you.
-13. Show the preview to the user: "Here's what I've captured — does this look right?"
-14. Offer options to approve or revise:
+12. **You MUST call draft_sop** to generate a formatted preview. NEVER call create_sop directly without previewing first.
+13. When calling draft_sop, pass the steps as **plain English text — one step per line**. Do NOT format steps as JSON objects. The system has a dedicated parsing engine (SOPParser) that converts your natural language into properly structured automation steps with the correct action types, URLs, wait times, etc. Just write what the user told you.
+14. **The system will score each step's quality.** If any steps are flagged as too vague (score below 50), you MUST ask the user to clarify those specific steps before saving. The preview will show which steps need work.
+15. Show the preview to the user: "Here's what I've captured — does this look right?"
+16. Offer options to approve or revise:
 
 [ACE_QUESTION]{"options":[
   {"id":1,"label":"Looks good, save it","description":"Save this procedure exactly as shown"},
@@ -1951,17 +1964,26 @@ When the user wants to teach you a procedure, create an SOP, or says things like
   {"id":3,"label":"Add more steps","description":"I forgot some steps, let me add them"}
 ],"allowCustom":true}[/ACE_QUESTION]
 
-15. If the user wants changes, modify the draft and call draft_sop again.
-16. Only when the user confirms → call create_sop with just the name (the approved draft is used automatically).
+17. If the user wants changes OR if the quality check flagged issues, modify the steps and call draft_sop again.
+18. Only when the user confirms AND all steps pass quality → call create_sop with just the name (the approved draft is used automatically).
 
 ## CRITICAL TRAINING RULES:
-- **NEVER call create_sop on the first message.** Always interview first — even if the user gives you all steps in one message, still do Phase 3 (variables) and Phase 4 (preview).
+- **NEVER call create_sop on the first message.** Always interview first — even if the user gives you all steps in one message, still do Phase 2.5 (specificity check), Phase 3 (variables), and Phase 4 (preview).
+- **NEVER accept vague steps.** "Click the button", "search what we ask for", "do the thing" — these WILL fail. Push back until you have specific text, URLs, or field names.
 - **NEVER invent steps the user didn't describe.** Only record what they tell you. Ask if you're unsure.
 - **NEVER skip the preview.** Always call draft_sop before create_sop.
 - **Capture the EXACT wording** the user gives you for button text, field names, and URLs. Don't paraphrase.
 - **Handle all training in chat.** Don't redirect users to the Processes tab.
 - **Write steps in plain English** when calling draft_sop. The system parses them automatically. Example:
-  "Go to eventbrite.com\\nLog in with saved credentials\\nClick Past Events\\nClick Copy on the most recent event\\nFill in the date field with {{event_date}}\\nClick Publish"
+  "Go to https://eventbrite.com\\nLog in with saved credentials\\nClick 'Past Events'\\nClick 'Copy' on the most recent event\\nFill in the 'Date' field with {{event_date}}\\nClick 'Publish'"
+
+## BAD vs GOOD STEP EXAMPLES:
+BAD: "Search what we ask for" → GOOD: "Type {{search_query}} in the search box and press Enter"
+BAD: "Click the button" → GOOD: "Click 'Create Event'"
+BAD: "Fill out the form" → GOOD: "Fill in the 'Company Name' field with {{company_name}}, fill in the 'Email' field with {{email}}"
+BAD: "Go to the website" → GOOD: "Go to https://eventbrite.com/myevents"
+BAD: "Send back the info" → GOOD: "Copy the text from the 'Contact Info' section"
+BAD: "Do it for each result" → GOOD: "Click the first company name link"
 
 ## WHEN A TASK FAILS AND USER TEACHES YOU:
 If you struggle with a task and the user selects "Teach me how you'd do this":
@@ -1979,22 +2001,26 @@ And what 2-3 phrases should trigger this? For example, 'repost the meetup' or 'e
 User: "Yeah that works. Triggers: repost meetup, eventbrite repost, repost the event"
 Ace: "Perfect. Now walk me through it — what's the very first thing you do?"
 
-User: "Go to eventbrite.com and log in"
-Ace: "Got it — Step 1 is navigate to eventbrite.com, Step 2 is log in with saved credentials. What's next?"
+User: "Go to eventbrite and log in"
+Ace: "Got it — is the URL https://eventbrite.com? And should I use your saved credentials to log in?"
+
+User: "Yeah eventbrite.com, use saved credentials"
+Ace: "Step 1: Go to https://eventbrite.com. Step 2: Log in with saved credentials. What's next?"
 
 User: "Click on my past events, then find the most recent one and click copy"
-Ace: "Step 3 is click 'Past Events' (that's the exact text on the button?), then Step 4 is click 'Copy' on the most recent event. What's next?"
+Ace: "Two questions — is the button text exactly **'Past Events'**? And for copying, is there a button labeled **'Copy'** next to each event?"
+
+User: "Yeah Past Events is the tab, and there's a copy icon next to each one"
+Ace: "Step 3: Click **'Past Events'**. Step 4: Click **'Copy'** on the most recent event. What's next?"
 
 User: "Change the date to this Saturday and update the title with the new date"
-Ace: "Two questions — does the date change each time? And what format is the title?"
-User: "Yeah the date changes. Title is always like 'Dallas REI Meetup - March 22'"
-Ace: "Got it — I'll use {{event_date}} for the date and {{event_title}} for the title. What's next?"
+Ace: "What's the label on the date field — is it **'Date'** or **'Event Date'** or something else? And the title field — is it labeled **'Event Name'**? Also, do these change each time?"
+User: "Date field is 'Event Date', title is 'Event Name'. Yeah they change every time."
+Ace: "I'll use {{event_date}} and {{event_title}} as variables. Step 5: Fill in **'Event Date'** with {{event_date}}. Step 6: Fill in **'Event Name'** with {{event_title}}. What's next?"
 
 User: "That's it, just publish it"
-Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
-→ [calls draft_sop with steps: "Go to eventbrite.com\\nLog in with saved credentials\\nClick Past Events\\nClick Copy on the most recent event\\nFill in the date field with {{event_date}}\\nFill in the title with {{event_title}}\\nClick Publish"]
-→ System parses into structured automation steps automatically
-→ "Does this look right?"
+Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
+→ [calls draft_sop with steps: "Go to https://eventbrite.com\\nLog in with saved credentials\\nClick 'Past Events'\\nClick 'Copy' on the most recent event\\nFill in the 'Event Date' field with {{event_date}}\\nFill in the 'Event Name' field with {{event_title}}\\nClick 'Publish'"]
 
 `;
 
@@ -4219,7 +4245,10 @@ Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
       variables = [...varSet].map(v => ({ name: v, description: '', example: '' }));
     }
 
-    // Build formatted preview
+    // ═══ Score step quality — catch vague steps before saving ═══
+    const quality = this.sopParser.scoreSOPQuality(cleaned.steps);
+
+    // Build formatted preview with quality indicators
     let preview = `**${cleaned.name}**\n`;
     if (cleaned.description) preview += `*${cleaned.description}*\n`;
     preview += `\n**Steps (${cleaned.steps.length}):**\n`;
@@ -4227,8 +4256,23 @@ Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
     cleaned.steps.forEach((step, i) => {
       const action = step.action || 'action';
       let desc = step.description || this.sopParser.describeStep(step);
-      preview += `${i + 1}. **[${action}]** ${desc}\n`;
+      const sq = quality.stepScores[i];
+
+      if (sq && sq.score < 50) {
+        preview += `${i + 1}. **[${action}]** ${desc} — ⚠️ *${sq.issues[0] || 'Too vague to execute reliably'}*\n`;
+      } else if (sq && sq.score < 70) {
+        preview += `${i + 1}. **[${action}]** ${desc} — ⚡ *May need adjustment after first run*\n`;
+      } else {
+        preview += `${i + 1}. **[${action}]** ${desc}\n`;
+      }
     });
+
+    if (quality.weakSteps.length > 0) {
+      preview += `\n**Steps needing more detail:**\n`;
+      quality.weakSteps.forEach(ws => {
+        preview += `- Step ${ws.stepNum}: ${ws.suggestions[0] || ws.issues[0]}\n`;
+      });
+    }
 
     if (variables.length > 0) {
       preview += `\n**Dynamic Variables:**\n`;
@@ -4243,14 +4287,17 @@ Ace: "Step 7 is click 'Publish'. Let me show you the full procedure..."
     }
 
     // Store draft so create_sop can use it
-    this._pendingSOPDraft = { ...cleaned, variables };
+    this._pendingSOPDraft = { ...cleaned, variables, quality };
 
     return JSON.stringify({
       success: true,
       preview,
       stepCount: cleaned.steps.length,
       variableCount: variables.length,
-      message: 'SOP draft ready. Show the preview to the user and ask for confirmation before calling create_sop.'
+      quality: { overallScore: quality.overallScore, weakCount: quality.weakSteps.length, passesThreshold: quality.passesThreshold },
+      message: quality.passesThreshold
+        ? 'SOP draft ready. Show the preview to the user and ask for confirmation before calling create_sop.'
+        : `WARNING: ${quality.weakSteps.length} step(s) are too vague to execute reliably. Ask the user to clarify the steps marked with ⚠️ before saving. Do NOT call create_sop until the vague steps are fixed — call draft_sop again with improved steps after getting the user's clarification.`
     });
   }
 

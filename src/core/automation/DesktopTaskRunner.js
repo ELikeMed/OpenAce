@@ -16,6 +16,7 @@
 import { createRequire } from 'module';
 import fs from 'fs/promises';
 import path from 'path';
+import { eventBus, EVENTS } from '../events/EventBus.js';
 
 const require = createRequire(import.meta.url);
 
@@ -207,32 +208,105 @@ export class DesktopTaskRunner {
     let completedSteps = 0;
     const retriedSteps = [];
 
+    const MAX_RETRIES = 2; // 3 total attempts per step (initial + 2 retries)
+    const executionLog = [];
+
+    // ── SSE: Notify chat UI that SOP execution has started ──
+    eventBus.emit(EVENTS.SOP_STARTED, {
+      sopId: sop.id, sopName: sop.name, stepCount: steps.length,
+    });
+
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
-      const stepDesc = step.target || step.text || step.key || '';
+      const stepDesc = step.description || step.target || step.text || step.key || '';
       this.onProgress(`🎓 Step ${i + 1}/${steps.length}: ${step.action} — ${stepDesc}`);
       console.log(`[SOP Replay] Step ${i + 1}/${steps.length}: ${step.action} at (${step.x},${step.y}) — ${stepDesc}`);
 
-      const isClickAction = ['click', 'doubleClick', 'click_text', 'click_submit', 'smart_click', 'right_click', 'select_option'].includes(step.action);
-      try {
-        await this._executeStep(step, steps, i, scaleX, scaleY);
+      // ── Apply learning from past runs (extra wait for unreliable steps) ──
+      await this._applyLearning(step, i + 1, sop.id);
 
-        // ── STEP VERIFICATION: Check if the click actually worked ──
-        if (isClickAction && step.url) {
-          const verified = await this._verifyStep(step, steps, i);
-          if (!verified) {
-            this.onProgress(`🔄 Step ${i + 1} may have missed — retrying once...`);
-            retriedSteps.push(i + 1);
-            await this._executeStep(step, steps, i, scaleX, scaleY);
+      const isClickAction = ['click', 'doubleClick', 'click_text', 'click_submit', 'smart_click', 'right_click', 'select_option'].includes(step.action);
+      let succeeded = false;
+      let lastError = null;
+      const stepStart = Date.now();
+
+      // ── RETRY LOOP: up to MAX_RETRIES additional attempts ──
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        // ── SSE: Step started (only on first attempt) ──
+        if (attempt === 0) {
+          eventBus.emit(EVENTS.SOP_STEP_STARTED, {
+            sopId: sop.id, sopName: sop.name, stepNum: i + 1,
+            totalSteps: steps.length, action: step.action, description: stepDesc,
+          });
+        }
+
+        try {
+          await this._executeStep(step, steps, i, scaleX, scaleY);
+
+          // ── STEP VERIFICATION: Check if the click actually worked ──
+          if (isClickAction && step.url) {
+            const verified = await this._verifyStep(step, steps, i);
+            if (!verified && attempt < MAX_RETRIES) {
+              throw new Error('Step verification failed — page did not change as expected');
+            }
+          }
+
+          succeeded = true;
+          completedSteps++;
+
+          // ── Record what method worked ──
+          const method = (step.x != null && step.y != null) ? 'coordinates' : (this._chromeJsDisabled ? 'ai_vision' : 'dom_search');
+          await this._recordSkill(step, { method });
+          executionLog.push({ step: i + 1, action: step.action, success: true, method, duration: Date.now() - stepStart });
+
+          // ── SSE: Step completed ──
+          eventBus.emit(EVENTS.SOP_STEP_COMPLETED, {
+            sopId: sop.id, sopName: sop.name, stepNum: i + 1,
+            totalSteps: steps.length, action: step.action,
+          });
+
+          break; // Success — move to next step
+
+        } catch (e) {
+          lastError = e;
+
+          if (attempt < MAX_RETRIES) {
+            const backoff = 1000 * Math.pow(2, attempt); // 1s, 2s
+            this.onProgress(`  ⚠️ Step ${i + 1} failed (attempt ${attempt + 1}/${MAX_RETRIES + 1}): ${e.message}`);
+
+            // ── AI RECOVERY: try to fix the situation before retrying ──
+            const recovered = await this._attemptRecovery(step, e, i + 1);
+            if (recovered) {
+              this.onProgress(`  🔧 Recovery action taken, retrying step...`);
+            }
+
+            await this._wait(backoff);
           }
         }
+      }
 
-        completedSteps++;
-      } catch (e) {
-        this.onProgress(`❌ Step ${i + 1} failed: ${e.message}`);
+      // ── Step exhausted all retries — record failure ──
+      if (!succeeded) {
+        this.onProgress(`❌ Step ${i + 1} failed after ${MAX_RETRIES + 1} attempts: ${lastError?.message}`);
         if (isClickAction) {
-          this.onProgress(`   Strategies tried: DOM text → AI vision → coordinates. Consider retraining this SOP.`);
+          this.onProgress(`   Strategies tried: DOM text → AI vision → coordinates.`);
         }
+        executionLog.push({ step: i + 1, action: step.action, success: false, error: lastError?.message, duration: Date.now() - stepStart });
+
+        // ── Capture failure screenshot ──
+        let failScreenshot = null;
+        try {
+          failScreenshot = await this._captureFailureScreenshot();
+        } catch (screenshotErr) { /* proceed without screenshot */ }
+
+        // ── SSE: Step failed ──
+        eventBus.emit(EVENTS.SOP_STEP_FAILED, {
+          sopId: sop.id, sopName: sop.name, stepNum: i + 1,
+          totalSteps: steps.length, action: step.action, description: stepDesc,
+          error: lastError?.message,
+          screenshot: failScreenshot,
+        });
+
         // Continue — the next step might still work
       }
 
@@ -252,15 +326,28 @@ export class DesktopTaskRunner {
       try { await this.sopManager.recordRun(sop.id, completedSteps === steps.length); } catch (e) { /* ignore */ }
     }
 
+    // ── Persist learning data from this run ──
+    if (sop.id) {
+      await this._updateLearning(sop.id, executionLog, completedSteps === steps.length);
+    }
+
     // ── SUMMARY ──
     const allDone = completedSteps === steps.length;
     const retryNote = retriedSteps.length > 0 ? ` (steps ${retriedSteps.join(', ')} needed retry)` : '';
     if (allDone) {
       this.onProgress(`✅ Replay complete: ${completedSteps}/${steps.length} steps succeeded${retryNote}`);
+      eventBus.emit(EVENTS.SOP_COMPLETED, {
+        sopId: sop.id, sopName: sop.name,
+        stepsCompleted: completedSteps, totalSteps: steps.length,
+      });
     } else {
       const failed = steps.length - completedSteps;
       this.onProgress(`⚠️ Replay partial: ${completedSteps}/${steps.length} steps succeeded, ${failed} failed${retryNote}`);
-      this.onProgress(`   Consider retraining this SOP if it fails consistently.`);
+      eventBus.emit(EVENTS.SOP_FAILED, {
+        sopId: sop.id, sopName: sop.name,
+        stepsCompleted: completedSteps, totalSteps: steps.length,
+        error: `${failed} steps failed`,
+      });
     }
 
     return {
@@ -1399,6 +1486,215 @@ end tell
   }
 
   // ═══════════════════════════════════════════════════════
+  // LEARNING SYSTEM — Ported from SOPExecutor
+  // ═══════════════════════════════════════════════════════
+
+  /**
+   * Apply learning from past runs before executing a step.
+   * Adds extra wait time for steps with low reliability.
+   */
+  async _applyLearning(step, stepNum, sopId) {
+    if (!sopId) return;
+    try {
+      const learningPath = path.join(process.cwd(), 'data/sops', sopId, 'learning.json');
+      const raw = await fs.readFile(learningPath, 'utf-8');
+      const learning = JSON.parse(raw);
+
+      const insight = learning.stepInsights?.[String(stepNum)];
+      if (!insight || insight.runs < 2) return;
+
+      if (insight.reliability < 0.5) {
+        this.onProgress(`  ⚠️ Step ${stepNum} has ${Math.round(insight.reliability * 100)}% reliability — being extra careful`);
+        await this._wait(2000);
+      } else if (insight.reliability < 0.75) {
+        this.onProgress(`  📊 Step ${stepNum} reliability: ${Math.round(insight.reliability * 100)}%`);
+        await this._wait(1000);
+      }
+
+      if (insight.needsVisualGuide) {
+        this.onProgress(`  🎥 Step ${stepNum} may need visual guide — consider recording this step`);
+      }
+    } catch {
+      // No learning data yet — first run, that's fine
+    }
+  }
+
+  /**
+   * Record which execution method worked for a step on this domain.
+   * Builds cross-site skill memory in data/memory/skills.json.
+   */
+  async _recordSkill(step, stepResult) {
+    try {
+      const skillActions = ['edit_field', 'type', 'click_text', 'smart_click', 'click_submit'];
+      if (!skillActions.includes(step.action) || !stepResult?.method) return;
+
+      // Get current Chrome URL for domain tracking
+      let domain = 'unknown';
+      try {
+        const { execSync } = require('child_process');
+        const url = execSync(
+          `osascript -e 'tell application "Google Chrome" to get URL of active tab of front window'`,
+          { timeout: 3000 }
+        ).toString().trim();
+        if (url) domain = new URL(url).hostname;
+      } catch { /* can't get URL — use unknown */ }
+
+      const skillsPath = path.join(process.cwd(), 'data/memory/skills.json');
+      let skills = {};
+      try {
+        skills = JSON.parse(await fs.readFile(skillsPath, 'utf-8'));
+      } catch { /* no skills file yet */ }
+
+      const category = step.action;
+      if (!skills[category]) skills[category] = {};
+      if (!skills[category][stepResult.method]) {
+        skills[category][stepResult.method] = { sites: [], successCount: 0 };
+      }
+
+      const entry = skills[category][stepResult.method];
+      entry.successCount++;
+      if (!entry.sites.includes(domain)) entry.sites.push(domain);
+      entry.lastUsed = new Date().toISOString();
+
+      await fs.mkdir(path.join(process.cwd(), 'data/memory'), { recursive: true });
+      await fs.writeFile(skillsPath, JSON.stringify(skills, null, 2));
+    } catch {
+      // Never let skill recording break execution
+    }
+  }
+
+  /**
+   * Persist per-step execution insights after a full SOP run.
+   * Writes to data/sops/{sopId}/learning.json.
+   */
+  async _updateLearning(sopId, log, overallSuccess) {
+    try {
+      const sopDir = path.join(process.cwd(), 'data/sops', sopId);
+      const learningPath = path.join(sopDir, 'learning.json');
+      await fs.mkdir(sopDir, { recursive: true });
+
+      let learning;
+      try {
+        learning = JSON.parse(await fs.readFile(learningPath, 'utf-8'));
+      } catch {
+        learning = { sopId, totalRuns: 0, successCount: 0, stepInsights: {} };
+      }
+
+      learning.totalRuns++;
+      if (overallSuccess) learning.successCount++;
+      learning.successRate = learning.totalRuns > 0
+        ? Math.round((learning.successCount / learning.totalRuns) * 100) / 100
+        : 0;
+
+      for (const entry of log) {
+        const key = String(entry.step);
+        if (!learning.stepInsights[key]) {
+          learning.stepInsights[key] = {
+            action: entry.action,
+            successCount: 0, failureCount: 0,
+            commonErrors: [], methods: {},
+            avgDuration: 0, totalDuration: 0, runs: 0,
+          };
+        }
+
+        const insight = learning.stepInsights[key];
+        insight.runs++;
+
+        if (entry.success) {
+          insight.successCount++;
+          const method = entry.method || 'default';
+          insight.methods[method] = (insight.methods[method] || 0) + 1;
+          insight.bestMethod = Object.entries(insight.methods)
+            .sort((a, b) => b[1] - a[1])[0]?.[0] || 'default';
+        } else {
+          insight.failureCount++;
+          if (entry.error && !insight.commonErrors.includes(entry.error)) {
+            insight.commonErrors.push(entry.error);
+            if (insight.commonErrors.length > 5) insight.commonErrors.shift();
+          }
+        }
+
+        if (entry.duration) {
+          insight.totalDuration += entry.duration;
+          insight.avgDuration = Math.round(insight.totalDuration / insight.runs);
+        }
+
+        const reliability = insight.successCount / (insight.successCount + insight.failureCount);
+        insight.reliability = Math.round(reliability * 100) / 100;
+        insight.needsVisualGuide = reliability < 0.6 && insight.runs >= 3;
+      }
+
+      learning.lastUpdated = new Date().toISOString();
+      await fs.writeFile(learningPath, JSON.stringify(learning, null, 2));
+    } catch (e) {
+      console.log(`[DesktopTaskRunner] Could not update learning: ${e.message}`);
+    }
+  }
+
+  /**
+   * AI-powered recovery when a step fails.
+   * Takes a screenshot, asks Gemini what to do, executes a single recovery action.
+   */
+  async _attemptRecovery(step, error, stepNum) {
+    if (!this.aiManager) return false;
+
+    try {
+      const screenshot = await this._captureScreen();
+      if (!screenshot) return false;
+
+      const prompt = `A browser automation step failed. Help me recover.
+
+Failed step: ${JSON.stringify({ action: step.action, target: step.target, text: step.text, description: step.description })}
+Error: ${error.message}
+
+Look at the screenshot. What single recovery action should I take before retrying the step?
+Return ONLY a JSON object: {"action": "click|scroll|wait|press", "target": "description of what to click", "key": "enter"}
+Use "click" if an element needs clicking, "scroll" if the target might be off-screen, "wait" if the page is loading, "press" if a key needs pressing.`;
+
+      const response = await this.aiManager.chat(
+        [{ role: 'user', content: [
+          { type: 'text', text: prompt },
+          { type: 'image', data: screenshot, mimeType: 'image/png' },
+        ]}],
+        { temperature: 0.2, maxTokens: 200, provider: 'gemini' }
+      );
+
+      const content = typeof response === 'string' ? response : response?.content || response?.text || '';
+      const jsonMatch = content.match(/\{[\s\S]*?\}/);
+
+      if (jsonMatch) {
+        const recovery = JSON.parse(jsonMatch[0]);
+        this.onProgress(`  🔧 Recovery: ${recovery.action} → "${recovery.target || recovery.key || ''}"`);
+
+        const robot = require('robotjs');
+        switch (recovery.action) {
+          case 'click':
+            if (recovery.target && this.desktop) {
+              await this.desktop.findAndClick(recovery.target);
+              return true;
+            }
+            break;
+          case 'scroll':
+            robot.scrollMouse(0, -5);
+            await this._wait(500);
+            return true;
+          case 'wait':
+            await this._wait(3000);
+            return true;
+          case 'press':
+            robot.keyTap(recovery.key || 'escape');
+            await this._wait(300);
+            return true;
+        }
+      }
+    } catch {
+      // Recovery itself failed — that's OK, the retry loop continues
+    }
+
+    return false;
+  }
+
+  // ═══════════════════════════════════════════════════════
   // SCREEN CAPTURE
   // ═══════════════════════════════════════════════════════
 
@@ -1421,6 +1717,34 @@ end tell
       return buffer.toString('base64');
     } catch (e) {
       this.onProgress(`⚠️ Screen capture failed: ${e.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Capture a resized screenshot for SSE failure events.
+   * Full-res saved to disk for debugging; smaller JPEG sent to chat UI.
+   */
+  async _captureFailureScreenshot() {
+    try {
+      const jimpImage = await this.desktop.seeScreen();
+
+      // Save full-res to disk for debugging
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `sop_failure_${timestamp}.png`;
+      const filepath = path.join(this.screenshotDir, filename);
+      await fs.mkdir(this.screenshotDir, { recursive: true });
+      await jimpImage.write(filepath);
+
+      // Resize for SSE — max 800px wide for smaller payload
+      const resized = jimpImage.clone();
+      if (resized.getWidth() > 800) {
+        resized.resize({ w: 800 });
+      }
+      const buffer = await resized.getBuffer('image/png');
+      return buffer.toString('base64');
+    } catch (e) {
+      this.onProgress(`⚠️ Failure screenshot capture failed: ${e.message}`);
       return null;
     }
   }

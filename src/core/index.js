@@ -1366,20 +1366,21 @@ this.log.info('Task queue processing started');
   async executeSOP(sop, userMessage) {
     this.onProgress(`Executing: ${sop.name}`);
 
-    // DESKTOP SOPs: Use DesktopTaskRunner (handles semantic actions + coordinates + AI vision)
-    // Route to DesktopTaskRunner if steps have coordinates, smart_click, or came from training.
-    // SOPExecutor is only used for old SOPs with CSS selectors.
-    const DESKTOP_ACTIONS = ['smart_click', 'click_text', 'click_submit', 'edit_field', 'press', 'wait_navigation', 'right_click', 'select_option', 'hover', 'switch_tab', 'go_back', 'copy_text'];
-    const isDesktopSOP = sop.type === 'desktop' || sop.steps?.some(s =>
-      s.x != null || s.y != null ||
-      DESKTOP_ACTIONS.includes(s.action) ||
-      (s.action === 'click' && s.target && !s.selector));
+    // Extract variables from the user's message for {{variable}} interpolation
+    const variables = this._extractSOPVariables(userMessage, sop);
 
-    if (isDesktopSOP && this.brain?._desktopRunner) {
+    // Interpolate variables into step fields before execution
+    const interpolatedSOP = this._interpolateSOPVariables(sop, variables);
+
+    // ══════════════════════════════════════════════════════════════
+    // PRIMARY PATH: DesktopTaskRunner (all SOPs)
+    // Has retry loop, AI recovery, learning system, SSE events.
+    // ══════════════════════════════════════════════════════════════
+    if (this.brain?._desktopRunner) {
       const runner = this.brain._desktopRunner;
-      this.onProgress(`Desktop SOP: Using DesktopTaskRunner for "${sop.name}" (${sop.steps.length} steps)`);
+      this.onProgress(`Running "${sop.name}" via DesktopTaskRunner (${interpolatedSOP.steps.length} steps)`);
       try {
-        const result = await runner._replayTrainedSOP(sop);
+        const result = await runner._replayTrainedSOP(interpolatedSOP);
 
         if (this.sopManager) {
           await this.sopManager.recordRun(sop.id, result.success);
@@ -1389,7 +1390,7 @@ this.log.info('Task queue processing started');
           return {
             success: true,
             message: `**Procedure Complete: "${sop.name}"**\n\n` +
-                     `${result.steps}/${sop.steps.length} steps replayed\n` +
+                     `${result.steps}/${interpolatedSOP.steps.length} steps replayed\n` +
                      `${result.summary}`,
             action: sop.id,
             data: result
@@ -1397,24 +1398,25 @@ this.log.info('Task queue processing started');
         } else {
           return {
             success: false,
-            message: `Procedure "${sop.name}" partially completed: ${result.steps}/${sop.steps.length} steps\n${result.error || ''}`,
+            message: `Procedure "${sop.name}" partially completed: ${result.steps}/${interpolatedSOP.steps.length} steps\n${result.error || ''}`,
             action: sop.id,
             data: result
           };
         }
       } catch (err) {
         this.onProgress(`DesktopTaskRunner error: ${err.message}, falling back to SOPExecutor`);
-        // Fall through to SOPExecutor as last resort
+        // Fall through to SOPExecutor as deprecated fallback
       }
     }
 
-    // PREFERRED PATH: Use SOPExecutor (full 25+ action support, retry, AI recovery)
+    // ══════════════════════════════════════════════════════════════
+    // DEPRECATED FALLBACK: SOPExecutor (legacy CSS selector SOPs)
+    // Only reached if DesktopTaskRunner is unavailable or crashes.
+    // ══════════════════════════════════════════════════════════════
     if (this.sopExecutor) {
-      this.onProgress(`Using SOPExecutor for "${sop.name}" (${sop.steps.length} steps)`);
+      this.onProgress(`Fallback: SOPExecutor for "${sop.name}" (${sop.steps.length} steps)`);
       try {
-        // Extract variables from the user's message for {{variable}} interpolation in steps
-        const variables = this._extractSOPVariables(userMessage, sop);
-        const result = await this.sopExecutor.executeSOP(sop, variables);
+        const result = await this.sopExecutor.executeSOP(interpolatedSOP, variables);
 
         if (result.success) {
           this.onProgress(`Completed: ${sop.name}`);
@@ -1443,15 +1445,15 @@ this.log.info('Task queue processing started');
       }
     }
 
-    // LEGACY PATH: Direct step-by-step execution (limited actions)
-    this.onProgress(`Legacy execution for "${sop.name}" (${sop.steps.length} steps)`);
+    // LEGACY PATH: Direct step-by-step execution (last resort)
+    this.onProgress(`Legacy execution for "${sop.name}" (${interpolatedSOP.steps.length} steps)`);
     const results = [];
     let currentStep = 0;
 
     try {
-      for (const step of sop.steps) {
+      for (const step of interpolatedSOP.steps) {
         currentStep++;
-        this.onProgress(`Step ${currentStep}/${sop.steps.length}: ${step.action}`);
+        this.onProgress(`Step ${currentStep}/${interpolatedSOP.steps.length}: ${step.action}`);
 
         const stepResult = await this.executeSOPStep(step, userMessage);
         results.push(stepResult);
@@ -1486,6 +1488,33 @@ this.log.info('Task queue processing started');
         error: error.message
       };
     }
+  }
+
+  /**
+   * Interpolate {{variable}} placeholders in SOP step fields.
+   * Returns a deep copy of the SOP with variables replaced.
+   */
+  _interpolateSOPVariables(sop, variables) {
+    if (!variables || Object.keys(variables).length === 0) return sop;
+
+    const interpolate = (str) => {
+      if (typeof str !== 'string') return str;
+      return str.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+        return variables[key] !== undefined ? variables[key] : match;
+      });
+    };
+
+    const interpolatedSteps = (sop.steps || []).map(step => {
+      const newStep = { ...step };
+      if (newStep.target) newStep.target = interpolate(newStep.target);
+      if (newStep.text) newStep.text = interpolate(newStep.text);
+      if (newStep.url) newStep.url = interpolate(newStep.url);
+      if (newStep.value) newStep.value = interpolate(newStep.value);
+      if (newStep.description) newStep.description = interpolate(newStep.description);
+      return newStep;
+    });
+
+    return { ...sop, steps: interpolatedSteps };
   }
 
   /**

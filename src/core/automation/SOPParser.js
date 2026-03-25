@@ -787,6 +787,263 @@ Return ONLY valid JSON:
     }
     return { valid: errors.length === 0, errors };
   }
+
+  // ═══════════════════════════════════════════════════════
+  // STEP QUALITY SCORING — catches vague steps before saving
+  // ═══════════════════════════════════════════════════════
+
+  /**
+   * Score a single step's quality/executability (0-100).
+   * Returns { score, issues[], suggestions[] }
+   */
+  scoreStepQuality(step) {
+    if (!step || !step.action) return { score: 0, issues: ['Missing action type'], suggestions: ['Specify what action to perform'] };
+
+    const issues = [];
+    const suggestions = [];
+    let score = 0;
+
+    const text = (step.text || '').trim();
+    const target = (step.target || '').trim();
+    const url = (step.url || '').trim();
+    const description = (step.description || '').trim();
+
+    switch (step.action) {
+      case 'navigate': {
+        if (!url) {
+          score = 0;
+          issues.push('Missing URL');
+          suggestions.push('Which website? I need the exact URL (e.g., https://eventbrite.com/myevents)');
+        } else {
+          score = 50;
+          if (/^https?:\/\//i.test(url)) score += 20;
+          if (url.includes('/') && url.indexOf('/') < url.length - 1) score += 10; // has path
+          if (description) score += 20;
+        }
+        break;
+      }
+
+      case 'click_text': {
+        if (!text) {
+          score = 0;
+          issues.push('Missing button/link text');
+          suggestions.push('What\'s the exact text on the button or link you want to click?');
+        } else if (this._isVagueText(text)) {
+          score = 10;
+          issues.push(`"${text}" is too vague to find on the page`);
+          suggestions.push(`What\'s the exact text written on the button? Read it word for word (e.g., "Create Event", "Sign In")`);
+        } else {
+          score = 60;
+          if (text.length < 30) score += 20; // Short = likely a real label
+          if (!/[.!?]$/.test(text)) score += 10; // No trailing punctuation
+          if (description) score += 10;
+        }
+        break;
+      }
+
+      case 'click_submit': {
+        // Self-describing action — usually fine
+        score = 80;
+        if (text || description) score += 20;
+        break;
+      }
+
+      case 'smart_click': {
+        // AI vision — inherently risky
+        if (!target && !text) {
+          score = 0;
+          issues.push('Missing target description');
+          suggestions.push('Describe what to click (e.g., "the blue Submit button at the bottom of the form")');
+        } else {
+          const t = target || text;
+          if (this._isVagueText(t)) {
+            score = 10;
+            issues.push(`"${t}" is too vague for AI vision to find`);
+            suggestions.push('Describe the element more specifically — its color, position, surrounding text');
+          } else {
+            score = 50; // Max 50 for smart_click (risky by nature)
+            if (t.length > 10) score += 10; // More description = better for AI
+          }
+        }
+        break;
+      }
+
+      case 'edit_field': {
+        const fieldTarget = target || '';
+        const fieldText = text || '';
+
+        if (!fieldTarget && !fieldText) {
+          score = 0;
+          issues.push('Missing field name and text');
+          suggestions.push('Which field? What should I type in it? (e.g., field: "Email Address", text: "{{email}}")');
+        } else if (!fieldTarget || this._isVagueText(fieldTarget)) {
+          score = 20;
+          issues.push('Missing or vague field name');
+          suggestions.push(`What's the label on the field? (e.g., "Company Name", "Email Address")`);
+          if (fieldText) score += 20;
+        } else if (!fieldText) {
+          score = 30;
+          issues.push('Missing text to type');
+          suggestions.push('What should I type in this field? If it changes, use a variable like {{company_name}}');
+        } else {
+          score = 80;
+          if (description) score += 20;
+        }
+        break;
+      }
+
+      case 'type': {
+        if (!text) {
+          score = 0;
+          issues.push('Missing text to type');
+          suggestions.push('What should I type? If it changes each time, use a variable like {{search_query}}');
+        } else if (this._isVagueText(text)) {
+          score = 15;
+          issues.push(`"${text}" is too vague`);
+          suggestions.push('What specific text should I type? Use a variable like {{query}} if it changes');
+        } else {
+          score = 80;
+          if (/\{\{.+\}\}/.test(text)) score += 10; // Has variable = good
+          if (description) score += 10;
+        }
+        break;
+      }
+
+      case 'press': {
+        if (!step.key) {
+          score = 0;
+          issues.push('Missing key name');
+          suggestions.push('Which key? (e.g., enter, tab, escape)');
+        } else {
+          score = 80;
+          if (description) score += 20;
+        }
+        break;
+      }
+
+      case 'select_option': {
+        if (!target && !text) {
+          score = 0;
+          issues.push('Missing dropdown name and option');
+          suggestions.push('Which dropdown, and which option to select?');
+        } else if (!target || this._isVagueText(target)) {
+          score = 25;
+          issues.push('Vague dropdown identifier');
+          suggestions.push('What\'s the label on the dropdown?');
+        } else if (!text) {
+          score = 30;
+          issues.push('Missing option text');
+          suggestions.push('Which option should I select from the dropdown?');
+        } else {
+          score = 80;
+          if (description) score += 20;
+        }
+        break;
+      }
+
+      case 'right_click': {
+        if (!target && !text) {
+          score = 0;
+          issues.push('Missing right-click target');
+          suggestions.push('What should I right-click on?');
+        } else if (this._isVagueText(target || text)) {
+          score = 20;
+          issues.push('Vague right-click target');
+          suggestions.push('What\'s the exact text of the element to right-click?');
+        } else {
+          score = 70;
+          if (description) score += 20;
+        }
+        break;
+      }
+
+      case 'hover': {
+        if (!target && !text) {
+          score = 10;
+          issues.push('Missing hover target');
+          suggestions.push('What should I hover over?');
+        } else {
+          score = 70;
+          if (description) score += 20;
+        }
+        break;
+      }
+
+      case 'copy_text': {
+        if (!target && !text) {
+          score = 20;
+          issues.push('Missing copy target');
+          suggestions.push('What text should I copy from the page?');
+        } else {
+          score = 70;
+          if (description) score += 20;
+        }
+        break;
+      }
+
+      // Low-risk actions — score well by default
+      case 'wait':
+      case 'wait_navigation':
+      case 'scroll':
+      case 'go_back':
+      case 'switch_tab': {
+        score = 80;
+        if (description) score += 10;
+        break;
+      }
+
+      default: {
+        score = 40;
+        issues.push(`Unknown action type: ${step.action}`);
+        suggestions.push('Use one of the 16 supported action types');
+      }
+    }
+
+    return { score: Math.min(score, 100), issues, suggestions };
+  }
+
+  /**
+   * Score an entire SOP's quality. Returns overall + per-step breakdown.
+   */
+  scoreSOPQuality(steps) {
+    if (!steps || steps.length === 0) {
+      return { overallScore: 0, stepScores: [], weakSteps: [], passesThreshold: false };
+    }
+
+    const stepScores = steps.map((step, i) => ({
+      stepNum: i + 1,
+      ...this.scoreStepQuality(step),
+    }));
+
+    const overallScore = Math.round(stepScores.reduce((sum, s) => sum + s.score, 0) / stepScores.length);
+    const weakSteps = stepScores.filter(s => s.score < 50);
+    const passesThreshold = weakSteps.length === 0;
+
+    return { overallScore, stepScores, weakSteps, passesThreshold };
+  }
+
+  /**
+   * Check if text is too vague to use as a click target or field value.
+   */
+  _isVagueText(text) {
+    if (!text) return true;
+    const lower = text.toLowerCase().trim();
+    if (lower.length < 2) return true;
+
+    const VAGUE_PATTERNS = [
+      /^(the |a |an )?(button|thing|element|item|link|it|option|stuff|one|page|site|field|input|box)$/,
+      /^something$/,
+      /^whatever/,
+      /^(what|whatever|whichever) (we|you|i|they) (ask|want|need|give|provide|send|tell)/,
+      /^(do|search|click|type|enter|fill|find|get|put) (what|whatever|whichever)/,
+      /^the (right|correct|first|next|other) (one|result|option|thing|button)$/,
+      /^\d+ (url|link|result|item|thing)s? at a time$/,
+      /^(the |a )?(info|information|data|stuff|content)$/,
+      /^(click|tap|press) (on )?(it|that|this|here|there)$/,
+    ];
+
+    return VAGUE_PATTERNS.some(p => p.test(lower));
+  }
 }
 
 export default SOPParser;

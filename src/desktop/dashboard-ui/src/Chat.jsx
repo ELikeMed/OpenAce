@@ -359,6 +359,502 @@ function InteractiveQuestion({ question, answered, selectedId, onSelect }) {
 // SOP EXECUTION CARD — Live step-by-step progress
 // ═══════════════════════════════════════════════════════
 
+// ═══ TeachingCard — Guided SOP step builder ═══
+
+function TeachingCard({ teaching, onUpdate, onSave, onCancel }) {
+  const [focusIdx, setFocusIdx] = useState(-1);
+  const [lastEditedIdx, setLastEditedIdx] = useState(-1);
+  const [varName, setVarName] = useState('');
+  const [showVarInput, setShowVarInput] = useState(false);
+  const stepRefs = useRef([]);
+  const phase = teaching?.phase || 'setup';
+
+  // Auto-focus new step row
+  useEffect(() => {
+    if (focusIdx >= 0 && stepRefs.current[focusIdx]) {
+      stepRefs.current[focusIdx].focus();
+      setFocusIdx(-1);
+    }
+  }, [focusIdx, teaching?.steps?.length]);
+
+  if (!teaching) return null;
+
+  const cardSx = {
+    mt: 1.5,
+    border: `1px solid ${alpha(BRAND.accent, 0.25)}`,
+    borderRadius: '12px',
+    overflow: 'hidden',
+    background: alpha(BRAND.bgCard, 0.6),
+    backdropFilter: 'blur(10px)',
+  };
+
+  const headerSx = {
+    display: 'flex', alignItems: 'center', gap: 1,
+    px: 2, py: 1.25,
+    background: alpha(BRAND.accent, 0.08),
+    borderBottom: `1px solid ${alpha(BRAND.accent, 0.15)}`,
+  };
+
+  // ── Phase: Setup ──
+  if (phase === 'setup') {
+    return (
+      <Box sx={cardSx}>
+        <Box sx={headerSx}>
+          <SchoolIcon sx={{ fontSize: 18, color: BRAND.accent }} />
+          <Typography sx={{ fontSize: '0.8rem', fontWeight: 600, color: BRAND.textPrimary }}>
+            Teach Ace a New Process
+          </Typography>
+        </Box>
+        <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box>
+            <Typography sx={{ fontSize: '0.7rem', color: BRAND.textSecondary, mb: 0.5 }}>
+              What should I call this process?
+            </Typography>
+            <TextField
+              fullWidth size="small" placeholder='e.g., "Post on Instagram", "Search for leads"'
+              value={teaching.name || ''}
+              onChange={(e) => onUpdate({ name: e.target.value })}
+              autoFocus
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  fontSize: '0.8rem', borderRadius: '8px',
+                  background: alpha(BRAND.bgSurface, 0.5),
+                  '& fieldset': { borderColor: alpha(BRAND.border, 0.5) },
+                  '&:hover fieldset': { borderColor: alpha(BRAND.accent, 0.4) },
+                  '&.Mui-focused fieldset': { borderColor: BRAND.accent },
+                },
+                '& .MuiOutlinedInput-input': { color: BRAND.textPrimary },
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && teaching.name?.trim()) {
+                  onUpdate({ phase: 'building' });
+                }
+              }}
+            />
+          </Box>
+          <Box>
+            <Typography sx={{ fontSize: '0.7rem', color: BRAND.textSecondary, mb: 0.5 }}>
+              What phrases should trigger it? <span style={{ color: BRAND.textMuted }}>(comma-separated)</span>
+            </Typography>
+            <TextField
+              fullWidth size="small" placeholder='e.g., "post on insta", "share on instagram"'
+              value={teaching.triggers || ''}
+              onChange={(e) => onUpdate({ triggers: e.target.value })}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  fontSize: '0.8rem', borderRadius: '8px',
+                  background: alpha(BRAND.bgSurface, 0.5),
+                  '& fieldset': { borderColor: alpha(BRAND.border, 0.5) },
+                  '&:hover fieldset': { borderColor: alpha(BRAND.accent, 0.4) },
+                  '&.Mui-focused fieldset': { borderColor: BRAND.accent },
+                },
+                '& .MuiOutlinedInput-input': { color: BRAND.textPrimary },
+              }}
+            />
+          </Box>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 0.5 }}>
+            <Typography
+              onClick={onCancel}
+              sx={{ fontSize: '0.7rem', color: BRAND.textMuted, cursor: 'pointer', py: 0.75, px: 1, '&:hover': { color: BRAND.textSecondary } }}
+            >Cancel</Typography>
+            <Button
+              size="small"
+              disabled={!teaching.name?.trim()}
+              onClick={() => onUpdate({ phase: 'building' })}
+              endIcon={<ArrowForwardIcon sx={{ fontSize: 14 }} />}
+              sx={{
+                fontSize: '0.7rem', textTransform: 'none', borderRadius: '8px',
+                background: `linear-gradient(135deg, ${BRAND.accent}, #E84393)`,
+                color: '#fff', px: 2,
+                '&:hover': { background: `linear-gradient(135deg, #E84393, ${BRAND.accent})` },
+                '&.Mui-disabled': { opacity: 0.4, color: '#fff' },
+              }}
+            >Next</Button>
+          </Box>
+        </Box>
+      </Box>
+    );
+  }
+
+  // ── Phase: Step Builder ──
+  if (phase === 'building') {
+    const steps = teaching.steps || [{ text: '' }];
+    const nonEmptyCount = steps.filter(s => s.text?.trim()).length;
+
+    const updateStep = (idx, text) => {
+      const newSteps = steps.map((s, i) => i === idx ? { ...s, text } : s);
+      onUpdate({ steps: newSteps });
+    };
+
+    const removeStep = (idx) => {
+      if (steps.length <= 1) return;
+      onUpdate({ steps: steps.filter((_, i) => i !== idx) });
+    };
+
+    const addStepAfter = (idx) => {
+      const newSteps = [...steps];
+      newSteps.splice(idx + 1, 0, { text: '' });
+      onUpdate({ steps: newSteps });
+      setFocusIdx(idx + 1);
+    };
+
+    const handleStepKeyDown = (e, idx) => {
+      if (e.key === 'Enter' && steps[idx].text?.trim()) {
+        e.preventDefault();
+        addStepAfter(idx);
+      }
+      if (e.key === 'Backspace' && !steps[idx].text && steps.length > 1) {
+        e.preventDefault();
+        removeStep(idx);
+        setFocusIdx(Math.max(0, idx - 1));
+      }
+    };
+
+    return (
+      <Box sx={cardSx}>
+        <Box sx={headerSx}>
+          <SchoolIcon sx={{ fontSize: 18, color: BRAND.accent }} />
+          <Typography sx={{ fontSize: '0.8rem', fontWeight: 600, color: BRAND.textPrimary }}>
+            {teaching.name}
+          </Typography>
+          <Chip label="Building steps" size="small" sx={{
+            ml: 'auto', height: 20, fontSize: '0.6rem',
+            background: alpha(BRAND.accent, 0.15), color: BRAND.accent,
+          }} />
+        </Box>
+        <Box sx={{ p: 2 }}>
+          <Typography sx={{ fontSize: '0.7rem', color: BRAND.textSecondary, mb: 1.5 }}>
+            Describe each step in plain English. Press Enter after each step.
+          </Typography>
+
+          {/* Step rows */}
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+            {steps.map((step, idx) => (
+              <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                {/* Number badge */}
+                <Box sx={{
+                  width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: step.text?.trim() ? alpha(BRAND.accent, 0.2) : alpha(BRAND.border, 0.3),
+                  border: `1px solid ${step.text?.trim() ? alpha(BRAND.accent, 0.3) : alpha(BRAND.border, 0.3)}`,
+                }}>
+                  <Typography sx={{ fontSize: '0.6rem', fontWeight: 600, color: step.text?.trim() ? BRAND.accent : BRAND.textMuted }}>
+                    {idx + 1}
+                  </Typography>
+                </Box>
+
+                {/* Step text input */}
+                <TextField
+                  fullWidth size="small"
+                  placeholder={idx === 0 ? 'e.g., Go to https://google.com' : idx === 1 ? 'e.g., Type {{search_query}} in search field' : 'Next step...'}
+                  value={step.text || ''}
+                  onChange={(e) => { updateStep(idx, e.target.value); setLastEditedIdx(idx); }}
+                  onKeyDown={(e) => handleStepKeyDown(e, idx)}
+                  onFocus={() => setLastEditedIdx(idx)}
+                  inputRef={(el) => { stepRefs.current[idx] = el; }}
+                  autoFocus={idx === 0 && steps.length === 1}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      fontSize: '0.78rem', borderRadius: '8px',
+                      background: alpha(BRAND.bgSurface, 0.4),
+                      '& fieldset': { borderColor: alpha(BRAND.border, 0.3) },
+                      '&:hover fieldset': { borderColor: alpha(BRAND.accent, 0.3) },
+                      '&.Mui-focused fieldset': { borderColor: BRAND.accent },
+                    },
+                    '& .MuiOutlinedInput-input': {
+                      color: BRAND.textPrimary, py: 0.75, px: 1.25,
+                    },
+                  }}
+                />
+
+                {/* Delete button */}
+                {steps.length > 1 && (
+                  <IconButton size="small" onClick={() => removeStep(idx)}
+                    sx={{ opacity: 0.4, '&:hover': { opacity: 1, color: BRAND.error } }}>
+                    <CloseIcon sx={{ fontSize: 14 }} />
+                  </IconButton>
+                )}
+              </Box>
+            ))}
+          </Box>
+
+          {/* Add step + fill-in-the-blank helpers */}
+          <Box sx={{ mt: 1.5, display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Button size="small"
+              onClick={() => addStepAfter(steps.length - 1)}
+              sx={{ fontSize: '0.65rem', textTransform: 'none', color: BRAND.accent, alignSelf: 'flex-start', '&:hover': { background: alpha(BRAND.accent, 0.08) } }}
+            >+ Add step</Button>
+
+            {/* Fill-in-the-blank: common options + custom */}
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+              <Typography sx={{ fontSize: '0.6rem', color: BRAND.textMuted }}>
+                If part of a step changes each time, tap a blank to insert it:
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                {[
+                  { label: 'city / location', key: 'city' },
+                  { label: 'name', key: 'name' },
+                  { label: 'date', key: 'date' },
+                  { label: 'text to type', key: 'content' },
+                ].map(v => (
+                  <Chip
+                    key={v.key}
+                    label={`[${v.label}]`}
+                    size="small"
+                    onClick={() => {
+                      const targetIdx = lastEditedIdx >= 0 ? lastEditedIdx
+                        : steps.findLastIndex(s => s.text?.trim()) >= 0
+                          ? steps.findLastIndex(s => s.text?.trim())
+                          : steps.length - 1;
+                      const current = steps[targetIdx]?.text || '';
+                      const insertion = `{{${v.key}}}`;
+                      const newText = current ? `${current} ${insertion}` : insertion;
+                      updateStep(targetIdx, newText);
+                      setFocusIdx(targetIdx);
+                    }}
+                    sx={{
+                      height: 22, fontSize: '0.6rem', cursor: 'pointer',
+                      background: alpha(BRAND.info, 0.08),
+                      border: `1px dashed ${alpha(BRAND.info, 0.3)}`,
+                      color: BRAND.info,
+                      '&:hover': { background: alpha(BRAND.info, 0.18), borderStyle: 'solid' },
+                    }}
+                  />
+                ))}
+
+                {/* Custom variable input */}
+                {!showVarInput ? (
+                  <Chip
+                    label="+ custom blank"
+                    size="small"
+                    onClick={() => setShowVarInput(true)}
+                    sx={{
+                      height: 22, fontSize: '0.6rem', cursor: 'pointer',
+                      background: 'transparent',
+                      border: `1px dashed ${alpha(BRAND.textMuted, 0.3)}`,
+                      color: BRAND.textMuted,
+                      '&:hover': { background: alpha(BRAND.textMuted, 0.08), color: BRAND.textSecondary },
+                    }}
+                  />
+                ) : (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <TextField
+                      size="small" autoFocus
+                      placeholder="e.g., company, email, url"
+                      value={varName}
+                      onChange={(e) => setVarName(e.target.value.replace(/\s+/g, '_').toLowerCase())}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && varName.trim()) {
+                          const targetIdx = lastEditedIdx >= 0 ? lastEditedIdx
+                            : steps.findLastIndex(s => s.text?.trim()) >= 0
+                              ? steps.findLastIndex(s => s.text?.trim())
+                              : steps.length - 1;
+                          const current = steps[targetIdx]?.text || '';
+                          const newText = current ? `${current} {{${varName.trim()}}}` : `{{${varName.trim()}}}`;
+                          updateStep(targetIdx, newText);
+                          setFocusIdx(targetIdx);
+                          setVarName('');
+                          setShowVarInput(false);
+                        }
+                        if (e.key === 'Escape') { setVarName(''); setShowVarInput(false); }
+                      }}
+                      sx={{
+                        width: 140,
+                        '& .MuiOutlinedInput-root': {
+                          fontSize: '0.65rem', borderRadius: '6px', height: 24,
+                          background: alpha(BRAND.bgSurface, 0.5),
+                          '& fieldset': { borderColor: alpha(BRAND.info, 0.3) },
+                          '&.Mui-focused fieldset': { borderColor: BRAND.info },
+                        },
+                        '& .MuiOutlinedInput-input': { color: BRAND.info, py: 0.25, px: 0.75 },
+                      }}
+                    />
+                    <Typography
+                      onClick={() => { setVarName(''); setShowVarInput(false); }}
+                      sx={{ fontSize: '0.6rem', color: BRAND.textMuted, cursor: 'pointer' }}
+                    >cancel</Typography>
+                  </Box>
+                )}
+              </Box>
+              <Typography sx={{ fontSize: '0.55rem', color: BRAND.textMuted, fontStyle: 'italic' }}>
+                Example: "Type property managers in [city / location]" — Ace will ask for the city when you run it
+              </Typography>
+            </Box>
+          </Box>
+
+          {/* Actions */}
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 2 }}>
+            <Typography
+              onClick={() => onUpdate({ phase: 'setup' })}
+              sx={{ fontSize: '0.7rem', color: BRAND.textMuted, cursor: 'pointer', py: 0.75, px: 1, '&:hover': { color: BRAND.textSecondary } }}
+            >Back</Typography>
+            <Button
+              size="small"
+              disabled={nonEmptyCount < 2}
+              onClick={onSave}
+              sx={{
+                fontSize: '0.7rem', textTransform: 'none', borderRadius: '8px',
+                background: `linear-gradient(135deg, ${BRAND.accent}, #E84393)`,
+                color: '#fff', px: 2,
+                '&:hover': { background: `linear-gradient(135deg, #E84393, ${BRAND.accent})` },
+                '&.Mui-disabled': { opacity: 0.4, color: '#fff' },
+              }}
+            >Preview & Save</Button>
+          </Box>
+        </Box>
+      </Box>
+    );
+  }
+
+  // ── Phase: Reviewing ──
+  if (phase === 'reviewing') {
+    const { qualityResult, parsedSteps } = teaching;
+    const stepScores = qualityResult?.stepScores || [];
+    const weakCount = qualityResult?.weakSteps?.length || 0;
+
+    return (
+      <Box sx={cardSx}>
+        <Box sx={headerSx}>
+          <SchoolIcon sx={{ fontSize: 18, color: BRAND.accent }} />
+          <Typography sx={{ fontSize: '0.8rem', fontWeight: 600, color: BRAND.textPrimary }}>
+            Review: {teaching.name}
+          </Typography>
+          {qualityResult && (
+            <Chip
+              label={`Quality: ${qualityResult.overallScore}%`}
+              size="small"
+              sx={{
+                ml: 'auto', height: 20, fontSize: '0.6rem', fontWeight: 600,
+                background: alpha(qualityResult.overallScore >= 70 ? BRAND.success : qualityResult.overallScore >= 40 ? BRAND.warning : BRAND.error, 0.15),
+                color: qualityResult.overallScore >= 70 ? BRAND.success : qualityResult.overallScore >= 40 ? BRAND.warning : BRAND.error,
+              }}
+            />
+          )}
+        </Box>
+        <Box sx={{ p: 2 }}>
+          {/* Step quality list */}
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+            {(parsedSteps || []).map((step, idx) => {
+              const scoreData = stepScores[idx] || {};
+              const isWeak = scoreData.score < 50;
+              const stepColor = scoreData.score >= 70 ? BRAND.success : scoreData.score >= 40 ? BRAND.warning : BRAND.error;
+
+              return (
+                <Box key={idx}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                    {/* Status icon */}
+                    {isWeak ? (
+                      <ErrorOutlineIcon sx={{ fontSize: 16, color: BRAND.warning, flexShrink: 0 }} />
+                    ) : (
+                      <CheckCircleIcon sx={{ fontSize: 16, color: BRAND.success, flexShrink: 0 }} />
+                    )}
+                    {/* Step description */}
+                    <Typography sx={{ fontSize: '0.75rem', color: BRAND.textPrimary, flex: 1 }}>
+                      {step.description || `${step.action}: ${step.target || step.text || step.url || step.key || ''}`}
+                    </Typography>
+                    {/* Score badge */}
+                    <Typography sx={{ fontSize: '0.6rem', color: stepColor, fontWeight: 600, flexShrink: 0 }}>
+                      {scoreData.score}/100
+                    </Typography>
+                  </Box>
+                  {/* Weak step suggestions */}
+                  {isWeak && scoreData.suggestions?.length > 0 && (
+                    <Box sx={{ ml: 3, mt: 0.25 }}>
+                      {scoreData.suggestions.map((s, si) => (
+                        <Typography key={si} sx={{ fontSize: '0.6rem', color: BRAND.warning, fontStyle: 'italic' }}>
+                          {s}
+                        </Typography>
+                      ))}
+                    </Box>
+                  )}
+                </Box>
+              );
+            })}
+          </Box>
+
+          {/* Actions */}
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 2 }}>
+            <Typography
+              onClick={() => onUpdate({ phase: 'building' })}
+              sx={{ fontSize: '0.7rem', color: BRAND.textMuted, cursor: 'pointer', py: 0.75, px: 1, '&:hover': { color: BRAND.textSecondary } }}
+            >Edit Steps</Typography>
+            <Button
+              size="small"
+              onClick={onSave}
+              sx={{
+                fontSize: '0.7rem', textTransform: 'none', borderRadius: '8px',
+                background: weakCount > 0
+                  ? `linear-gradient(135deg, ${BRAND.warning}, #E67E22)`
+                  : `linear-gradient(135deg, ${BRAND.success}, #00B894)`,
+                color: '#fff', px: 2,
+                '&:hover': { opacity: 0.9 },
+              }}
+            >{weakCount > 0 ? `Save Anyway (${weakCount} weak)` : 'Save Process'}</Button>
+          </Box>
+        </Box>
+      </Box>
+    );
+  }
+
+  // ── Phase: Saving ──
+  if (phase === 'saving') {
+    return (
+      <Box sx={cardSx}>
+        <Box sx={{ p: 2.5, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <CircularProgress size={20} sx={{ color: BRAND.accent }} />
+          <Typography sx={{ fontSize: '0.8rem', color: BRAND.textSecondary }}>
+            Saving process...
+          </Typography>
+        </Box>
+      </Box>
+    );
+  }
+
+  // ── Phase: Done ──
+  if (phase === 'done') {
+    const triggerText = teaching.savedSop?.triggers?.[0] || teaching.name?.toLowerCase();
+    return (
+      <Box sx={cardSx}>
+        <Box sx={{ p: 2.5, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <CheckCircleIcon sx={{ fontSize: 22, color: BRAND.success }} />
+          <Box>
+            <Typography sx={{ fontSize: '0.8rem', fontWeight: 600, color: BRAND.textPrimary }}>
+              Process saved!
+            </Typography>
+            <Typography sx={{ fontSize: '0.68rem', color: BRAND.textMuted }}>
+              Try saying: "{triggerText}"
+            </Typography>
+          </Box>
+        </Box>
+      </Box>
+    );
+  }
+
+  // ── Phase: Error ──
+  if (phase === 'error') {
+    return (
+      <Box sx={cardSx}>
+        <Box sx={{ p: 2.5, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <ErrorOutlineIcon sx={{ fontSize: 22, color: BRAND.error }} />
+          <Box sx={{ flex: 1 }}>
+            <Typography sx={{ fontSize: '0.8rem', color: BRAND.error }}>
+              Could not save: {teaching.error}
+            </Typography>
+          </Box>
+          <Typography
+            onClick={() => onUpdate({ phase: 'building' })}
+            sx={{ fontSize: '0.7rem', color: BRAND.accent, cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+          >Try Again</Typography>
+        </Box>
+      </Box>
+    );
+  }
+
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════
+
 const STEP_STATUS_STYLES = {
   pending: { color: '#8888A8', icon: null },
   running: { color: '#FFA726', icon: null }, // uses CircularProgress
@@ -526,7 +1022,7 @@ function SOPExecutionCard({ execution, onStepCorrect }) {
 
 function ShowMeCard({ showMe, showMeState, onReady, onStart, onDone, onSkip }) {
   if (!showMe) return null;
-  const { stepNum, description, error } = showMe;
+  const { stepNum, description, error, screenshot } = showMe;
 
   // State 6: Skipped
   if (showMeState === 'skipped') {
@@ -755,6 +1251,26 @@ function ShowMeCard({ showMe, showMeState, onReady, onStart, onDone, onSkip }) {
           </Typography>
         )}
 
+        {/* Failure screenshot — shows what Ace was looking at when the step failed */}
+        {screenshot && (
+          <Box sx={{
+            mb: 1.5, borderRadius: '8px', overflow: 'hidden',
+            border: `1px solid ${alpha(BRAND.border, 0.3)}`,
+          }}>
+            <img
+              src={`data:image/png;base64,${screenshot}`}
+              alt="What Ace saw when the step failed"
+              style={{ width: '100%', display: 'block' }}
+            />
+            <Typography sx={{
+              fontSize: '0.65rem', color: BRAND.textMuted, px: 1, py: 0.5,
+              background: alpha(BRAND.bgCard, 0.8),
+            }}>
+              This is what I was looking at when the step failed
+            </Typography>
+          </Box>
+        )}
+
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <Button
             variant="contained"
@@ -895,7 +1411,7 @@ function SOPHealthCard({ sopHealth, onShowMe }) {
   );
 }
 
-function MessageBubble({ msg, msgIndex, onConfirmActions, onCancelActions, onQuestionAnswer, onShowMeReady, onShowMeStart, onShowMeDone, onShowMeSkip, onHealthShowMe, onStepCorrect, onSpeak, onStopSpeaking, isSpeakingThis }) {
+function MessageBubble({ msg, msgIndex, onConfirmActions, onCancelActions, onQuestionAnswer, onShowMeReady, onShowMeStart, onShowMeDone, onShowMeSkip, onHealthShowMe, onStepCorrect, onTeachingUpdate, onTeachingSave, onTeachingCancel, onSpeak, onStopSpeaking, isSpeakingThis }) {
   const isUser = msg.sender === 'You';
   const isSystem = msg.sender === 'System';
   const isThinking = msg.sender?.includes('Thinking') || msg.sender?.includes('Thought');
@@ -1127,6 +1643,16 @@ function MessageBubble({ msg, msgIndex, onConfirmActions, onCancelActions, onQue
           <SOPHealthCard
             sopHealth={msg.sopHealth}
             onShowMe={(sopId, stepNum, desc) => onHealthShowMe(sopId, stepNum, desc)}
+          />
+        )}
+
+        {/* Teaching Card — Guided SOP builder */}
+        {msg.teaching && (
+          <TeachingCard
+            teaching={msg.teaching}
+            onUpdate={(updates) => onTeachingUpdate(msgIndex, updates)}
+            onSave={() => onTeachingSave(msgIndex)}
+            onCancel={() => onTeachingCancel(msgIndex)}
           />
         )}
 
@@ -1649,11 +2175,11 @@ function Chat() {
               );
               return { ...m, sopExecution: { ...m.sopExecution, steps } };
             });
-            // Insert a ShowMe card for the failed step
+            // Insert a ShowMe card for the failed step (with screenshot if available)
             return [...updated, {
               sender: 'Ace',
               text: '',
-              showMe: { sopId: data.sopId, stepNum: data.stepNum, description: data.description, error: data.error },
+              showMe: { sopId: data.sopId, stepNum: data.stepNum, description: data.description, error: data.error, screenshot: data.screenshot || null },
               showMeState: 'prompt',
             }];
           });
@@ -1886,19 +2412,85 @@ function Chat() {
     }]);
   }, []);
 
+  // ═══ Teaching Card — Guided SOP builder handlers ═══
+  const handleTeachingUpdate = useCallback((msgIndex, updates) => {
+    setMessages(prev => prev.map((msg, i) =>
+      i === msgIndex ? { ...msg, teaching: { ...msg.teaching, ...updates } } : msg
+    ));
+  }, []);
+
+  const handleTeachingSave = useCallback(async (msgIndex) => {
+    const msg = messages[msgIndex];
+    if (!msg?.teaching) return;
+    const { name, triggers, steps, phase } = msg.teaching;
+
+    // Phase: building → call preview endpoint first
+    if (phase === 'building') {
+      handleTeachingUpdate(msgIndex, { phase: 'saving' });
+      try {
+        const stepTexts = (steps || []).filter(s => s.text?.trim()).map(s => s.text.trim());
+        const resp = await fetch('/api/training/guided-preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ steps: stepTexts }),
+        });
+        const data = await resp.json();
+        if (data.success) {
+          handleTeachingUpdate(msgIndex, {
+            phase: 'reviewing',
+            parsedSteps: data.data.parsedSteps,
+            qualityResult: data.data.qualityResult,
+          });
+        } else {
+          handleTeachingUpdate(msgIndex, { phase: 'error', error: data.error || 'Preview failed' });
+        }
+      } catch (e) {
+        handleTeachingUpdate(msgIndex, { phase: 'error', error: e.message });
+      }
+      return;
+    }
+
+    // Phase: reviewing (or any non-building phase) → call save endpoint
+    handleTeachingUpdate(msgIndex, { phase: 'saving' });
+    try {
+      const stepTexts = (steps || []).filter(s => s.text?.trim()).map(s => s.text.trim());
+      const triggerList = (triggers || '').split(',').map(t => t.trim()).filter(Boolean);
+      const resp = await fetch('/api/training/guided-save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, triggers: triggerList, steps: stepTexts }),
+      });
+      const data = await resp.json();
+      if (data.success) {
+        handleTeachingUpdate(msgIndex, { phase: 'done', savedSop: data.data });
+      } else {
+        handleTeachingUpdate(msgIndex, { phase: 'error', error: data.error || 'Save failed' });
+      }
+    } catch (e) {
+      handleTeachingUpdate(msgIndex, { phase: 'error', error: e.message });
+    }
+  }, [messages, handleTeachingUpdate]);
+
+  const handleTeachingCancel = useCallback((msgIndex) => {
+    setMessages(prev => prev.filter((_, i) => i !== msgIndex));
+  }, []);
+
   // ═══ Desktop Training — Train button handlers ═══
   const handleTrainClick = () => {
     if (isTraining) {
       // Currently recording — stop it
       handleTrainStop();
-    } else if (trainPromptMode) {
-      // Already showing prompt — cancel it
-      setTrainPromptMode(false);
-      setInputText('');
     } else {
-      // Show inline prompt to ask what to teach
-      setTrainPromptMode(true);
-      setInputText('');
+      // Insert guided TeachingCard instead of blind recording
+      setMessages(prev => [...prev, {
+        sender: 'Ace',
+        text: "Let's build a new process step by step. Describe each action in plain English and I'll learn it.",
+        teaching: {
+          phase: 'setup', name: '', triggers: '',
+          steps: [{ text: '' }],
+          parsedSteps: [], qualityResult: null, savedSop: null, error: null,
+        },
+      }]);
     }
   };
 
@@ -2352,11 +2944,19 @@ function Chat() {
       icon: <SchoolIcon sx={{ fontSize: 20 }} />,
       gradient: `linear-gradient(135deg, ${BRAND.accent}, #E84393)`,
       title: 'Teach Ace a Process',
-      desc: 'Show Ace any workflow once — posting on social media, searching a website, filling out forms — and it learns to repeat it.',
+      desc: 'Describe any workflow step by step — posting on social media, searching a website, filling out forms — and Ace learns to repeat it.',
       cta: 'Start teaching',
       action: () => {
         markSetupDone('teach');
-        sendMessageDirect('I want to teach you a process I do regularly. Walk me through how teaching works — what kind of things can I teach you and how do we start?');
+        setMessages(prev => [...prev, {
+          sender: 'Ace',
+          text: "Let's build a new process step by step. Describe each action in plain English and I'll learn it.",
+          teaching: {
+            phase: 'setup', name: '', triggers: '',
+            steps: [{ text: '' }],
+            parsedSteps: [], qualityResult: null, savedSop: null, error: null,
+          },
+        }]);
       },
     },
   ];
@@ -2602,6 +3202,9 @@ function Chat() {
                   onShowMeSkip={() => handleShowMeSkip(index)}
                   onHealthShowMe={handleHealthShowMe}
                   onStepCorrect={handleStepCorrect}
+                  onTeachingUpdate={handleTeachingUpdate}
+                  onTeachingSave={handleTeachingSave}
+                  onTeachingCancel={handleTeachingCancel}
                   onSpeak={speakText}
                   onStopSpeaking={stopSpeaking}
                   isSpeakingThis={speakingMsgIdx === index}

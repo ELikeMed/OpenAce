@@ -1002,6 +1002,33 @@ export class ApiGateway {
       res.json({ success: true, data: sop });
     }));
 
+    // Correct a single SOP step (after ShowMe / inline fix)
+    this.app.patch('/api/sops/:id/steps/:stepNum', this.wrap(async (req, res) => {
+      if (!this.ace?.sopManager) return res.json({ success: false, error: 'SOP Manager not initialized' });
+      const sop = this.ace.sopManager.getSOP(req.params.id);
+      if (!sop) return res.json({ success: false, error: 'SOP not found' });
+
+      const stepIdx = parseInt(req.params.stepNum) - 1;
+      if (stepIdx < 0 || stepIdx >= sop.steps.length) {
+        return res.json({ success: false, error: 'Invalid step number' });
+      }
+
+      const { target, text, x, y, action, url, key } = req.body;
+      const step = sop.steps[stepIdx];
+      if (target !== undefined) step.target = target;
+      if (text !== undefined) step.text = text;
+      if (url !== undefined) step.url = url;
+      if (key !== undefined) step.key = key;
+      if (x != null) step.x = x;
+      if (y != null) step.y = y;
+      if (action) step.action = action;
+      step._correctedAt = new Date().toISOString();
+
+      sop.updatedAt = new Date().toISOString();
+      await this.ace.sopManager.saveSOP(sop);
+      res.json({ success: true, data: { sopId: sop.id, stepNum: stepIdx + 1, step } });
+    }));
+
     // Test-run an SOP (execute and return detailed results)
     this.app.post('/api/sops/:id/test-run', this.wrap(async (req, res) => {
       if (!this.ace) return res.json({ success: false, error: 'OpenAce not initialized' });
@@ -1160,6 +1187,77 @@ export class ApiGateway {
       }
 
       res.json({ success: true, data: parsed });
+    }));
+
+    // ── Guided Teaching: preview steps with quality scores ──
+    this.app.post('/api/training/guided-preview', this.wrap(async (req, res) => {
+      const { steps } = req.body;
+      if (!steps || !Array.isArray(steps) || steps.length === 0) {
+        return res.json({ success: false, error: 'Steps array is required' });
+      }
+
+      const parser = new SOPParser({ aiManager: this.ace?.aiManager });
+      // Join steps with newlines so parseText handles them as individual lines
+      // parseText also handles post-processing (implicit waits, content injection)
+      const parsed = parser.parseText(steps.join('\n'));
+
+      const qualityResult = parser.scoreSOPQuality(parsed.steps);
+
+      res.json({
+        success: true,
+        data: { parsedSteps: parsed.steps, qualityResult },
+      });
+    }));
+
+    // ── Guided Teaching: save SOP from step builder ──
+    this.app.post('/api/training/guided-save', this.wrap(async (req, res) => {
+      const { name, triggers, steps } = req.body;
+      if (!name?.trim()) return res.json({ success: false, error: 'Process name is required' });
+      if (!steps || !Array.isArray(steps) || steps.length === 0) {
+        return res.json({ success: false, error: 'At least one step is required' });
+      }
+
+      const parser = new SOPParser({ aiManager: this.ace?.aiManager });
+      const parsed = parser.parseText(steps.join('\n'));
+
+      if (!parsed.steps.length) {
+        return res.json({ success: false, error: 'Could not parse any steps from the provided text' });
+      }
+
+      // Build SOP object
+      const sopName = name.trim();
+      const sopId = 'sop_' + sopName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') + '_' + Date.now();
+      const triggerList = (triggers && triggers.length > 0)
+        ? triggers.map(t => t.toLowerCase().trim()).filter(Boolean)
+        : [sopName.toLowerCase()];
+      const keywords = sopName.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+
+      const sop = {
+        id: sopId,
+        name: sopName,
+        description: parsed.description || `Process: ${sopName}`,
+        category: 'custom',
+        triggers: triggerList,
+        keywords,
+        steps: parsed.steps,
+        source: 'guided_teaching',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastRun: null,
+        runCount: 0,
+        schedule: null,
+        enabled: true,
+      };
+
+      if (this.ace?.sopManager) {
+        await this.ace.sopManager.saveSOP(sop);
+      } else {
+        const catDir = path.join(this.baseDir, 'data/sops', sop.category);
+        await fs.mkdir(catDir, { recursive: true });
+        await fs.writeFile(path.join(catDir, `${sop.id}.json`), JSON.stringify(sop, null, 2));
+      }
+
+      res.json({ success: true, data: sop });
     }));
 
     // ── Upload SOP Document: parse PDF/DOCX/TXT into SOP steps ──

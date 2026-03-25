@@ -1,0 +1,137 @@
+#!/bin/bash
+# ═══════════════════════════════════════════════════════════
+# OpenAce Launcher — macOS .app entry point
+# This runs inside OpenAce.app/Contents/MacOS/
+# No terminal, no Node install, no npm — just double-click.
+# ═══════════════════════════════════════════════════════════
+
+APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+RESOURCES="$APP_DIR/Resources"
+BUNDLED_NODE="$RESOURCES/node/bin/node"
+OPENACE_SRC="$RESOURCES/openace"
+DATA_DIR="$HOME/Library/Application Support/OpenAce"
+LOG_FILE="$DATA_DIR/openace.log"
+PID_FILE="$DATA_DIR/openace.pid"
+PORT=3333
+
+# ── Ensure data directory exists ──
+mkdir -p "$DATA_DIR"
+
+# ── Log function ──
+log() {
+  echo "[$(date '+%H:%M:%S')] $1" >> "$LOG_FILE"
+}
+
+log "═══ OpenAce starting ═══"
+log "App dir: $APP_DIR"
+log "Data dir: $DATA_DIR"
+
+# ── Check if already running ──
+if [ -f "$PID_FILE" ]; then
+  OLD_PID=$(cat "$PID_FILE")
+  if kill -0 "$OLD_PID" 2>/dev/null; then
+    log "Already running (PID $OLD_PID) — opening browser"
+    open "http://localhost:$PORT"
+    exit 0
+  else
+    log "Stale PID file, removing"
+    rm -f "$PID_FILE"
+  fi
+fi
+
+# ── Verify bundled Node exists ──
+if [ ! -x "$BUNDLED_NODE" ]; then
+  log "ERROR: Bundled Node.js not found at $BUNDLED_NODE"
+  osascript -e 'display dialog "OpenAce could not find its bundled Node.js runtime. The app may be corrupted — please re-download." with title "OpenAce" buttons {"OK"} default button "OK" with icon stop'
+  exit 1
+fi
+
+NODE_VERSION=$("$BUNDLED_NODE" --version 2>/dev/null)
+log "Bundled Node: $NODE_VERSION"
+
+# ── First-launch: copy config + data templates to user data dir ──
+if [ ! -f "$DATA_DIR/config/openace.config.json" ]; then
+  log "First launch — setting up data directory"
+
+  # Copy config template
+  if [ -d "$OPENACE_SRC/config" ]; then
+    cp -rn "$OPENACE_SRC/config" "$DATA_DIR/config" 2>/dev/null
+    log "Copied config templates"
+  fi
+
+  # Copy data templates (personas, etc.)
+  if [ -d "$OPENACE_SRC/data" ]; then
+    cp -rn "$OPENACE_SRC/data" "$DATA_DIR/data" 2>/dev/null
+    log "Copied data templates"
+  fi
+fi
+
+# ── Symlink user data into the source tree so the server finds it ──
+# The server expects config/ and data/ relative to its working directory.
+# We symlink from the bundled source to the persistent user data location.
+if [ ! -L "$OPENACE_SRC/data" ] && [ -d "$DATA_DIR/data" ]; then
+  # Backup original data dir if it's a real directory (not symlink)
+  if [ -d "$OPENACE_SRC/data" ]; then
+    mv "$OPENACE_SRC/data" "$OPENACE_SRC/data.bundled" 2>/dev/null
+  fi
+  ln -sf "$DATA_DIR/data" "$OPENACE_SRC/data"
+  log "Linked data → $DATA_DIR/data"
+fi
+
+if [ ! -L "$OPENACE_SRC/config" ] && [ -d "$DATA_DIR/config" ]; then
+  if [ -d "$OPENACE_SRC/config" ]; then
+    mv "$OPENACE_SRC/config" "$OPENACE_SRC/config.bundled" 2>/dev/null
+  fi
+  ln -sf "$DATA_DIR/config" "$OPENACE_SRC/config"
+  log "Linked config → $DATA_DIR/config"
+fi
+
+# ── Start the Express server ──
+log "Starting server on port $PORT..."
+
+cd "$OPENACE_SRC"
+
+# Set PATH so bundled node is found by child processes
+export PATH="$RESOURCES/node/bin:$PATH"
+export NODE_ENV="production"
+export PORT="$PORT"
+
+# Start server in background, capture PID
+"$BUNDLED_NODE" scripts/start-dashboard.js >> "$LOG_FILE" 2>&1 &
+SERVER_PID=$!
+echo "$SERVER_PID" > "$PID_FILE"
+log "Server PID: $SERVER_PID"
+
+# ── Wait for server to be ready ──
+MAX_WAIT=30
+WAITED=0
+while [ $WAITED -lt $MAX_WAIT ]; do
+  if curl -s "http://localhost:$PORT" > /dev/null 2>&1; then
+    log "Server ready after ${WAITED}s"
+    break
+  fi
+  sleep 1
+  WAITED=$((WAITED + 1))
+
+  # Check if process died
+  if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+    log "ERROR: Server process died"
+    rm -f "$PID_FILE"
+    osascript -e 'display dialog "OpenAce failed to start. Check the log at:\n~/Library/Application Support/OpenAce/openace.log" with title "OpenAce" buttons {"OK"} default button "OK" with icon stop'
+    exit 1
+  fi
+done
+
+if [ $WAITED -ge $MAX_WAIT ]; then
+  log "WARNING: Server may not be ready (waited ${MAX_WAIT}s), opening browser anyway"
+fi
+
+# ── Open browser ──
+open "http://localhost:$PORT"
+log "Browser opened"
+
+# ── Keep the app alive while server runs ──
+# When the user quits the app (Cmd+Q), this wait ends and we clean up.
+wait "$SERVER_PID" 2>/dev/null
+rm -f "$PID_FILE"
+log "═══ OpenAce stopped ═══"
