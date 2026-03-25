@@ -3005,7 +3005,8 @@ export class ApiGateway {
         'proactive:insight', 'scheduler:routine:due', 'scheduler:routine:completed',
         'routine:completed', 'pipeline:action',
         'ai:usage:warning',
-        'console:log'
+        'console:log',
+        'desktop:train:step', 'desktop:train:started', 'desktop:train:analyzing', 'desktop:train:complete', 'desktop:train:frame'
       ];
 
       const handlers = {};

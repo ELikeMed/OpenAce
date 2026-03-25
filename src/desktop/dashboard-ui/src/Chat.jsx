@@ -1626,6 +1626,44 @@ function MessageBubble({ msg, msgIndex, onConfirmActions, onCancelActions, onQue
           <SOPExecutionCard execution={msg.sopExecution} onStepCorrect={onStepCorrect} />
         )}
 
+        {/* Live Recording Preview — shows steps as they're captured */}
+        {msg.isRecordingPreview && isTraining && (
+          <Box sx={{ mt: 1, p: 1.5, bgcolor: 'rgba(244,67,54,0.08)', borderRadius: 2, border: '1px solid rgba(244,67,54,0.2)' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              <Box sx={{
+                width: 10, height: 10, borderRadius: '50%', bgcolor: '#f44336',
+                animation: 'pulse 1.5s ease-in-out infinite',
+                '@keyframes pulse': { '0%, 100%': { opacity: 1 }, '50%': { opacity: 0.3 } },
+              }} />
+              <Typography variant="caption" sx={{ color: '#f44336', fontWeight: 600 }}>
+                Recording... {recordingSteps.length} step{recordingSteps.length !== 1 ? 's' : ''} captured
+              </Typography>
+            </Box>
+            {recordingSteps.length > 0 && (
+              <Box sx={{ maxHeight: 160, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                {recordingSteps.slice(-6).map((step, idx) => (
+                  <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 0.75, fontSize: '0.75rem' }}>
+                    <Chip
+                      label={step.type === 'click' ? 'Click' : step.type === 'key' ? 'Key' : step.type === 'scroll' ? 'Scroll' : step.type}
+                      size="small"
+                      sx={{
+                        height: 20, fontSize: '0.65rem', fontWeight: 600,
+                        bgcolor: step.type === 'click' ? 'rgba(33,150,243,0.15)' : step.type === 'key' ? 'rgba(76,175,80,0.15)' : 'rgba(158,158,158,0.15)',
+                        color: step.type === 'click' ? '#2196f3' : step.type === 'key' ? '#4caf50' : '#9e9e9e',
+                      }}
+                    />
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
+                      {step.type === 'click' ? `(${step.x}, ${step.y})` :
+                       step.type === 'key' ? (step.key || '?') :
+                       step.type === 'scroll' ? (step.direction || 'down') : ''}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            )}
+          </Box>
+        )}
+
         {/* Show Me How card */}
         {msg.showMe && (
           <ShowMeCard
@@ -1771,6 +1809,7 @@ function Chat() {
   const fileInputRef = useRef(null);
   const [isTraining, setIsTraining] = useState(false);
   const [trainPromptMode, setTrainPromptMode] = useState(false);
+  const [recordingSteps, setRecordingSteps] = useState([]);
   const messagesEndRef = useRef(null);
   const initializedRef = useRef(false);
   const [isListening, setIsListening] = useState(false);
@@ -2221,6 +2260,33 @@ function Chat() {
           break;
         }
 
+        // ── Desktop Training live step preview ──
+        case 'desktop:train:step': {
+          if (data) {
+            setRecordingSteps(prev => {
+              const step = {
+                type: data.type,
+                x: data.x,
+                y: data.y,
+                key: data.key,
+                direction: data.direction,
+                stepNumber: data.stepNumber || prev.length + 1,
+                timestamp: data.timestamp || Date.now(),
+              };
+              // Keep only last 20 steps to prevent memory bloat
+              const updated = [...prev, step];
+              return updated.length > 20 ? updated.slice(-20) : updated;
+            });
+          }
+          break;
+        }
+        case 'desktop:train:started':
+          setRecordingSteps([]);
+          break;
+        case 'desktop:train:complete':
+          // Recording done — steps will be cleared when training stops
+          break;
+
         case 'connected':
         case 'ping':
           break;
@@ -2505,9 +2571,11 @@ function Chat() {
       if (data.success) {
         setIsTraining(true);
         setTrainPromptMode(false);
+        setRecordingSteps([]);
         setMessages(prev => [...prev, {
           role: 'ace',
-          text: `🎓 Got it! I'm watching your screen now. Show me how to: **"${name}"**\n\nDo your thing — I'm recording every 2 seconds. Click the **Stop** button when you're done.`,
+          text: `🎓 Got it! I'm watching your screen now. Show me how to: **"${name}"**\n\nDo your thing — I'm capturing every click and keystroke. Click **Stop** when done.`,
+          isRecordingPreview: true,
         }]);
       } else {
         setMessages(prev => [...prev, {
@@ -2532,6 +2600,7 @@ function Chat() {
       const resp = await fetch('/api/desktop-train/stop', { method: 'POST' });
       const data = await resp.json();
       setIsTraining(false);
+      setRecordingSteps([]);
       if (data.success && data.data?.sop) {
         const sop = data.data.sop;
         setMessages(prev => [...prev, {

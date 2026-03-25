@@ -22,9 +22,14 @@ import { eventBus } from '../events/EventBus.js';
 
 const require = createRequire(import.meta.url);
 
-// Path to the compiled native event monitor
-const EVENT_MONITOR_PATH = path.join(process.cwd(), 'scripts', 'event-monitor');
-const EVENT_MONITOR_SRC = path.join(process.cwd(), 'scripts', 'event-monitor.swift');
+// Path to the compiled native event monitor (platform-specific)
+const IS_WINDOWS = process.platform === 'win32';
+const EVENT_MONITOR_PATH = IS_WINDOWS
+  ? path.join(process.cwd(), 'scripts', 'event-monitor-win.exe')
+  : path.join(process.cwd(), 'scripts', 'event-monitor');
+const EVENT_MONITOR_SRC = IS_WINDOWS
+  ? path.join(process.cwd(), 'scripts', 'event-monitor-win.cs')
+  : path.join(process.cwd(), 'scripts', 'event-monitor.swift');
 
 // Valid element types and contexts for structured AI vision response
 const VALID_ELEMENT_TYPES = new Set([
@@ -52,6 +57,9 @@ export class DesktopTrainer {
     this.recordingResolution = null; // { width, height } captured when recording starts
     this.urlSnapshots = [];      // Periodic URL captures: { timestamp, url }
     this.screenshotDir = path.join(process.cwd(), 'data/training/screenshots');
+    this._lastEventScreenshotTs = 0;  // Timestamp of last event-triggered screenshot
+    this._screenshotInFlight = false;  // Prevent overlapping screenshot captures
+    this._sessionDir = null;           // Set during startRecording
   }
 
   /**
@@ -67,6 +75,8 @@ export class DesktopTrainer {
     this.events = [];
     this.screenshots = [];
     this.urlSnapshots = [];
+    this._lastEventScreenshotTs = 0;
+    this._screenshotInFlight = false;
 
     // Ensure screenshot directory exists
     const sessionDir = path.join(this.screenshotDir, this.sessionName.replace(/\s+/g, '_'));
@@ -112,38 +122,25 @@ export class DesktopTrainer {
       this.onProgress('⚠️ Continuing with screenshot-only recording.');
     }
 
-    // ── Capture screenshots + Chrome URL every 3 seconds ──
+    // ── Screenshots are now event-triggered (captured on each click/key event) ──
+    // This fallback timer only fires if no event screenshot was captured recently.
+    // Ensures we still get periodic screenshots during long pauses or scroll-only periods.
     this.isRecording = true;
+    this._lastEventScreenshotTs = Date.now();
+    this._sessionDir = sessionDir;
     this.captureInterval = setInterval(async () => {
       if (!this.isRecording) return;
+      // Only capture fallback screenshot if no event screenshot in last 8 seconds
+      if (Date.now() - this._lastEventScreenshotTs < 8000) return;
       try {
-        const jimpImage = await this.desktop.seeScreen();
-        const buffer = await jimpImage.getBuffer('image/png');
-        const base64 = buffer.toString('base64');
-        const timestamp = Date.now();
-
-        this.screenshots.push({ timestamp, base64 });
-
-        // Save to disk for reference
-        const filename = `frame_${timestamp}.png`;
-        await jimpImage.write(path.join(sessionDir, filename));
-
-        // Capture Chrome URL for per-step URL tracking
-        try {
-          const url = execSync(
-            `osascript -e 'tell application "Google Chrome" to get URL of active tab of front window'`,
-            { timeout: 2000 }
-          ).toString().trim();
-          if (url && url.startsWith('http')) {
-            this.urlSnapshots.push({ timestamp, url });
-          }
-        } catch (e) { /* Chrome not active or no window — skip */ }
-
-        eventBus.emit('desktop:train:frame', { frameCount: this.screenshots.length, eventCount: this.events.length });
+        const screenshot = await this._captureScreenshotNow();
+        if (screenshot) {
+          eventBus.emit('desktop:train:frame', { frameCount: this.screenshots.length, eventCount: this.events.length });
+        }
       } catch (e) {
         // Skip frame on error
       }
-    }, 3000);
+    }, 10000);
 
     this.onProgress(`🎓 Recording started: "${this.sessionName}" — do your thing, I'm watching every click!`);
     eventBus.emit('desktop:train:started', { name: this.sessionName, timestamp: Date.now() });
@@ -217,42 +214,75 @@ export class DesktopTrainer {
 
     try {
       await fs.access(EVENT_MONITOR_PATH);
-      // Binary exists — verify it matches this machine's architecture
-      try {
-        const { execSync: execSyncCheck } = await import('child_process');
-        const fileInfo = execSyncCheck(`file "${EVENT_MONITOR_PATH}"`, { encoding: 'utf8', timeout: 5000 });
-        const arch = process.arch === 'arm64' ? 'arm64' : 'x86_64';
-        if (!fileInfo.includes(arch)) {
-          this.onProgress(`🔧 Event monitor was compiled for a different architecture, recompiling...`);
+      // Binary exists — on macOS, verify it matches this machine's architecture
+      if (!IS_WINDOWS) {
+        try {
+          const { execSync: execSyncCheck } = await import('child_process');
+          const fileInfo = execSyncCheck(`file "${EVENT_MONITOR_PATH}"`, { encoding: 'utf8', timeout: 5000 });
+          const arch = process.arch === 'arm64' ? 'arm64' : 'x86_64';
+          if (!fileInfo.includes(arch)) {
+            this.onProgress(`🔧 Event monitor was compiled for a different architecture, recompiling...`);
+            needsCompile = true;
+          }
+        } catch {
           needsCompile = true;
         }
-      } catch {
-        needsCompile = true;
       }
     } catch {
       needsCompile = true;
     }
 
     if (needsCompile) {
-      this.onProgress('🔧 Compiling native event monitor for this Mac...');
-      try {
-        execSync(`swiftc "${EVENT_MONITOR_SRC}" -o "${EVENT_MONITOR_PATH}"`, { timeout: 30000 });
-        this.onProgress('✅ Event monitor compiled');
-      } catch (e) {
-        const msg = e.message || e.stderr?.toString() || '';
-        // Detect Xcode SDK / Swift version mismatch
-        if (msg.includes('SDK is not supported by the compiler') || msg.includes('redefinition of module')) {
+      if (IS_WINDOWS) {
+        // Windows: compile C# with csc (ships with .NET Framework)
+        this.onProgress('🔧 Compiling native event monitor for Windows...');
+        try {
+          // Try .NET Framework csc first, then dotnet CLI
+          const cscPaths = [
+            'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe',
+            'C:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319\\csc.exe',
+          ];
+          let compiled = false;
+          for (const cscPath of cscPaths) {
+            try {
+              await fs.access(cscPath);
+              execSync(`"${cscPath}" /nologo /out:"${EVENT_MONITOR_PATH}" /reference:System.Windows.Forms.dll "${EVENT_MONITOR_SRC}"`, { timeout: 30000 });
+              compiled = true;
+              break;
+            } catch { /* try next */ }
+          }
+          if (!compiled) {
+            // Try dotnet csc
+            execSync(`dotnet csc /nologo /out:"${EVENT_MONITOR_PATH}" /reference:System.Windows.Forms.dll "${EVENT_MONITOR_SRC}"`, { timeout: 30000 });
+          }
+          this.onProgress('✅ Event monitor compiled for Windows');
+        } catch (e) {
           throw new Error(
-            'Swift compiler and Xcode Command Line Tools are out of sync on this Mac. ' +
-            'Fix it by running this command in Terminal:\n\n' +
-            '  sudo rm -rf /Library/Developer/CommandLineTools && xcode-select --install\n\n' +
-            'Then restart Ace and try again.'
+            `Failed to compile Windows event monitor: ${(e.message || '').slice(0, 200)}. ` +
+            'Ensure .NET Framework is installed (ships with Windows 10+).'
           );
         }
-        throw new Error(
-          `Failed to compile event monitor: ${msg.slice(0, 200)}. ` +
-          'Make sure Xcode Command Line Tools are installed: xcode-select --install'
-        );
+      } else {
+        // macOS: compile Swift
+        this.onProgress('🔧 Compiling native event monitor for this Mac...');
+        try {
+          execSync(`swiftc "${EVENT_MONITOR_SRC}" -o "${EVENT_MONITOR_PATH}"`, { timeout: 30000 });
+          this.onProgress('✅ Event monitor compiled');
+        } catch (e) {
+          const msg = e.message || e.stderr?.toString() || '';
+          if (msg.includes('SDK is not supported by the compiler') || msg.includes('redefinition of module')) {
+            throw new Error(
+              'Swift compiler and Xcode Command Line Tools are out of sync on this Mac. ' +
+              'Fix it by running this command in Terminal:\n\n' +
+              '  sudo rm -rf /Library/Developer/CommandLineTools && xcode-select --install\n\n' +
+              'Then restart Ace and try again.'
+            );
+          }
+          throw new Error(
+            `Failed to compile event monitor: ${msg.slice(0, 200)}. ` +
+            'Make sure Xcode Command Line Tools are installed: xcode-select --install'
+          );
+        }
       }
     }
   }
@@ -280,12 +310,37 @@ export class DesktopTrainer {
           if (!line.trim()) continue;
           try {
             const event = JSON.parse(line);
-            // Filter out clicks on the dashboard itself (the Train/Stop button area)
-            // Don't record the "Stop" button click at the end
-            if (this.isRecording) {
-              this.events.push(event);
-              this.onProgress(`📌 ${event.type}: ${event.type === 'click' ? `(${event.x}, ${event.y})` : event.key || event.direction || ''}`);
+            if (!this.isRecording) continue;
+
+            // mouseUp events are tracked but don't become SOP steps
+            if (event.type === 'mouseUp') continue;
+
+            this.events.push(event);
+            this.onProgress(`📌 ${event.type}: ${event.type === 'click' ? `(${event.x}, ${event.y})` : event.key || event.direction || ''}`);
+
+            // ── Event-triggered screenshot + DOM metadata on click/key ──
+            if (event.type === 'click' || event.type === 'key') {
+              this._captureEventScreenshot(event);
             }
+            // DOM metadata: query Chrome DOM at click coordinates (async, best-effort)
+            if (event.type === 'click') {
+              this._getClickDomMetadata(event).then(meta => {
+                if (meta) {
+                  event._domMetadata = meta;
+                }
+              }).catch(() => {});
+            }
+
+            // Emit step event for real-time preview
+            eventBus.emit('desktop:train:step', {
+              type: event.type,
+              x: event.x,
+              y: event.y,
+              key: event.key,
+              direction: event.direction,
+              timestamp: event.ts,
+              stepNumber: this.events.length
+            });
           } catch (e) {
             // Skip malformed lines
           }
@@ -359,19 +414,187 @@ export class DesktopTrainer {
   async _captureStartingState() {
     const state = { app: null, url: null };
     try {
-      // Get the frontmost app
-      const appScript = 'tell application "System Events" to get name of first application process whose frontmost is true';
-      state.app = execSync(`osascript -e '${appScript}'`, { timeout: 3000 }).toString().trim();
+      if (IS_WINDOWS) {
+        // Windows: get active window title via PowerShell
+        try {
+          const title = execSync(
+            'powershell -NoProfile -Command "(Get-Process | Where-Object {$_.MainWindowHandle -ne 0} | Sort-Object -Property @{Expression={[User32]::GetForegroundWindow()}} | Select-Object -First 1).MainWindowTitle"',
+            { timeout: 3000 }
+          ).toString().trim();
+          state.app = title || 'Unknown';
+        } catch { /* non-critical */ }
 
-      // If Chrome is active, get the current URL
-      if (state.app === 'Google Chrome') {
-        const urlScript = 'tell application "Google Chrome" to get URL of active tab of front window';
-        state.url = execSync(`osascript -e '${urlScript}'`, { timeout: 3000 }).toString().trim();
+        // Get Chrome URL via CDP if available
+        if (state.app?.includes('Chrome') || state.app?.includes('Google')) {
+          try {
+            const { loadPlatform } = await import('./platforms/PlatformAdapter.js');
+            const plat = await loadPlatform();
+            state.url = await plat.getChromeUrl?.();
+          } catch { /* non-critical */ }
+        }
+      } else {
+        // macOS: AppleScript
+        const appScript = 'tell application "System Events" to get name of first application process whose frontmost is true';
+        state.app = execSync(`osascript -e '${appScript}'`, { timeout: 3000 }).toString().trim();
+
+        if (state.app === 'Google Chrome') {
+          const urlScript = 'tell application "Google Chrome" to get URL of active tab of front window';
+          state.url = execSync(`osascript -e '${urlScript}'`, { timeout: 3000 }).toString().trim();
+        }
       }
     } catch (e) {
       // Not critical — just helpful metadata
     }
     return state;
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // EVENT-TRIGGERED SCREENSHOTS
+  // ═══════════════════════════════════════════════════════
+
+  /**
+   * Capture a screenshot immediately when a click or key event occurs.
+   * Links the screenshot directly to the event (no nearest-match guessing).
+   * Also captures Chrome URL at this exact moment.
+   */
+  async _captureEventScreenshot(event) {
+    // Debounce: skip if another screenshot is in-flight or captured within 300ms
+    if (this._screenshotInFlight || (Date.now() - this._lastEventScreenshotTs) < 300) return;
+    this._screenshotInFlight = true;
+
+    try {
+      const screenshot = await this._captureScreenshotNow();
+      if (screenshot) {
+        // Direct-link: attach screenshot to the event that triggered it
+        event._screenshot = screenshot;
+        this._lastEventScreenshotTs = screenshot.timestamp;
+
+        eventBus.emit('desktop:train:frame', {
+          frameCount: this.screenshots.length,
+          eventCount: this.events.length
+        });
+      }
+    } catch (e) {
+      // Non-fatal — screenshot will fall back to nearest-match
+    } finally {
+      this._screenshotInFlight = false;
+    }
+  }
+
+  /**
+   * Get DOM metadata for a click event by querying Chrome's DOM at click coordinates.
+   * Only works when Chrome is the active app — falls through gracefully for non-Chrome apps.
+   */
+  async _getClickDomMetadata(event) {
+    if (!this.desktop?.browser?.getElementAtPoint) return null;
+    try {
+      const domInfo = await this.desktop.browser.getElementAtPoint(event.x, event.y);
+      if (!domInfo) return null;
+
+      // Map HTML tag to our element type taxonomy
+      const elementType = this._mapTagToElementType(domInfo.tagName, domInfo.type, domInfo.role);
+
+      return {
+        tagName: domInfo.tagName,
+        type: elementType,
+        text: domInfo.text || '',
+        name: domInfo.name,
+        id: domInfo.id,
+        placeholder: domInfo.placeholder,
+        href: domInfo.href,
+        role: domInfo.role,
+        ariaLabel: domInfo.ariaLabel,
+        formContext: domInfo.formContext,
+        isInteractive: domInfo.isInteractive,
+        selector: domInfo.selector,
+        rect: domInfo.rect
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * Map an HTML tag + type + role to our element type taxonomy.
+   */
+  _mapTagToElementType(tagName, inputType, role) {
+    if (!tagName) return 'other';
+    const tag = tagName.toUpperCase();
+
+    // Direct tag mappings
+    if (tag === 'BUTTON') return 'button';
+    if (tag === 'A') return 'link';
+    if (tag === 'SELECT') return 'select';
+    if (tag === 'TEXTAREA') return 'input';
+    if (tag === 'IMG') return 'image';
+    if (tag === 'LABEL') return 'text';
+    if (tag === 'NAV') return 'nav';
+
+    // Input subtypes
+    if (tag === 'INPUT') {
+      if (inputType === 'checkbox') return 'checkbox';
+      if (inputType === 'radio') return 'radio';
+      if (inputType === 'submit' || inputType === 'button') return 'button';
+      return 'input';
+    }
+
+    // Role-based
+    if (role === 'button') return 'button';
+    if (role === 'link') return 'link';
+    if (role === 'tab') return 'tab';
+    if (role === 'menuitem') return 'menu_item';
+    if (role === 'checkbox') return 'checkbox';
+    if (role === 'radio') return 'radio';
+    if (role === 'textbox') return 'input';
+    if (role === 'option') return 'menu_item';
+
+    return 'other';
+  }
+
+  /**
+   * Capture a screenshot right now, save to disk, and capture Chrome URL.
+   * Shared by event-triggered and fallback-timer captures.
+   */
+  async _captureScreenshotNow() {
+    const jimpImage = await this.desktop.seeScreen();
+    const buffer = await jimpImage.getBuffer('image/png');
+    const base64 = buffer.toString('base64');
+    const timestamp = Date.now();
+
+    const screenshot = { timestamp, base64 };
+    this.screenshots.push(screenshot);
+
+    // Save to disk
+    if (this._sessionDir) {
+      const filename = `frame_${timestamp}.png`;
+      try {
+        await jimpImage.write(path.join(this._sessionDir, filename));
+      } catch (e) { /* non-fatal */ }
+    }
+
+    // Capture Chrome URL at this exact moment (platform-aware)
+    try {
+      let url = null;
+      if (IS_WINDOWS) {
+        // Windows: use CDP via PlatformAdapter
+        try {
+          const { loadPlatform } = await import('./platforms/PlatformAdapter.js');
+          const plat = await loadPlatform();
+          url = await plat.getChromeUrl?.();
+        } catch { /* non-critical */ }
+      } else {
+        // macOS: AppleScript
+        url = execSync(
+          `osascript -e 'tell application "Google Chrome" to get URL of active tab of front window'`,
+          { timeout: 2000 }
+        ).toString().trim();
+      }
+      if (url && url.startsWith('http')) {
+        this.urlSnapshots.push({ timestamp, url });
+      }
+    } catch (e) { /* Chrome not active — skip */ }
+
+    return screenshot;
   }
 
   // ═══════════════════════════════════════════════════════
@@ -413,13 +636,23 @@ export class DesktopTrainer {
       const prev = scrollCollapsed[scrollCollapsed.length - 1];
       if (evt.type === 'scroll' && prev && prev.type === 'scroll' &&
           prev.direction === evt.direction &&
-          (evt.ts - prev.ts) < 800 &&
+          (evt.ts - prev.ts) < 500 &&
           Math.abs(evt.x - prev.x) < 100 && Math.abs(evt.y - prev.y) < 150) {
         prev._scrollCount = (prev._scrollCount || 1) + 1;
         prev.ts = evt.ts; // Update to latest timestamp
         continue; // Collapse into previous scroll
       }
       scrollCollapsed.push({ ...evt });
+    }
+
+    // ── Step 2b: Remove intermediate scrolls (keep only last scroll before a non-scroll event) ──
+    const scrollPruned = [];
+    for (let i = 0; i < scrollCollapsed.length; i++) {
+      const evt = scrollCollapsed[i];
+      const next = scrollCollapsed[i + 1];
+      // If this is a scroll and the next event is also a scroll, skip this one
+      if (evt.type === 'scroll' && next && next.type === 'scroll') continue;
+      scrollPruned.push(evt);
     }
 
     // ── Step 3: Merge keystrokes into "type" actions, but keep special keys separate ──
@@ -440,7 +673,7 @@ export class DesktopTrainer {
       keyBuffer = [];
     };
 
-    for (const evt of scrollCollapsed) {
+    for (const evt of scrollPruned) {
       if (evt.type === 'key') {
         const isSpecial = SPECIAL_KEYS.has(evt.key) || (evt.modifiers && evt.modifiers.length > 0);
         if (isSpecial) {
@@ -489,7 +722,7 @@ export class DesktopTrainer {
       }
     }
 
-    this.onProgress(`📊 Raw: ${this.events.length} events → Deduped: ${dedupedEvents.length} → Scroll collapsed: ${scrollCollapsed.length} → Merged: ${mergedEvents.length} → Final: ${finalEvents.length}`);
+    this.onProgress(`📊 Raw: ${this.events.length} events → Deduped: ${dedupedEvents.length} → Scroll collapsed: ${scrollCollapsed.length} → Pruned: ${scrollPruned.length} → Merged: ${mergedEvents.length} → Final: ${finalEvents.length}`);
 
     // ── Build SOP steps from processed events ──
     const steps = [];
@@ -534,20 +767,23 @@ export class DesktopTrainer {
         step.url = nearestUrl;
       }
 
-      // Find nearest screenshot for this event (for reference)
-      const nearest = this._findNearestScreenshot(evt.ts);
-      if (nearest) {
+      // Use direct-linked screenshot (event-triggered) or fallback to nearest-match
+      const screenshot = evt._screenshot || this._findNearestScreenshot(evt.ts);
+      if (screenshot) {
         const filename = `step_${steps.length + 1}_${evt.ts}.png`;
         try {
-          await fs.writeFile(path.join(sessionDir, filename), Buffer.from(nearest.base64, 'base64'));
+          await fs.writeFile(path.join(sessionDir, filename), Buffer.from(screenshot.base64, 'base64'));
           step.referenceScreenshot = filename;
+          step._hasDirectScreenshot = !!evt._screenshot; // Track source for diagnostics
         } catch (e) { /* skip */ }
       }
 
       steps.push(step);
     }
 
-    this.onProgress(`📊 Built ${steps.length} steps from ${finalEvents.length} events (with timing + URLs)`);
+    const directScreenshots = steps.filter(s => s._hasDirectScreenshot).length;
+    const nearestScreenshots = steps.filter(s => s.referenceScreenshot && !s._hasDirectScreenshot).length;
+    this.onProgress(`📊 Built ${steps.length} steps from ${finalEvents.length} events (${directScreenshots} event-triggered + ${nearestScreenshots} nearest-match screenshots)`);
 
     // ── Optional: AI enrichment for click target labels ──
     await this._enrichClickLabels(steps);
@@ -556,6 +792,32 @@ export class DesktopTrainer {
     // Upgrades click→click_text/click_submit, merges click+type→edit_field, etc.
     const classifiedSteps = this._classifySteps(steps);
     this.onProgress(`📊 Classified: ${steps.length} raw steps → ${classifiedSteps.length} semantic steps`);
+
+    // ── Filter noise: remove trailing scrolls, orphan scrolls, non-interactive clicks ──
+    const filteredSteps = this._filterNoise(classifiedSteps);
+    if (filteredSteps.length < classifiedSteps.length) {
+      this.onProgress(`🧹 Filtered: ${classifiedSteps.length} → ${filteredSteps.length} meaningful steps`);
+    }
+
+    // ── Generate human-readable step descriptions (deterministic, no AI) ──
+    this._generateStepDescriptions(filteredSteps);
+
+    // ── Annotate click screenshots with red circle at click position ──
+    for (const step of filteredSteps) {
+      if ((step.action === 'click_text' || step.action === 'click_submit' || step.action === 'smart_click') &&
+          step.referenceScreenshot && step.x != null && step.y != null) {
+        try {
+          const rawPath = path.join(sessionDir, step.referenceScreenshot);
+          const rawBuffer = await fs.readFile(rawPath);
+          const annotated = await this._annotateScreenshot(rawBuffer.toString('base64'), step.x, step.y);
+          if (annotated) {
+            const annotatedFilename = step.referenceScreenshot.replace('.png', '_annotated.png');
+            await fs.writeFile(path.join(sessionDir, annotatedFilename), Buffer.from(annotated, 'base64'));
+            step.annotatedScreenshot = annotatedFilename;
+          }
+        } catch (e) { /* non-fatal */ }
+      }
+    }
 
     // ── Auto-generate triggers and keywords ──
     const TRIGGER_STOP = new Set(['how','to','the','a','an','and','or','for','in','on','as','our','my','any']);
@@ -575,7 +837,7 @@ export class DesktopTrainer {
       keywords: nameWords,
       startingState: this.startingState,
       recordingResolution: this.recordingResolution,
-      steps: classifiedSteps,
+      steps: filteredSteps,
       totalEvents: this.events.length,
       totalScreenshots: this.screenshots.length,
       createdAt: new Date().toISOString(),
@@ -638,25 +900,61 @@ export class DesktopTrainer {
   async _enrichClickLabels(steps) {
     if (!this.aiManager) return;
 
-    const clickSteps = steps.filter(s => (s.action === 'click' || s.action === 'doubleClick') && s.referenceScreenshot);
+    // Apply DOM metadata from real-time capture before AI enrichment
+    let domResolved = 0;
+    for (const step of steps) {
+      if ((step.action !== 'click' && step.action !== 'doubleClick')) continue;
+      // Find original event to check for DOM metadata
+      const origEvt = this.events.find(e => e.ts === step.timestamp && (e.type === 'click' || e.type === 'doubleClick'));
+      if (origEvt?._domMetadata) {
+        const meta = origEvt._domMetadata;
+        step.targetInfo = {
+          type: this._validateEnumField(meta.type, VALID_ELEMENT_TYPES, 'other'),
+          text: (meta.text || meta.ariaLabel || meta.placeholder || '').substring(0, 60),
+          context: this._validateEnumField(meta.formContext, VALID_CONTEXTS, 'other'),
+          interactive: meta.isInteractive !== false
+        };
+        step.target = step.targetInfo.text || `element at (${step.x}, ${step.y})`;
+        if (meta.selector) step.selector = meta.selector;
+        domResolved++;
+      }
+    }
+
+    // Only AI-enrich clicks that don't already have DOM metadata
+    const clickSteps = steps.filter(s =>
+      (s.action === 'click' || s.action === 'doubleClick') &&
+      s.referenceScreenshot &&
+      !s.targetInfo  // Skip DOM-resolved clicks
+    );
+
+    if (domResolved > 0) {
+      this.onProgress(`🔍 DOM resolved ${domResolved} clicks. ${clickSteps.length > 0 ? `AI enriching remaining ${clickSteps.length}...` : 'No AI enrichment needed!'}`);
+    }
     if (clickSteps.length === 0) return;
 
     this.onProgress(`🏷️ Labeling ${clickSteps.length} click targets with AI vision...`);
 
-    // Group clicks by their nearest screenshot (clicks within ~3s share one)
+    // Group clicks by screenshot — prefer direct-linked, fallback to nearest-match
     const groups = new Map();
+    let directCount = 0;
     for (let i = 0; i < clickSteps.length; i++) {
       const step = clickSteps[i];
-      const nearest = this._findNearestScreenshot(step.timestamp);
-      if (!nearest) {
+      // Find the original event to check for direct-linked screenshot
+      const origEvt = this.events.find(e => e.ts === step.timestamp && (e.type === 'click' || e.type === 'doubleClick'));
+      const screenshot = origEvt?._screenshot || this._findNearestScreenshot(step.timestamp);
+      if (!screenshot) {
         step.target = `click at (${step.x}, ${step.y})`;
         continue;
       }
-      const key = nearest.timestamp;
+      if (origEvt?._screenshot) directCount++;
+      const key = screenshot.timestamp;
       if (!groups.has(key)) {
-        groups.set(key, { screenshot: nearest, clicks: [] });
+        groups.set(key, { screenshot, clicks: [] });
       }
       groups.get(key).clicks.push({ step, index: i });
+    }
+    if (directCount > 0) {
+      this.onProgress(`  📸 ${directCount}/${clickSteps.length} clicks have event-triggered screenshots`);
     }
 
     const screenWidth = this.desktop?.screenSize?.width || 1920;
@@ -1032,6 +1330,184 @@ Return ONLY the JSON, no markdown.`;
     }
 
     return classified;
+  }
+
+  /**
+   * Annotate a screenshot with a red circle + crosshair at the click position.
+   * Returns annotated base64 PNG, or null on failure.
+   */
+  async _annotateScreenshot(base64, clickX, clickY) {
+    try {
+      const { Jimp } = await import('jimp');
+      const buffer = Buffer.from(base64, 'base64');
+      const image = await Jimp.read(buffer);
+
+      const radius = 20;
+      const thickness = 3;
+      const red = 0xFF0000FF; // RGBA
+
+      // Draw circle using pixel-level operations
+      for (let angle = 0; angle < 360; angle += 0.5) {
+        const rad = angle * Math.PI / 180;
+        for (let t = 0; t < thickness; t++) {
+          const r = radius + t;
+          const px = Math.round(clickX + r * Math.cos(rad));
+          const py = Math.round(clickY + r * Math.sin(rad));
+          if (px >= 0 && px < image.width && py >= 0 && py < image.height) {
+            image.setPixelColor(red, px, py);
+          }
+        }
+      }
+
+      // Draw crosshair lines (12px each direction)
+      const crossLen = 12;
+      for (let d = -crossLen; d <= crossLen; d++) {
+        for (let t = -1; t <= 1; t++) {
+          // Horizontal line
+          const hx = clickX + d;
+          const hy = clickY + t;
+          if (hx >= 0 && hx < image.width && hy >= 0 && hy < image.height) {
+            image.setPixelColor(red, hx, hy);
+          }
+          // Vertical line
+          const vx = clickX + t;
+          const vy = clickY + d;
+          if (vx >= 0 && vx < image.width && vy >= 0 && vy < image.height) {
+            image.setPixelColor(red, vx, vy);
+          }
+        }
+      }
+
+      const annotatedBuffer = await image.getBuffer('image/png');
+      return annotatedBuffer.toString('base64');
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * Generate human-readable step descriptions deterministically (no AI calls).
+   * Uses targetInfo/domMetadata to build natural language descriptions.
+   */
+  _generateStepDescriptions(steps) {
+    for (const step of steps) {
+      // Skip steps that already have good descriptions
+      if (step.description && !step.description.startsWith('Click ') &&
+          !step.description.startsWith('click at') && step.description !== step.action) {
+        continue;
+      }
+
+      const target = step.target || step.text || '';
+      const info = step.targetInfo;
+      const context = info?.context && info.context !== 'other' ? ` in ${info.context.replace('_', ' ')}` : '';
+
+      switch (step.action) {
+        case 'navigate':
+          step.description = `Navigate to ${step.url || target}`;
+          break;
+        case 'click_text':
+          step.description = target ? `Click "${target}"${context}` : `Click element at (${step.x}, ${step.y})`;
+          break;
+        case 'click_submit':
+          step.description = target ? `Click "${target}" to submit${context}` : `Submit${context}`;
+          break;
+        case 'smart_click':
+          step.description = target && !target.startsWith('element at') ? `Click "${target}"${context}` : `Click at (${step.x}, ${step.y})`;
+          break;
+        case 'edit_field':
+          step.description = `Type "${(step.text || '').substring(0, 40)}" into ${target || 'field'}${context}`;
+          break;
+        case 'type':
+          step.description = `Type "${(step.text || '').substring(0, 40)}"`;
+          break;
+        case 'press':
+          const mods = step.modifiers?.length ? step.modifiers.join('+') + '+' : '';
+          step.description = `Press ${mods}${step.key}`;
+          break;
+        case 'scroll':
+          step.description = `Scroll ${step.direction || 'down'}`;
+          break;
+        case 'select_option':
+          step.description = `Select "${step.text || 'option'}" from ${target || 'dropdown'}`;
+          break;
+        case 'switch_tab':
+          step.description = `Switch to "${step.text || step.tab || 'tab'}" tab`;
+          break;
+        case 'right_click':
+          step.description = target ? `Right-click "${target}"` : `Right-click at (${step.x}, ${step.y})`;
+          break;
+        case 'hover':
+          step.description = target ? `Hover over "${target}"` : `Hover at (${step.x}, ${step.y})`;
+          break;
+        case 'go_back':
+          step.description = 'Navigate back';
+          break;
+        case 'copy_text':
+          step.description = 'Copy selected text';
+          break;
+        case 'wait':
+        case 'wait_navigation':
+          step.description = step.description || `Wait ${step.ms || 2000}ms`;
+          break;
+      }
+    }
+  }
+
+  /**
+   * Filter noise from classified steps to produce clean, high-quality SOPs.
+   * Removes: trailing scrolls, orphan scrolls (no click within 5s), non-interactive
+   * clicks with no follow-up, isolated Escape presses after scrolls, redundant waits.
+   */
+  _filterNoise(steps) {
+    if (steps.length <= 2) return steps;
+
+    const filtered = [];
+
+    for (let i = 0; i < steps.length; i++) {
+      const step = steps[i];
+      const next = steps[i + 1];
+      const prev = filtered[filtered.length - 1];
+
+      // ── Remove trailing scrolls (scroll at the end with no action following) ──
+      if (step.action === 'scroll' && !next) continue;
+
+      // ── Remove scrolls not followed by a click/type within 5 seconds ──
+      if (step.action === 'scroll') {
+        let hasFollowUp = false;
+        for (let j = i + 1; j < steps.length; j++) {
+          const future = steps[j];
+          if (future.action === 'scroll') continue; // Skip other scrolls
+          if (future.action === 'wait') continue;   // Skip waits
+          // Found a meaningful action — check if within 5 seconds
+          const gap = (future.timestamp || 0) - (step.timestamp || 0);
+          if (gap <= 5000 || gap === 0) hasFollowUp = true;
+          break;
+        }
+        if (!hasFollowUp) continue; // Orphan scroll — drop
+      }
+
+      // ── Remove isolated Escape presses after scrolls ──
+      if (step.action === 'press' && step.key === 'escape' &&
+          prev && prev.action === 'scroll') {
+        continue;
+      }
+
+      // ── Remove clicks on non-interactive elements with no follow-up typing ──
+      if ((step.action === 'smart_click' || step.action === 'click_text') &&
+          step.targetInfo?.interactive === false &&
+          next?.action !== 'type' && next?.action !== 'edit_field') {
+        continue;
+      }
+
+      // ── Remove back-to-back waits (keep only the last one) ──
+      if (step.action === 'wait' && next?.action === 'wait') {
+        continue;
+      }
+
+      filtered.push(step);
+    }
+
+    return filtered;
   }
 
   // ═══════════════════════════════════════════════════════════════════

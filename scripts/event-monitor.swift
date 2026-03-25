@@ -10,9 +10,10 @@ import CoreGraphics
 // Flush stdout on every print
 setbuf(stdout, nil)
 
-// Event mask: left click down, right click down, key down, scroll wheel
+// Event mask: left click down/up, right click down, key down, scroll wheel
 let eventMask: CGEventMask = (
     (1 << CGEventType.leftMouseDown.rawValue) |
+    (1 << CGEventType.leftMouseUp.rawValue) |
     (1 << CGEventType.rightMouseDown.rawValue) |
     (1 << CGEventType.keyDown.rawValue) |
     (1 << CGEventType.scrollWheel.rawValue)
@@ -27,6 +28,10 @@ func eventCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent, re
         let loc = event.location
         let button = type == .leftMouseDown ? "left" : "right"
         print("{\"type\":\"click\",\"button\":\"\(button)\",\"x\":\(Int(loc.x)),\"y\":\(Int(loc.y)),\"ts\":\(timestamp)}")
+
+    case .leftMouseUp:
+        let loc = event.location
+        print("{\"type\":\"mouseUp\",\"x\":\(Int(loc.x)),\"y\":\(Int(loc.y)),\"ts\":\(timestamp)}")
 
     case .keyDown:
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)

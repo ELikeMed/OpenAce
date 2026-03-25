@@ -132,6 +132,12 @@ npm install --production --no-optional 2>&1 | tail -5
 # It requires native compilation on the target platform
 echo "  (robotjs skipped — requires native build on Windows)"
 
+# Copy C# event monitor source (compiled on first run on Windows)
+if [ -f "$PROJECT_DIR/scripts/event-monitor-win.cs" ]; then
+  cp "$PROJECT_DIR/scripts/event-monitor-win.cs" "$OPENACE_DEST/scripts/event-monitor-win.cs"
+  echo "  Included Windows event monitor source (compiles on first use)"
+fi
+
 # Build the dashboard
 echo "→ Building dashboard UI..."
 cd "$OPENACE_DEST/src/desktop/dashboard-ui"

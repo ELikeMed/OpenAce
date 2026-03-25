@@ -1714,6 +1714,122 @@ Be concise — 2-3 sentences max.`;
   }
 
   /**
+   * Get DOM element info at a screen coordinate by injecting JS into Chrome.
+   * Returns structured metadata: { tagName, type, text, name, id, placeholder, href, role, ariaLabel, formContext, rect, isInteractive, selector }
+   * Converts screen coords → viewport coords accounting for Chrome window chrome.
+   */
+  async getElementAtPoint(screenX, screenY) {
+    try {
+      // Get Chrome window bounds to convert screen → viewport coords
+      let chromeY = 0, chromeX = 0;
+      if (process.platform === 'win32') {
+        // Windows: CDP handles coord conversion internally
+        chromeX = 0;
+        chromeY = 0;
+      } else {
+        // macOS: get Chrome window position via AppleScript
+        try {
+          const boundsStr = execSync(
+            `osascript -e 'tell application "Google Chrome" to get bounds of front window'`,
+            { timeout: 2000 }
+          ).toString().trim();
+          const parts = boundsStr.split(',').map(s => parseInt(s.trim(), 10));
+          if (parts.length === 4) {
+            chromeX = parts[0];
+            chromeY = parts[1];
+          }
+        } catch (e) { /* use 0,0 fallback */ }
+      }
+
+      // Chrome toolbar is ~88px on macOS (title bar + tabs + address bar + bookmarks)
+      const toolbarHeight = process.platform === 'darwin' ? 88 : 80;
+      const viewportX = screenX - chromeX;
+      const viewportY = screenY - chromeY - toolbarHeight;
+
+      if (viewportX < 0 || viewportY < 0) return null; // Click is above viewport (on toolbar/tabs)
+
+      // Account for Retina displays — CSS pixels are half of screen pixels
+      const dpr = process.platform === 'darwin' ? 2 : 1;
+      const cssX = Math.round(viewportX / dpr);
+      const cssY = Math.round(viewportY / dpr);
+
+      const jsCode = `
+        (function() {
+          var el = document.elementFromPoint(${cssX}, ${cssY});
+          if (!el) return JSON.stringify(null);
+
+          // Walk up to find meaningful interactive element (skip wrapper spans/divs)
+          var orig = el;
+          var interactive = ['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'LABEL'];
+          var roles = ['button', 'link', 'tab', 'menuitem', 'checkbox', 'radio', 'option', 'textbox'];
+          for (var i = 0; i < 5 && el.parentElement; i++) {
+            if (interactive.indexOf(el.tagName) !== -1) break;
+            if (el.getAttribute && roles.indexOf(el.getAttribute('role') || '') !== -1) break;
+            if (el.onclick || el.getAttribute('onclick')) break;
+            el = el.parentElement;
+          }
+          // If we walked too far up (hit body/html), use the original element
+          if (el.tagName === 'BODY' || el.tagName === 'HTML') el = orig;
+
+          var rect = el.getBoundingClientRect();
+          var text = (el.innerText || el.textContent || '').trim().substring(0, 80);
+          // For inputs, use placeholder or value as text
+          if (!text && el.placeholder) text = el.placeholder;
+          if (!text && el.value) text = el.value.substring(0, 40);
+
+          // Build a CSS selector
+          var sel = el.tagName.toLowerCase();
+          if (el.id) sel += '#' + el.id;
+          else if (el.getAttribute('data-testid')) sel += '[data-testid="' + el.getAttribute('data-testid') + '"]';
+          else if (el.name) sel += '[name="' + el.name + '"]';
+          else if (el.getAttribute('aria-label')) sel += '[aria-label="' + el.getAttribute('aria-label') + '"]';
+          else if (el.className && typeof el.className === 'string') {
+            var cls = el.className.trim().split(/\\s+/).slice(0, 2).join('.');
+            if (cls) sel += '.' + cls;
+          }
+
+          // Detect form context
+          var formCtx = null;
+          var parent = el.closest('form, nav, [role="dialog"], [role="navigation"], header, footer, aside, [role="tablist"]');
+          if (parent) {
+            var t = parent.tagName.toLowerCase();
+            if (t === 'form') formCtx = 'form';
+            else if (t === 'nav' || parent.getAttribute('role') === 'navigation') formCtx = 'navbar';
+            else if (parent.getAttribute('role') === 'dialog') formCtx = 'dialog';
+            else if (t === 'header') formCtx = 'header';
+            else if (t === 'footer') formCtx = 'footer';
+            else if (t === 'aside') formCtx = 'sidebar';
+            else if (parent.getAttribute('role') === 'tablist') formCtx = 'tab_bar';
+          }
+
+          return JSON.stringify({
+            tagName: el.tagName,
+            type: el.type || null,
+            text: text,
+            name: el.name || null,
+            id: el.id || null,
+            placeholder: el.placeholder || null,
+            href: el.href || null,
+            role: el.getAttribute('role') || null,
+            ariaLabel: el.getAttribute('aria-label') || null,
+            formContext: formCtx,
+            rect: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
+            isInteractive: interactive.indexOf(el.tagName) !== -1 || roles.indexOf(el.getAttribute('role') || '') !== -1 || !!el.onclick,
+            selector: sel
+          });
+        })()
+      `;
+
+      const result = await this._executeJsInChrome(jsCode);
+      if (!result || result === 'null' || result === 'undefined') return null;
+
+      return JSON.parse(result);
+    } catch (e) {
+      return null; // Non-Chrome app or JS execution blocked
+    }
+  }
+
+  /**
    * Get the actual screen bounds from macOS (same coordinate system as AppleScript).
    * Caches the result so we only query once per session.
    */

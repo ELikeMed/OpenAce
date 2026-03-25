@@ -387,6 +387,14 @@ export class DesktopTaskRunner {
           await this._wait(500);
         }
 
+        // ── Strategy 0: CSS selector (from DOM metadata during recording) ──
+        if (!clicked && step.selector) {
+          clicked = await this._clickBySelector(step.selector, isDouble);
+          if (clicked) {
+            this.onProgress(`🎯 Clicked via CSS selector: "${step.selector}"${isDouble ? ' (double-click)' : ''}`);
+          }
+        }
+
         // ── Strategy 1: DOM text search ──
         if (!clicked && step.target) {
           clicked = await this._clickWebElement(step.target, isDouble);
@@ -471,8 +479,14 @@ export class DesktopTaskRunner {
         const text = step.text || step.target || '';
         let clicked = false;
 
+        // Strategy 0: CSS selector (from recording DOM metadata)
+        if (!clicked && step.selector) {
+          clicked = await this._clickBySelector(step.selector);
+          if (clicked) this.onProgress(`🎯 Clicked via CSS selector: "${step.selector}"`);
+        }
+
         // Strategy 1: DOM text search
-        if (text) {
+        if (!clicked && text) {
           clicked = await this._clickWebElement(text);
           if (clicked) this.onProgress(`🌐 Clicked via DOM text: "${text}"`);
         }
@@ -505,6 +519,12 @@ export class DesktopTaskRunner {
       case 'click_submit': {
         // Click a submit/sign-in/save button
         let clicked = false;
+
+        // Strategy 0: CSS selector (from recording DOM metadata)
+        if (!clicked && step.selector) {
+          clicked = await this._clickBySelector(step.selector);
+          if (clicked) this.onProgress(`🎯 Submitted via CSS selector: "${step.selector}"`);
+        }
 
         // Strategy 1: DOM search for submit-type buttons
         if (!this._chromeJsDisabled) {
@@ -1980,6 +2000,51 @@ Use "click" if an element needs clicking, "scroll" if the target might be off-sc
    *
    * @param {string} target - The element description from the SOP, e.g. "Create Event button"
    * @param {boolean} isDouble - If true, dispatch a dblclick event instead of click
+   * @returns {boolean} true if element was found and clicked
+   */
+  async _clickBySelector(selector, isDouble = false) {
+    if (this._chromeJsDisabled || !selector) return false;
+
+    const { execSync } = require('child_process');
+    const fsSyncMod = require('fs');
+    const os = require('os');
+
+    try {
+      const jsCode = `(function() {
+        var el = document.querySelector(${JSON.stringify(selector)});
+        if (!el) return 'NOT_FOUND';
+        var rect = el.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) return 'NOT_FOUND';
+        el.scrollIntoView({ block: 'center', behavior: 'instant' });
+        var evts = ['mousedown', 'mouseup', 'click'];
+        for (var i = 0; i < evts.length; i++) {
+          el.dispatchEvent(new MouseEvent(evts[i], { bubbles: true, cancelable: true, view: window }));
+        }
+        ${isDouble ? `el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, view: window }));` : ''}
+        return 'CLICKED';
+      })()`;
+
+      if (process.platform === 'win32') {
+        const { loadPlatform } = await import('./platforms/PlatformAdapter.js');
+        const plat = await loadPlatform();
+        const result = await plat.executeJsInChrome(jsCode);
+        return result === 'CLICKED';
+      }
+
+      // macOS: AppleScript temp file approach
+      const tmpFile = require('path').join(os.tmpdir(), `ace_sel_${Date.now()}.scpt`);
+      const appleScript = `tell application "Google Chrome" to execute front window's active tab javascript ${JSON.stringify(jsCode)}`;
+      fsSyncMod.writeFileSync(tmpFile, appleScript);
+      const result = execSync(`osascript "${tmpFile}"`, { timeout: 5000 }).toString().trim();
+      try { fsSyncMod.unlinkSync(tmpFile); } catch {}
+      return result === 'CLICKED';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /**
+   * Click a web element by visible text content using JavaScript in Chrome.
    * @returns {boolean} true if element was found and clicked
    */
   async _clickWebElement(target, isDouble = false) {
