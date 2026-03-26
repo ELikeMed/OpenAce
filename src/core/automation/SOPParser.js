@@ -207,10 +207,10 @@ Return ONLY valid JSON:
   ]
 }`;
 
-        // Route to Gemini (not Ollama) — pass messages array, not raw string
+        // Use active provider for document parsing
         const response = await this.aiManager.chat(
           [{ role: 'user', content: prompt }],
-          { temperature: 0.2, provider: 'gemini' }
+          { temperature: 0.2 }
         );
         const content = typeof response === 'string' ? response : response?.content || response?.text || '';
 
@@ -711,10 +711,9 @@ Return ONLY valid JSON:
   ]
 }`;
 
-        // Route to Gemini — this is a heavy document understanding task
+        // Use active provider for document understanding
         const response = await this.aiManager.chat(prompt, {
           temperature: 0.2,
-          provider: 'gemini',
         });
         const content = typeof response === 'string' ? response : response?.content || response?.text || '';
 

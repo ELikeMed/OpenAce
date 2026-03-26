@@ -264,7 +264,7 @@ IMPORTANT for accuracy:
 - Be PRECISE — even 30px off can hit the wrong element on a crowded page.`;
 
       try {
-        this.onProgress(`📡 Sending to AI vision (${this.aiManager.providers.gemini ? 'gemini' : this.aiManager.activeProvider})...`);
+        this.onProgress(`📡 Sending to AI vision (${this.aiManager.getProviderForTask('vision')})...`);
         const response = await this.aiManager.chatWithVision(prompt, imageBase64);
         const content = response.content || response.text || '';
         this.onProgress(`🤖 Vision response (${content.length} chars): "${content.substring(0, 120)}"`);

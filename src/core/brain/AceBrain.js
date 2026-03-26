@@ -1368,27 +1368,16 @@ You can include multiple ACTION tags. The system ACTUALLY executes them through 
     const provider = this.aiManager.activeProvider;
 
     try {
-      switch (provider) {
-        case 'ollama':
-          return await this.callOllama(systemPrompt, messages, maxTokens);
-        case 'openai':
-          return await this.callOpenAI(systemPrompt, messages, maxTokens);
-        case 'claude':
-          return await this.callClaude(systemPrompt, messages, maxTokens);
-        case 'gemini':
-          return await this.callGemini(systemPrompt, messages, maxTokens);
-        default:
-          // Try using AIProviderManager's chat method with liveContext
-          const response = await this.aiManager.chat(messages, {
-            provider: this.aiManager.getProviderForTask('research'),
-            liveContext: systemPrompt.split('═══ CURRENT CONTEXT ═══')[1] || ''
-          });
-          return {
-            text: response.content,
-            provider: response.provider,
-            model: response.model
-          };
-      }
+      // Route through AIProviderManager — handles all providers uniformly
+      const response = await this.aiManager.chat(messages, {
+        systemPrompt,
+        maxTokens,
+      });
+      return {
+        text: response.content || response.text || '',
+        provider: response.provider || provider,
+        model: response.model
+      };
     } catch (err) {
       console.error(`AI call failed (${provider}):`, err.message);
       throw err;

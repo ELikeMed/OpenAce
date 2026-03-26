@@ -34,7 +34,7 @@ export class AIProviderManager {
       this.config = JSON.parse(configData);
     } catch (err) {
       console.warn('⚠️ No config file found. OpenAce will start in setup mode.');
-      this.config = { ai_providers: { active_provider: 'gemini', providers: {} } };
+      this.config = { ai_providers: { active_provider: '', providers: {} } };
       this.needsConfiguration = true;
       return this;
     }
@@ -88,13 +88,13 @@ export class AIProviderManager {
    * Send a message to OpenAce and get a response
    */
   /**
-   * Detect if a task is "heavy" and should be routed to Gemini instead of Ollama.
+   * Detect if a task is "heavy" and should be routed away from Ollama.
    * Heavy tasks involve desktop automation, complex research, or multi-step computer control.
+   * Returns a capable provider name, or null if no upgrade needed.
    */
-  isHeavyTask(messages) {
-    if (!this.providers.gemini) return false;
+  _getHeavyTaskProvider(messages) {
     const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
-    if (!lastUserMessage) return false;
+    if (!lastUserMessage) return null;
     const text = (lastUserMessage.content || '').toLowerCase();
     const heavyPatterns = [
       /take (full )?control/,
@@ -110,15 +110,23 @@ export class AIProviderManager {
       /download (the |a )?file/,
       /research .{20,}/,  // Long research requests
     ];
-    return heavyPatterns.some(p => p.test(text));
+    if (!heavyPatterns.some(p => p.test(text))) return null;
+    // Route to the best available non-Ollama provider
+    for (const p of ['gemini', 'claude', 'openai']) {
+      if (this.providers[p]) return p;
+    }
+    return null;
   }
 
   async chat(messages, options = {}) {
-    // Auto-route heavy tasks (desktop control, browser automation) to Gemini if available
+    // Auto-route heavy tasks away from Ollama to a capable provider
     let provider = options.provider || this.activeProvider;
-    if (provider === 'ollama' && !options.provider && this.isHeavyTask(messages)) {
-      console.log('[AIProviderManager] Heavy task detected — routing to Gemini');
-      provider = 'gemini';
+    if (provider === 'ollama' && !options.provider) {
+      const heavyProvider = this._getHeavyTaskProvider(messages);
+      if (heavyProvider) {
+        console.log(`[AIProviderManager] Heavy task detected — routing to ${heavyProvider}`);
+        provider = heavyProvider;
+      }
     }
 
     if (!this.providers[provider]) {
@@ -154,9 +162,11 @@ export class AIProviderManager {
   async chatWithVision(prompt, imageBase64, options = {}) {
     // Check task routing first, then fall back to active provider
     let provider = options.provider || this.getProviderForTask('vision');
-    // If still on Ollama, prefer Gemini for vision (better at coordinate detection)
-    if (provider === 'ollama' && this.providers.gemini) {
-      provider = 'gemini';
+    // If still on Ollama, route to a vision-capable provider
+    if (provider === 'ollama') {
+      for (const p of ['gemini', 'claude', 'openai']) {
+        if (this.providers[p]) { provider = p; break; }
+      }
     }
 
     if (!this.providers[provider]) {
@@ -567,15 +577,303 @@ export class AIProviderManager {
 
   /**
    * Provider-agnostic tool-calling entry point.
-   * Delegates to the appropriate provider adapter based on config.
-   * Currently only Gemini is implemented — OpenAI/Claude adapters ~50 lines each.
+   * Routes to the active provider's tool-calling adapter.
    */
   async chatWithTools(messages, options) {
-    // For now, always use Gemini for tool calling (free tier, best function calling support)
-    if (!this.providers.gemini) {
-      throw new Error('Gemini provider not configured. Tool-calling requires Gemini (free tier available).');
+    // Route to the active provider's tool-calling adapter
+    const provider = this.activeProvider;
+    if (provider === 'claude' && this.providers.claude) return this.chatClaudeWithTools(messages, options);
+    if (provider === 'openai' && this.providers.openai) return this.chatOpenAIWithTools(messages, options);
+    if (provider === 'gemini' && this.providers.gemini) return this.chatGeminiWithTools(messages, options);
+    // Active provider doesn't support tool calling (e.g. Ollama) — try best available
+    if (this.providers.gemini) return this.chatGeminiWithTools(messages, options);
+    if (this.providers.claude) return this.chatClaudeWithTools(messages, options);
+    if (this.providers.openai) return this.chatOpenAIWithTools(messages, options);
+    throw new Error('No AI provider configured. Add a Gemini, Claude, or OpenAI API key in Settings.');
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // CLAUDE TOOL-CALLING ADAPTER
+  // ═══════════════════════════════════════════════════════
+
+  /**
+   * Convert Gemini tool format to Claude tool format.
+   * Gemini: [{ functionDeclarations: [{ name, description, parameters: { type: 'OBJECT', properties: { x: { type: 'STRING' } } } }] }]
+   * Claude: [{ name, description, input_schema: { type: 'object', properties: { x: { type: 'string' } } } }]
+   */
+  _convertToolsForClaude(geminiTools) {
+    const declarations = geminiTools?.[0]?.functionDeclarations || [];
+    return declarations.map(t => ({
+      name: t.name,
+      description: t.description || '',
+      input_schema: this._convertGeminiSchemaToJson(t.parameters || {}),
+    }));
+  }
+
+  /** Recursively convert Gemini schema types (uppercase) to JSON Schema (lowercase). */
+  _convertGeminiSchemaToJson(schema) {
+    if (!schema || typeof schema !== 'object') return {};
+    const result = {};
+    if (schema.type) result.type = schema.type.toLowerCase();
+    if (schema.description) result.description = schema.description;
+    if (schema.required) result.required = schema.required;
+    if (schema.enum) result.enum = schema.enum;
+    if (schema.properties) {
+      result.properties = {};
+      for (const [key, val] of Object.entries(schema.properties)) {
+        result.properties[key] = this._convertGeminiSchemaToJson(val);
+      }
     }
-    return this.chatGeminiWithTools(messages, options);
+    if (schema.items) result.items = this._convertGeminiSchemaToJson(schema.items);
+    return result;
+  }
+
+  /**
+   * Claude with function calling (tool use).
+   * Returns the same interface as chatGeminiWithTools:
+   *   { response, text, functionCalls: [{name, args}], provider, model, chat }
+   * where chat.sendMessage(toolResults) accepts Gemini-format tool results.
+   */
+  async chatClaudeWithTools(messages, options) {
+    const config = this.config.ai_providers.providers.claude;
+    const systemPrompt = options.systemPrompt || '';
+    const claudeTools = this._convertToolsForClaude(options.tools);
+    const model = config.model || 'claude-sonnet-4-20250514';
+
+    // Build Claude messages from conversation history
+    const claudeMessages = messages
+      .filter(m => m.role !== 'system')
+      .map(m => ({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: String(m.content || ''),
+      }));
+
+    const response = await this.providers.claude.messages.create({
+      model,
+      max_tokens: 8192,
+      system: systemPrompt,
+      tools: claudeTools,
+      messages: claudeMessages,
+    });
+
+    // Parse Claude response into Gemini-compatible format
+    const { text, functionCalls, toolUseBlocks } = this._parseClaudeToolResponse(response);
+
+    // Create stateful chat wrapper that mimics Gemini's chat.sendMessage()
+    const conversationHistory = [...claudeMessages];
+    // Add assistant response to history
+    conversationHistory.push({ role: 'assistant', content: response.content });
+
+    const self = this;
+    const chat = {
+      sendMessage: async (input) => {
+        // Handle both plain string messages (nudges/continuations) and tool result arrays
+        if (typeof input === 'string') {
+          conversationHistory.push({ role: 'user', content: input });
+        } else if (Array.isArray(input) && input[0]?.functionResponse) {
+          // Convert Gemini tool results to Claude tool_result blocks
+          const toolResultContent = input.map(tr => {
+            const fr = tr.functionResponse;
+            const toolBlock = toolUseBlocks.find(b => b.name === fr.name) || {};
+            const resultText = fr.response.error
+              ? `Error: ${fr.response.error}`
+              : (typeof fr.response.result === 'string' ? fr.response.result : JSON.stringify(fr.response.result));
+            return {
+              type: 'tool_result',
+              tool_use_id: toolBlock.id || fr.name,
+              content: resultText,
+            };
+          });
+          conversationHistory.push({ role: 'user', content: toolResultContent });
+        } else {
+          conversationHistory.push({ role: 'user', content: String(input) });
+        }
+
+        const followUp = await self.providers.claude.messages.create({
+          model,
+          max_tokens: 8192,
+          system: systemPrompt,
+          tools: claudeTools,
+          messages: conversationHistory,
+        });
+
+        const parsed = self._parseClaudeToolResponse(followUp);
+        toolUseBlocks.length = 0;
+        toolUseBlocks.push(...parsed.toolUseBlocks);
+
+        conversationHistory.push({ role: 'assistant', content: followUp.content });
+
+        return {
+          response: {
+            text: () => parsed.text,
+            functionCalls: () => parsed.functionCalls,
+          },
+        };
+      },
+    };
+
+    return {
+      response: {
+        text: () => text,
+        functionCalls: () => functionCalls,
+      },
+      text,
+      functionCalls,
+      provider: 'claude',
+      model,
+      chat,
+    };
+  }
+
+  /** Parse a Claude API response into { text, functionCalls, toolUseBlocks }. */
+  _parseClaudeToolResponse(response) {
+    let text = '';
+    const functionCalls = [];
+    const toolUseBlocks = [];
+
+    for (const block of response.content || []) {
+      if (block.type === 'text') {
+        text += block.text;
+      } else if (block.type === 'tool_use') {
+        toolUseBlocks.push(block);
+        functionCalls.push({ name: block.name, args: block.input || {} });
+      }
+    }
+
+    return { text, functionCalls, toolUseBlocks };
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // OPENAI TOOL-CALLING ADAPTER
+  // ═══════════════════════════════════════════════════════
+
+  /**
+   * Convert Gemini tool format to OpenAI tool format.
+   * OpenAI: [{ type: 'function', function: { name, description, parameters: { type: 'object', ... } } }]
+   */
+  _convertToolsForOpenAI(geminiTools) {
+    const declarations = geminiTools?.[0]?.functionDeclarations || [];
+    return declarations.map(t => ({
+      type: 'function',
+      function: {
+        name: t.name,
+        description: t.description || '',
+        parameters: this._convertGeminiSchemaToJson(t.parameters || {}),
+      },
+    }));
+  }
+
+  /**
+   * OpenAI with function calling (tool use).
+   * Returns the same interface as chatGeminiWithTools.
+   */
+  async chatOpenAIWithTools(messages, options) {
+    const config = this.config.ai_providers.providers.openai;
+    const systemPrompt = options.systemPrompt || '';
+    const openaiTools = this._convertToolsForOpenAI(options.tools);
+    const model = config.model || 'gpt-4o';
+
+    // Build OpenAI messages
+    const openaiMessages = [];
+    if (systemPrompt) openaiMessages.push({ role: 'system', content: systemPrompt });
+    for (const m of messages) {
+      if (m.role === 'system') continue;
+      openaiMessages.push({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: String(m.content || ''),
+      });
+    }
+
+    const response = await this.providers.openai.chat.completions.create({
+      model,
+      messages: openaiMessages,
+      tools: openaiTools,
+      max_tokens: 8192,
+    });
+
+    const choice = response.choices[0];
+    const { text, functionCalls, toolCallBlocks } = this._parseOpenAIToolResponse(choice);
+
+    // Create stateful chat wrapper
+    const conversationHistory = [...openaiMessages];
+    conversationHistory.push(choice.message);
+
+    const self = this;
+    const chat = {
+      sendMessage: async (input) => {
+        // Handle both plain string messages (nudges/continuations) and tool result arrays
+        if (typeof input === 'string') {
+          conversationHistory.push({ role: 'user', content: input });
+        } else if (Array.isArray(input) && input[0]?.functionResponse) {
+          for (const tr of input) {
+            const fr = tr.functionResponse;
+            const toolCall = toolCallBlocks.find(b => b.function.name === fr.name) || {};
+            const resultText = fr.response.error
+              ? `Error: ${fr.response.error}`
+              : (typeof fr.response.result === 'string' ? fr.response.result : JSON.stringify(fr.response.result));
+            conversationHistory.push({
+              role: 'tool',
+              tool_call_id: toolCall.id || fr.name,
+              content: resultText,
+            });
+          }
+        } else {
+          conversationHistory.push({ role: 'user', content: String(input) });
+        }
+
+        const followUp = await self.providers.openai.chat.completions.create({
+          model,
+          messages: conversationHistory,
+          tools: openaiTools,
+          max_tokens: 8192,
+        });
+
+        const fChoice = followUp.choices[0];
+        const parsed = self._parseOpenAIToolResponse(fChoice);
+        toolCallBlocks.length = 0;
+        toolCallBlocks.push(...parsed.toolCallBlocks);
+
+        conversationHistory.push(fChoice.message);
+
+        return {
+          response: {
+            text: () => parsed.text,
+            functionCalls: () => parsed.functionCalls,
+          },
+        };
+      },
+    };
+
+    return {
+      response: {
+        text: () => text,
+        functionCalls: () => functionCalls,
+      },
+      text,
+      functionCalls,
+      provider: 'openai',
+      model,
+      chat,
+    };
+  }
+
+  /** Parse an OpenAI choice into { text, functionCalls, toolCallBlocks }. */
+  _parseOpenAIToolResponse(choice) {
+    const message = choice.message;
+    const text = message.content || '';
+    const functionCalls = [];
+    const toolCallBlocks = [];
+
+    if (message.tool_calls) {
+      for (const tc of message.tool_calls) {
+        toolCallBlocks.push(tc);
+        let args = {};
+        try { args = JSON.parse(tc.function.arguments || '{}'); } catch {}
+        functionCalls.push({ name: tc.function.name, args });
+      }
+    }
+
+    return { text, functionCalls, toolCallBlocks };
   }
 
   async chatOllama(messages, options) {
@@ -870,8 +1168,12 @@ CRITICAL RULES:
     const routing = this.config.ai_providers?.task_routing || {};
     const assigned = routing[taskType];
     if (assigned && this.providers[assigned]) return assigned;
-    // Code tasks default to Gemini — Ollama 7B is too weak for quality code generation
-    if (taskType === 'code' && this.providers.gemini) return 'gemini';
+    // Code/vision tasks: avoid Ollama (too weak), prefer active provider or best available
+    if ((taskType === 'code' || taskType === 'vision') && this.activeProvider === 'ollama') {
+      for (const p of ['gemini', 'claude', 'openai']) {
+        if (this.providers[p]) return p;
+      }
+    }
     return this.activeProvider;
   }
 

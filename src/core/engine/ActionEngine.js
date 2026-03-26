@@ -2993,14 +2993,12 @@ Your task is to process the user's request based *only* on the skill instruction
 
   /**
    * Determine the best AI provider for code generation tasks.
-   * Prefers Gemini if available; otherwise falls back to default.
+   * Uses the task routing preference if configured, otherwise active provider.
    * @returns {string|undefined} Provider name or undefined for default
    */
   _getCodeGenerationProvider() {
     try {
-      if (this.aiManager?.providers?.gemini) {
-        return 'gemini';
-      }
+      return this.aiManager?.getProviderForTask('code');
     } catch (e) {
       // Ignore — fall through to default
     }

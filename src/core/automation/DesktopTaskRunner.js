@@ -1676,7 +1676,7 @@ Use "click" if an element needs clicking, "scroll" if the target might be off-sc
           { type: 'text', text: prompt },
           { type: 'image', data: screenshot, mimeType: 'image/png' },
         ]}],
-        { temperature: 0.2, maxTokens: 200, provider: 'gemini' }
+        { temperature: 0.2, maxTokens: 200 }
       );
 
       const content = typeof response === 'string' ? response : response?.content || response?.text || '';

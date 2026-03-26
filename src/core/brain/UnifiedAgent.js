@@ -2308,7 +2308,7 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
 
       // Log tool call diagnostics
       let callCount = result.functionCalls?.length || 0;
-      console.log(`[UnifiedAgent] Gemini returned: ${callCount} function calls, text: ${result.text ? result.text.substring(0, 100) + '...' : '(none)'}${isStudioProject ? ' [Studio project]' : ''}`);
+      console.log(`[UnifiedAgent] ${result.provider || 'AI'} returned: ${callCount} function calls, text: ${result.text ? result.text.substring(0, 100) + '...' : '(none)'}${isStudioProject ? ' [Studio project]' : ''}`);
 
       // ═══ DIRECT PREFIX HANDLING — guaranteed tool execution ═══
       // When the user clicks an action button (Search, Browse, etc.), the prefix IS the command.
@@ -2647,24 +2647,22 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
       // Provide actionable error messages instead of raw SDK errors
       let errorMsg;
       const errStr = error.message || '';
+      const provider = this.aiManager?.activeProvider || 'AI';
 
       if (errStr.includes('fetch failed') || errStr.includes('ENOTFOUND') || errStr.includes('ECONNREFUSED')) {
-        // Network-level failure — Gemini API unreachable
-        errorMsg = `I'm having trouble connecting to the AI service (Gemini). This is usually a network issue on your end. Please check:\n\n` +
+        errorMsg = `I'm having trouble connecting to the AI service (${provider}). Please check:\n\n` +
           `1. **Internet connection** — make sure you're online\n` +
-          `2. **Firewall/VPN** — your firewall or VPN may be blocking generativelanguage.googleapis.com\n` +
-          `3. **API key** — verify your Gemini API key is correct in Settings\n` +
-          `4. **Node.js version** — run \`node --version\` in your terminal (must be 18 or higher)\n\n` +
-          `Try restarting Ace after checking these. If you're on a corporate network, you may need to allowlist Google's API domain.`;
-      } else if (errStr.includes('API_KEY') || errStr.includes('403') || errStr.includes('PERMISSION_DENIED')) {
-        errorMsg = `Your Gemini API key doesn't have the right permissions. Please check:\n\n` +
-          `1. Go to https://aistudio.google.com/apikey and verify your key is active\n` +
-          `2. Make sure billing is enabled on your Google Cloud project\n` +
-          `3. Update your API key in Settings if needed`;
-      } else if (errStr.includes('429') || errStr.includes('RESOURCE_EXHAUSTED')) {
-        errorMsg = `I've hit the Gemini API rate limit. The free tier allows 15 requests per minute. Please wait a moment and try again, or upgrade to a paid tier at https://aistudio.google.com for higher limits.`;
-      } else if (errStr.includes('quota')) {
-        errorMsg = `Your Gemini API quota has been exhausted. Check your usage at https://aistudio.google.com and consider upgrading your plan.`;
+          `2. **API key** — verify your ${provider} API key is correct in Settings\n` +
+          `3. **Firewall/VPN** — your network may be blocking the API\n\n` +
+          `Try restarting Ace after checking these.`;
+      } else if (errStr.includes('API_KEY') || errStr.includes('403') || errStr.includes('PERMISSION_DENIED') || errStr.includes('authentication_error') || errStr.includes('invalid_api_key')) {
+        errorMsg = `Your ${provider} API key appears invalid or lacks permissions. Please check your API key in Settings.`;
+      } else if (errStr.includes('429') || errStr.includes('RESOURCE_EXHAUSTED') || errStr.includes('rate_limit')) {
+        errorMsg = `I've hit the ${provider} API rate limit. Please wait a moment and try again, or check your plan limits.`;
+      } else if (errStr.includes('quota') || errStr.includes('insufficient_quota')) {
+        errorMsg = `Your ${provider} API quota has been exhausted. Check your usage and consider upgrading your plan.`;
+      } else if (errStr.includes('No AI provider configured')) {
+        errorMsg = `No AI provider is configured. Please add a Gemini, Claude, or OpenAI API key in Settings to get started.`;
       } else {
         const soul = this._soulConfig;
         errorMsg = soul
