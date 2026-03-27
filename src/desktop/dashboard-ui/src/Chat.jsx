@@ -34,6 +34,7 @@ import ScheduleIcon from '@mui/icons-material/Schedule';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import ConversationSidebar from './components/ConversationSidebar';
+import NewProcessDialog from './components/NewProcessDialog';
 import { BRAND } from './theme';
 
 function TypingIndicator() {
@@ -1809,6 +1810,7 @@ function Chat() {
   const fileInputRef = useRef(null);
   const [isTraining, setIsTraining] = useState(false);
   const [trainPromptMode, setTrainPromptMode] = useState(false);
+  const [newProcessOpen, setNewProcessOpen] = useState(false);
   const [recordingSteps, setRecordingSteps] = useState([]);
   const messagesEndRef = useRef(null);
   const initializedRef = useRef(false);
@@ -2547,16 +2549,8 @@ function Chat() {
       // Currently recording — stop it
       handleTrainStop();
     } else {
-      // Insert guided TeachingCard instead of blind recording
-      setMessages(prev => [...prev, {
-        sender: 'Ace',
-        text: "Let's build a new process step by step. Describe each action in plain English and I'll learn it.",
-        teaching: {
-          phase: 'setup', name: '', triggers: '',
-          steps: [{ text: '' }],
-          parsedSteps: [], qualityResult: null, savedSop: null, error: null,
-        },
-      }]);
+      // Open the unified New Process dialog
+      setNewProcessOpen(true);
     }
   };
 
@@ -3663,6 +3657,18 @@ function Chat() {
             boxShadow: `0 8px 24px ${alpha('#000', 0.4)}`,
           }
         } }}
+      />
+      {/* New Process Dialog — opened from Train button */}
+      <NewProcessDialog
+        open={newProcessOpen}
+        onClose={() => setNewProcessOpen(false)}
+        onCreated={(sop) => {
+          setNewProcessOpen(false);
+          setMessages(prev => [...prev, {
+            role: 'ace',
+            text: `Saved **"${sop?.name || 'New Process'}"** with ${sop?.steps?.length || '?'} steps. You can run it anytime by asking me.`,
+          }]);
+        }}
       />
     </Box>
   );

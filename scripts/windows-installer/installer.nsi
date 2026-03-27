@@ -14,7 +14,7 @@
 !define APP_VERSION "1.6.0"
 !define APP_PUBLISHER "LikemindedPro"
 !define APP_URL "https://github.com/LikemindedPro/OpenAce"
-!define APP_EXE "OpenAce.bat"
+!define APP_EXE "Start OpenAce.bat"
 !define INSTALL_DIR "$PROGRAMFILES\${APP_NAME}"
 
 ; ── Installer Config ──
@@ -50,7 +50,7 @@ Section "Install"
   SetOutPath "$INSTDIR"
 
   ; Copy launcher
-  File "OpenAce.bat"
+  File "Start OpenAce.bat"
   File "icon.ico"
 
   ; Copy bundled Node.js

@@ -3,16 +3,15 @@ import {
   Box, Typography, Paper, Chip, Avatar, Button, Grid, alpha, Skeleton,
   Dialog, DialogTitle, DialogContent, DialogActions, IconButton, TextField,
   CircularProgress, Divider, Select, MenuItem, FormControl, InputLabel,
-  Collapse, Tooltip, Tabs, Tab, LinearProgress
+  Collapse, Tooltip, LinearProgress
 } from '@mui/material';
-import Training from './Training';
+import NewProcessDialog from './NewProcessDialog';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import FolderIcon from '@mui/icons-material/Folder';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CloseIcon from '@mui/icons-material/Close';
-import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
@@ -180,10 +179,7 @@ function SOPs() {
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
-  const [generateDialog, setGenerateDialog] = useState(false);
-  const [generateDesc, setGenerateDesc] = useState('');
-  const [generateName, setGenerateName] = useState('');
-  const [generating, setGenerating] = useState(false);
+  const [newProcessOpen, setNewProcessOpen] = useState(false);
 
   // Editor state
   const [editingSop, setEditingSop] = useState(null);
@@ -207,8 +203,8 @@ function SOPs() {
   // Expand state for SOP cards
   const [expandedSop, setExpandedSop] = useState(null);
 
-  // Top-level tab: 0 = My SOPs, 1 = Teach Ace
-  const [sopTab, setSopTab] = useState(0);
+  // Search filter
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Learning/health data
   const [learningMap, setLearningMap] = useState({});
@@ -291,26 +287,6 @@ function SOPs() {
       setSops(prev => prev.filter(s => s.id !== id));
     } catch (e) { console.error(e); }
     finally { setConfirmDelete(null); }
-  };
-
-  const handleGenerate = async () => {
-    if (!generateDesc.trim()) return;
-    setGenerating(true);
-    try {
-      const res = await fetch('/api/sops/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description: generateDesc, name: generateName }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setGenerateDialog(false);
-        setGenerateDesc('');
-        setGenerateName('');
-        fetchSOPs();
-      }
-    } catch (e) { console.error(e); }
-    finally { setGenerating(false); }
   };
 
   // ── Editor Handlers ──
@@ -482,68 +458,65 @@ function SOPs() {
           }}>
             <AssignmentIcon sx={{ fontSize: 24 }} />
           </Avatar>
-          <Box>
+          <Box sx={{ flex: 1 }}>
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
               Processes
             </Typography>
             <Typography variant="body2" sx={{ color: BRAND.textSecondary }}>
-              Teach Ace step-by-step processes you do repeatedly — like logging into a site, posting content, or checking a dashboard. Ace learns and runs them for you.
+              Teach Ace step-by-step processes — he learns and runs them for you.
             </Typography>
           </Box>
-          {sopTab === 0 && (
-            <Box sx={{ ml: 'auto', display: 'flex', gap: 1.5, alignItems: 'center' }}>
-              <Button
-                variant="contained"
-                size="small"
-                startIcon={<AutoAwesomeIcon />}
-                onClick={() => setGenerateDialog(true)}
-                sx={{
-                  background: `linear-gradient(135deg, ${BRAND.accent}, ${BRAND.primary}) !important`,
-                  fontSize: '0.8rem',
-                }}
-              >
-                Generate SOP
-              </Button>
-              <Chip
-                label={`${sops.length} SOPs`}
-                sx={{
-                  fontWeight: 600,
-                  background: alpha(BRAND.info, 0.1),
-                  color: BRAND.info,
-                  border: `1px solid ${alpha(BRAND.info, 0.2)}`,
-                }}
-              />
-            </Box>
-          )}
+          <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<AddIcon />}
+              onClick={() => setNewProcessOpen(true)}
+              sx={{
+                background: `linear-gradient(135deg, ${BRAND.primary}, ${BRAND.accent}) !important`,
+                fontSize: '0.8rem', whiteSpace: 'nowrap',
+              }}
+            >
+              New Process
+            </Button>
+            <Chip
+              label={`${sops.length} total`}
+              sx={{
+                fontWeight: 600,
+                background: alpha(BRAND.info, 0.1),
+                color: BRAND.info,
+                border: `1px solid ${alpha(BRAND.info, 0.2)}`,
+              }}
+            />
+          </Box>
         </Box>
       </Paper>
 
-      {/* Tab bar */}
-      <Paper sx={{
-        borderTop: 'none', borderTopLeftRadius: 0, borderTopRightRadius: 0,
-        border: `1px solid ${alpha(BRAND.info, 0.15)}`,
-        mb: 3,
-      }}>
-        <Tabs
-          value={sopTab}
-          onChange={(_, v) => setSopTab(v)}
-          sx={{
-            px: 2,
-            '& .MuiTab-root': { fontSize: '0.875rem', minHeight: 44, textTransform: 'none', fontWeight: 500 },
-            '& .Mui-selected': { color: `${BRAND.primary} !important`, fontWeight: 700 },
-            '& .MuiTabs-indicator': { backgroundColor: BRAND.primary },
+      {/* Search bar */}
+      <Box sx={{ mb: 2.5, mt: -0.5 }}>
+        <TextField
+          fullWidth size="small"
+          placeholder="Search processes..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          InputProps={{
+            startAdornment: <SearchIcon sx={{ fontSize: 18, color: BRAND.textMuted, mr: 1 }} />,
           }}
-        >
-          <Tab label="My Processes" />
-          <Tab label="Teach Ace" />
-        </Tabs>
-      </Paper>
+          sx={{
+            '& .MuiOutlinedInput-root': {
+              fontSize: '0.85rem', borderRadius: '10px',
+              background: alpha(BRAND.bgSurface, 0.5),
+              '& fieldset': { borderColor: alpha(BRAND.border, 0.3) },
+              '&:hover fieldset': { borderColor: alpha(BRAND.primary, 0.3) },
+              '&.Mui-focused fieldset': { borderColor: BRAND.primary },
+            },
+            '& .MuiOutlinedInput-input': { color: BRAND.textPrimary, py: 1 },
+          }}
+        />
+      </Box>
 
-      {/* Tab 1 — Teach Ace (Training) */}
-      {sopTab === 1 && <Training />}
-
-      {/* Tab 0 — SOP Grid */}
-      {sopTab === 0 && (loading ? (
+      {/* SOP Grid */}
+      {loading ? (
         <Grid container spacing={2}>
           {[...Array(6)].map((_, i) => (
             <Grid size={{ xs: 12, sm: 6, md: 4 }} key={i}>
@@ -551,9 +524,9 @@ function SOPs() {
             </Grid>
           ))}
         </Grid>
-      ) : sops.length > 0 ? (
+      ) : sops.filter(s => !searchQuery || s.name?.toLowerCase().includes(searchQuery.toLowerCase()) || s.category?.toLowerCase().includes(searchQuery.toLowerCase())).length > 0 ? (
         <Grid container spacing={2}>
-          {sops.map((sop) => {
+          {sops.filter(s => !searchQuery || s.name?.toLowerCase().includes(searchQuery.toLowerCase()) || s.category?.toLowerCase().includes(searchQuery.toLowerCase())).map((sop) => {
             const color = getCategoryColor(sop.category);
             const isExpanded = expandedSop === sop.id;
             return (
@@ -798,33 +771,29 @@ function SOPs() {
           })}
         </Grid>
       ) : (
-        <Paper sx={{ p: 4, maxWidth: 520, mx: 'auto' }}>
+        <Paper sx={{ p: 5, maxWidth: 480, mx: 'auto', textAlign: 'center' }}>
           <AssignmentIcon sx={{ fontSize: 48, color: BRAND.textMuted, mb: 2, display: 'block', mx: 'auto' }} />
-          <Typography variant="h6" sx={{ color: BRAND.textSecondary, mb: 1, textAlign: 'center' }}>
-            No Processes Yet
+          <Typography variant="h6" sx={{ color: BRAND.textSecondary, mb: 1 }}>
+            {searchQuery ? 'No matching processes' : 'No Processes Yet'}
           </Typography>
-          <Typography variant="body2" sx={{ color: BRAND.textMuted, mb: 2, textAlign: 'center' }}>
-            Teach Ace the things you do over and over — he'll learn the steps and do them for you.
+          <Typography variant="body2" sx={{ color: BRAND.textMuted, mb: 3 }}>
+            {searchQuery
+              ? `Nothing matches "${searchQuery}". Try a different search or create a new process.`
+              : 'Teach Ace the things you do over and over. Type the steps or record your screen — Ace learns and runs them for you.'}
           </Typography>
-          <Box sx={{ pl: 2 }}>
-            <Typography variant="body2" sx={{ color: BRAND.textSecondary, mb: 0.5 }}>
-              <strong>1.</strong> In chat, say: <em>"Let me teach you how to [task]"</em>
-            </Typography>
-            <Typography variant="body2" sx={{ color: BRAND.textSecondary, mb: 0.5 }}>
-              <strong>2.</strong> Walk Ace through the steps in plain English
-            </Typography>
-            <Typography variant="body2" sx={{ color: BRAND.textSecondary, mb: 2 }}>
-              <strong>3.</strong> Ace saves it as a process you can run anytime or add to a routine
-            </Typography>
-          </Box>
-          <Box sx={{ bgcolor: 'rgba(255,255,255,0.04)', borderRadius: 1, p: 1.5 }}>
-            <Typography variant="caption" sx={{ color: BRAND.textMuted }}>
-              <strong>Example:</strong> "Teach you how to log into Eventbrite and repost our meetup"
-              <br />→ Ace asks you to walk through each step → Saves the process → You can run it or schedule it
-            </Typography>
-          </Box>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setNewProcessOpen(true)}
+            sx={{
+              background: `linear-gradient(135deg, ${BRAND.primary}, ${BRAND.accent}) !important`,
+              fontSize: '0.85rem', px: 3,
+            }}
+          >
+            New Process
+          </Button>
         </Paper>
-      ))}
+      )}
 
       {/* ═══ Delete Confirmation Dialog ═══ */}
       <Dialog open={!!confirmDelete} onClose={() => setConfirmDelete(null)}>
@@ -841,42 +810,12 @@ function SOPs() {
         </DialogActions>
       </Dialog>
 
-      {/* ═══ Generate SOP Dialog ═══ */}
-      <Dialog open={generateDialog} onClose={() => !generating && setGenerateDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <AutoAwesomeIcon sx={{ color: BRAND.accent }} />
-            Generate SOP from Description
-          </Box>
-          <IconButton size="small" onClick={() => !generating && setGenerateDialog(false)}><CloseIcon /></IconButton>
-        </DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}>
-          <Typography variant="body2" sx={{ color: BRAND.textSecondary }}>
-            Describe a browser workflow in plain English and Ace will create a replayable SOP.
-          </Typography>
-          <TextField label="SOP Name (optional)" placeholder="e.g., Login to LinkedIn"
-            value={generateName} onChange={(e) => setGenerateName(e.target.value)} fullWidth disabled={generating} />
-          <TextField label="Describe the workflow"
-            placeholder="Go to linkedin.com, log in with my saved credentials, navigate to search..."
-            value={generateDesc} onChange={(e) => setGenerateDesc(e.target.value)}
-            fullWidth multiline rows={5} disabled={generating} />
-          {generating && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 1 }}>
-              <CircularProgress size={20} sx={{ color: BRAND.accent }} />
-              <Typography variant="body2" sx={{ color: BRAND.accent }}>AI is generating your SOP...</Typography>
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setGenerateDialog(false)} disabled={generating}>Cancel</Button>
-          <Button variant="contained" onClick={handleGenerate}
-            disabled={!generateDesc.trim() || generating}
-            startIcon={generating ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : <AutoAwesomeIcon />}
-            sx={{ background: `linear-gradient(135deg, ${BRAND.accent}, ${BRAND.primary}) !important`, '&.Mui-disabled': { opacity: 0.5 } }}>
-            {generating ? 'Generating...' : 'Generate SOP'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* ═══ New Process Dialog ═══ */}
+      <NewProcessDialog
+        open={newProcessOpen}
+        onClose={() => setNewProcessOpen(false)}
+        onCreated={() => { fetchSOPs(); }}
+      />
 
       {/* ═══ SOP Editor Dialog ═══ */}
       <Dialog open={!!editingSop} onClose={closeEditor} maxWidth="md" fullWidth>

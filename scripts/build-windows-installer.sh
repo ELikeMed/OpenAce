@@ -164,7 +164,7 @@ echo "  OpenAce installed: $OPENACE_SIZE"
 echo "→ Adding launcher files..."
 
 # Copy the Windows launcher batch file
-cp "$SCRIPT_DIR/windows-installer/OpenAce.bat" "$STAGING/OpenAce.bat"
+cp "$SCRIPT_DIR/windows-installer/Start OpenAce.bat" "$STAGING/Start OpenAce.bat"
 
 # Copy NSIS installer script (for building .exe installer on Windows)
 cp "$SCRIPT_DIR/windows-installer/installer.nsi" "$STAGING/installer.nsi"
@@ -211,5 +211,5 @@ echo "║  2. cd dist/windows-build/staging                          ║"
 echo "║  3. makensis installer.nsi                                 ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 echo ""
-echo "Portable usage: Unzip → double-click OpenAce.bat"
+echo "Portable usage: Unzip → double-click 'Start OpenAce.bat'"
 echo ""

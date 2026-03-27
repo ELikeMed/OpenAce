@@ -1,6 +1,6 @@
 {
   "name": "openace",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "description": "OpenAce - Your AI Executive Assistant for CMO, CTO, and COO tasks",
   "main": "src/core/index.js",
   "type": "module",
