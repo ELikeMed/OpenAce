@@ -582,7 +582,7 @@ That's it! Once connected, I can help you with research, email, social media, we
     if (this.unifiedAgent) {
       try {
         const conv = this.conversations.get(channelId);
-        const history = (Array.isArray(conv) ? conv : []).slice(-10);
+        const history = (Array.isArray(conv) ? conv : []).slice(-25);
 
         // Detect training intent — signals UnifiedAgent to follow interview protocol
         const trainingMode = /\b(teach|train|learn)\b/i.test(message) ||
@@ -742,7 +742,7 @@ I'll be ready to help as soon as the limit resets!`;
       ).length;
       const ratio = overlap / sopWords.length;
 
-      if (ratio >= 0.35 && overlap >= 2 && ratio > bestRatio) {
+      if (ratio >= 0.5 && overlap >= 3 && ratio > bestRatio) {
         bestRatio = ratio;
         bestMatch = {
           handler: `sop:${sop.id}`,

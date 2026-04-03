@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenAce Embed SDK — Widget Preview</title>
+  <style>
+    /* ── Page styles ── */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8fafc;
+      color: #1e293b;
+      min-height: 100vh;
+    }
+    .demo-page {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 24px;
+    }
+    .demo-page h1 { font-size: 28px; margin-bottom: 8px; }
+    .demo-page .subtitle { color: #64748b; margin-bottom: 32px; font-size: 15px; }
+    .demo-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 24px;
+      background: white;
+      border-bottom: 1px solid #e2e8f0;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .demo-nav-brand { font-weight: 700; font-size: 18px; color: #1e293b; text-decoration: none; }
+    .demo-nav-links { display: flex; gap: 20px; align-items: center; }
+    .demo-nav-links a { color: #64748b; text-decoration: none; font-size: 14px; }
+    .demo-section { background: white; border-radius: 12px; padding: 32px; margin-bottom: 24px; border: 1px solid #e2e8f0; }
+    .demo-section h2 { font-size: 18px; margin-bottom: 16px; color: #6366f1; }
+    .demo-section p { color: #64748b; line-height: 1.6; }
+    .mode-switch { display: flex; gap: 8px; margin-bottom: 20px; }
+    .mode-btn {
+      padding: 8px 16px; border-radius: 8px; border: 1px solid #e2e8f0;
+      background: white; cursor: pointer; font-size: 13px; font-weight: 500;
+      transition: all 0.2s;
+    }
+    .mode-btn.active { background: #6366f1; color: white; border-color: #6366f1; }
+    .mode-btn:hover:not(.active) { border-color: #6366f1; color: #6366f1; }
+    .theme-switch { display: flex; gap: 8px; margin-bottom: 20px; }
+  </style>
+
+  <!-- Embed the actual widget CSS -->
+  <style>
+    /* ── Widget CSS (from ace-widget.css) ── */
+    .ace-widget *, .ace-widget *::before, .ace-widget *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    .ace-widget {
+      --ace-primary: #6366f1; --ace-primary-hover: #4f46e5; --ace-cyan: #22d3ee;
+      --ace-bg: #ffffff; --ace-bg-secondary: #f8fafc;
+      --ace-bg-message-user: #6366f1; --ace-bg-message-ace: #f1f5f9;
+      --ace-text: #1e293b; --ace-text-secondary: #64748b; --ace-text-on-primary: #ffffff;
+      --ace-border: #e2e8f0; --ace-shadow: 0 8px 32px rgba(0,0,0,0.12);
+      --ace-shadow-button: 0 4px 16px rgba(99,102,241,0.4);
+      --ace-radius: 12px; --ace-radius-sm: 8px;
+      --ace-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --ace-font-size: 14px; --ace-transition: 0.2s ease;
+      --ace-widget-width: 380px; --ace-widget-height: 520px;
+      font-family: var(--ace-font); font-size: var(--ace-font-size); line-height: 1.5;
+      color: var(--ace-text); z-index: 99999;
+    }
+    .ace-widget.ace-dark {
+      --ace-bg: #1e1e2e; --ace-bg-secondary: #2a2a3e; --ace-bg-message-ace: #2a2a3e;
+      --ace-text: #e2e8f0; --ace-text-secondary: #94a3b8; --ace-border: #334155;
+      --ace-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+    .ace-widget-container { position: fixed; z-index: 99999; }
+    .ace-widget-container.ace-bottom-right { bottom: 20px; right: 20px; }
+    .ace-fab {
+      width: 60px; height: 60px; border-radius: 50%; border: none;
+      background: var(--ace-primary); color: var(--ace-text-on-primary);
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      box-shadow: var(--ace-shadow-button); transition: transform 0.2s, box-shadow 0.2s;
+      position: relative; overflow: hidden;
+    }
+    .ace-fab::before {
+      content: ''; position: absolute; inset: -3px; border-radius: 50%;
+      background: var(--ace-primary); opacity: 0; animation: ace-pulse 3s ease-in-out infinite; z-index: -1;
+    }
+    @keyframes ace-pulse { 0%,100%{transform:scale(1);opacity:0} 50%{transform:scale(1.15);opacity:0.3} }
+    .ace-fab:hover { transform: scale(1.08); box-shadow: 0 6px 24px rgba(99,102,241,0.5); }
+    .ace-fab:hover::before { animation: none; opacity: 0; }
+    .ace-fab-inner { display: flex; align-items: center; justify-content: center; }
+    .ace-chat-window {
+      position: absolute; bottom: 72px; right: 0; width: var(--ace-widget-width);
+      height: var(--ace-widget-height); max-height: calc(100vh - 120px);
+      background: var(--ace-bg); border-radius: var(--ace-radius);
+      box-shadow: var(--ace-shadow); border: 1px solid var(--ace-border);
+      display: flex; flex-direction: column; overflow: hidden;
+      opacity: 0; transform: translateY(16px) scale(0.95); pointer-events: none;
+      transition: opacity 0.25s ease, transform 0.25s ease;
+    }
+    .ace-chat-window.ace-visible { opacity: 1; transform: translateY(0) scale(1); pointer-events: all; }
+    .ace-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px; background: #111827; color: white; flex-shrink: 0;
+    }
+    .ace-header-left { display: flex; align-items: center; gap: 10px; }
+    .ace-header-logo {
+      width: 36px; height: 36px; border-radius: 50%; background: rgba(255,255,255,0.1);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .ace-header-info h3 { font-size: 15px; font-weight: 700; line-height: 1.2; }
+    .ace-header-open { color: #ffffff; }
+    .ace-header-ace { color: #22d3ee; }
+    .ace-header-info span { font-size: 11px; opacity: 0.65; }
+    .ace-header-close {
+      background: none; border: none; color: white; cursor: pointer;
+      padding: 4px; border-radius: 4px; opacity: 0.7;
+    }
+    .ace-header-close:hover { opacity: 1; }
+    .ace-messages {
+      flex: 1; overflow-y: auto; padding: 16px; display: flex;
+      flex-direction: column; gap: 12px; scroll-behavior: smooth;
+    }
+    .ace-messages::-webkit-scrollbar { width: 5px; }
+    .ace-messages::-webkit-scrollbar-thumb { background: var(--ace-border); border-radius: 4px; }
+    .ace-message { max-width: 85%; display: flex; flex-direction: column; gap: 4px; }
+    .ace-message-user { align-self: flex-end; }
+    .ace-message-ace { align-self: flex-start; }
+    .ace-bubble { padding: 10px 14px; border-radius: var(--ace-radius); word-wrap: break-word; }
+    .ace-message-user .ace-bubble {
+      background: var(--ace-bg-message-user); color: white; border-bottom-right-radius: 4px;
+    }
+    .ace-message-ace .ace-bubble {
+      background: var(--ace-bg-message-ace); color: var(--ace-text); border-bottom-left-radius: 4px;
+    }
+    .ace-bubble strong { font-weight: 600; }
+    .ace-tool-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+    .ace-tool-chip {
+      display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;
+      background: var(--ace-bg-secondary); border: 1px solid var(--ace-border);
+      border-radius: 12px; font-size: 11px; color: var(--ace-text-secondary);
+    }
+    .ace-thinking {
+      align-self: flex-start; display: flex; align-items: center; gap: 8px;
+      padding: 8px 14px; background: var(--ace-bg-message-ace);
+      border-radius: var(--ace-radius); color: var(--ace-text-secondary); font-size: 13px;
+    }
+    .ace-thinking-dots { display: flex; gap: 3px; }
+    .ace-thinking-dots span {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--ace-text-secondary); animation: ace-bounce 1.2s infinite;
+    }
+    .ace-thinking-dots span:nth-child(2) { animation-delay: 0.15s; }
+    .ace-thinking-dots span:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes ace-bounce { 0%,60%,100%{transform:translateY(0);opacity:0.4} 30%{transform:translateY(-4px);opacity:1} }
+    .ace-input-area {
+      display: flex; align-items: flex-end; gap: 8px; padding: 12px 16px;
+      border-top: 1px solid var(--ace-border); background: var(--ace-bg); flex-shrink: 0;
+    }
+    .ace-input-wrapper { flex: 1; display: flex; }
+    .ace-input {
+      width: 100%; border: 1px solid var(--ace-border); border-radius: 20px;
+      padding: 8px 16px; font-size: 14px; font-family: inherit;
+      background: var(--ace-bg-secondary); color: var(--ace-text);
+      outline: none; resize: none; min-height: 36px;
+    }
+    .ace-input:focus { border-color: var(--ace-primary); }
+    .ace-input::placeholder { color: var(--ace-text-secondary); }
+    .ace-send-btn {
+      width: 36px; height: 36px; border-radius: 50%; border: none;
+      background: var(--ace-primary); color: white; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .ace-send-btn:hover { background: var(--ace-primary-hover); }
+    .ace-watermark { text-align: center; padding: 6px; border-top: 1px solid var(--ace-border); }
+    .ace-watermark a {
+      font-size: 10px; color: var(--ace-text-secondary); text-decoration: none;
+      opacity: 0.7; display: inline-flex; align-items: center; gap: 4px;
+    }
+    .ace-watermark a:hover { opacity: 1; }
+    .ace-greeting { text-align: center; padding: 24px 16px; color: var(--ace-text-secondary); }
+    .ace-greeting-logo {
+      width: 56px; height: 56px; border-radius: 50%; background: var(--ace-bg-secondary);
+      border: 2px solid var(--ace-border); display: flex; align-items: center;
+      justify-content: center; margin: 0 auto 14px;
+    }
+    .ace-greeting h4 { font-size: 16px; font-weight: 700; color: var(--ace-text); margin-bottom: 6px; }
+    .ace-greeting p { font-size: 13px; line-height: 1.5; max-width: 280px; margin: 0 auto; }
+    /* Button mode */
+    .ace-trigger-btn {
+      display: inline-flex; align-items: center; gap: 8px; padding: 8px 18px;
+      background: var(--ace-primary); color: white; border: none; border-radius: 24px;
+      font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer;
+      box-shadow: 0 2px 8px rgba(99,102,241,0.25); transition: all 0.2s;
+    }
+    .ace-trigger-btn:hover { background: var(--ace-primary-hover); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(99,102,241,0.35); }
+    /* Inline mode */
+    .ace-inline-panel {
+      position: relative !important; bottom: auto !important;
+      width: 100% !important; height: 100% !important; max-height: none !important;
+      border-radius: 12px; transform: none !important;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Fake site header -->
+  <nav class="demo-nav">
+    <a href="#" class="demo-nav-brand">What2DoToday</a>
+    <div class="demo-nav-links">
+      <a href="#">Events</a>
+      <a href="#">About</a>
+
+      <!-- MODE 2: Button in header -->
+      <div class="ace-widget" id="button-widget" style="display:none; position:relative;">
+        <button class="ace-trigger-btn" onclick="toggleChat('button')">
+          <svg viewBox="0 0 100 120" width="18" height="18" fill="currentColor"><path d="M50 8 C50 8, 5 50, 5 72 C5 90, 20 98, 35 90 C42 86, 47 80, 50 72 C53 80, 58 86, 65 90 C80 98, 95 90, 95 72 C95 50, 50 8, 50 8Z"/><path d="M44 88 L44 112 C44 115, 46 116, 50 116 C54 116, 56 115, 56 112 L56 88 C54 90, 52 91, 50 91 C48 91, 46 90, 44 88Z"/></svg>
+          <span>Ask Ace</span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="demo-page">
+    <h1>OpenAce Embed SDK Preview</h1>
+    <p class="subtitle">This is what the widget looks like on a developer's website. Switch between modes below.</p>
+
+    <!-- Mode switcher -->
+    <div class="mode-switch">
+      <button class="mode-btn active" onclick="setMode('fab')">FAB (Floating)</button>
+      <button class="mode-btn" onclick="setMode('button')">Button (Header)</button>
+      <button class="mode-btn" onclick="setMode('inline')">Inline (Panel)</button>
+    </div>
+    <div class="theme-switch">
+      <button class="mode-btn active" id="theme-light" onclick="setTheme('light')">Light</button>
+      <button class="mode-btn" id="theme-dark" onclick="setTheme('dark')">Dark</button>
+    </div>
+
+    <div class="demo-section">
+      <h2>Your Website Content</h2>
+      <p>This simulates your actual website. The OpenAce widget floats on top as a spade icon (bottom-right), sits in your header as a button, or embeds inline in a panel. Only you (the admin) see it.</p>
+      <br>
+      <p>Try clicking the spade button in the bottom-right corner, or switch to "Button" mode to see it in the nav bar, or "Inline" to see the embedded panel below.</p>
+    </div>
+
+    <!-- MODE 3: Inline panel -->
+    <div id="inline-container" style="display:none; height: 520px; margin-bottom: 24px;">
+      <div class="ace-widget" id="inline-widget">
+        <div class="ace-chat-window ace-visible ace-inline-panel" id="inline-chat">
+          <!-- chat content injected by JS -->
+        </div>
+      </div>
+    </div>
+
+    <div class="demo-section">
+      <h2>More of your content here...</h2>
+      <p>Blog posts, events, products — whatever your site has. Ace sits quietly until you need it. Ask it to write a blog post, analyze your SEO, plan your social media content, or manage your leads pipeline.</p>
+    </div>
+  </div>
+
+  <!-- MODE 1: FAB (Floating Action Button) -->
+  <div class="ace-widget" id="fab-widget">
+    <div class="ace-widget-container ace-bottom-right">
+      <div class="ace-chat-window" id="fab-chat">
+        <!-- chat content injected by JS -->
+      </div>
+      <button class="ace-fab" onclick="toggleChat('fab')">
+        <div class="ace-fab-inner" id="fab-icon">
+          <svg viewBox="0 0 100 120" width="30" height="30" fill="white"><path d="M50 8 C50 8, 5 50, 5 72 C5 90, 20 98, 35 90 C42 86, 47 80, 50 72 C53 80, 58 86, 65 90 C80 98, 95 90, 95 72 C95 50, 50 8, 50 8Z"/><path d="M44 88 L44 112 C44 115, 46 116, 50 116 C54 116, 56 115, 56 112 L56 88 C54 90, 52 91, 50 91 C48 91, 46 90, 44 88Z"/></svg>
+        </div>
+      </button>
+    </div>
+  </div>
+
+  <!-- Button mode chat popover (positioned under nav) -->
+  <div class="ace-widget" id="button-chat-container" style="display:none; position:fixed; top:56px; right:20px; z-index:99999;">
+    <div class="ace-chat-window" id="button-chat" style="position:relative; bottom:auto; width:380px; height:520px; max-height:calc(100vh - 80px);"></div>
+  </div>
+
+  <script>
+    // ── Spade SVG for reuse ──
+    const spadeSVG = (size, color) => `<svg viewBox="0 0 100 120" width="${size}" height="${size}" fill="${color}"><path d="M50 8 C50 8, 5 50, 5 72 C5 90, 20 98, 35 90 C42 86, 47 80, 50 72 C53 80, 58 86, 65 90 C80 98, 95 90, 95 72 C95 50, 50 8, 50 8Z"/><path d="M44 88 L44 112 C44 115, 46 116, 50 116 C54 116, 56 115, 56 112 L56 88 C54 90, 52 91, 50 91 C48 91, 46 90, 44 88Z"/></svg>`;
+
+    // ── Build chat content HTML ──
+    function chatHTML(id) {
+      return `
+        <div class="ace-header">
+          <div class="ace-header-left">
+            <div class="ace-header-logo">${spadeSVG(24, 'white')}</div>
+            <div class="ace-header-info">
+              <h3><span class="ace-header-open">Open</span><span class="ace-header-ace">Ace</span></h3>
+              <span>AI Executive Assistant</span>
+            </div>
+          </div>
+          <button class="ace-header-close" onclick="toggleChat('${id}')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="ace-messages">
+          <div class="ace-greeting">
+            <div class="ace-greeting-logo">${spadeSVG(36, '#6366f1')}</div>
+            <h4>Hey, I'm Ace!</h4>
+            <p>Your AI executive assistant. Ask me to research leads, send emails, analyze SEO, generate blog posts, and more.</p>
+          </div>
+          <div class="ace-message ace-message-user">
+            <div class="ace-bubble">Analyze the SEO on my homepage</div>
+          </div>
+          <div class="ace-message ace-message-ace">
+            <div class="ace-bubble">
+              <strong>SEO Analysis — what2dotoday.com</strong><br><br>
+              Score: <strong>72/100 (B)</strong><br><br>
+              Issues found:<br>
+              - Missing meta description<br>
+              - H1 tag not using primary keyword<br>
+              - 3 images missing alt text<br>
+              - No JSON-LD structured data<br><br>
+              I can fix these for you. Want me to generate the meta tags and structured data?
+            </div>
+            <div class="ace-tool-chips">
+              <span class="ace-tool-chip"><span style="font-size:12px">&#128269;</span> Reading webpage</span>
+              <span class="ace-tool-chip"><span style="font-size:12px">&#128200;</span> Analyzing SEO</span>
+            </div>
+          </div>
+          <div class="ace-message ace-message-user">
+            <div class="ace-bubble">Yes, fix them all</div>
+          </div>
+          <div class="ace-thinking">
+            <div class="ace-thinking-dots"><span></span><span></span><span></span></div>
+            <span>Generating meta tags...</span>
+          </div>
+        </div>
+        <div class="ace-input-area">
+          <div class="ace-input-wrapper">
+            <input class="ace-input" placeholder="Ask Ace anything..." style="border-radius:20px;height:36px;">
+          </div>
+          <button class="ace-send-btn">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+        <div class="ace-watermark">
+          <a href="#">${spadeSVG(10, 'currentColor')} Powered by OpenAce</a>
+        </div>
+      `;
+    }
+
+    // ── Inject chat content ──
+    document.getElementById('fab-chat').innerHTML = chatHTML('fab');
+    document.getElementById('button-chat').innerHTML = chatHTML('button');
+    document.getElementById('inline-chat').innerHTML = chatHTML('inline');
+
+    // ── Toggle chat ──
+    let openChat = null;
+    function toggleChat(mode) {
+      if (mode === 'fab') {
+        const chat = document.getElementById('fab-chat');
+        const isOpen = chat.classList.contains('ace-visible');
+        chat.classList.toggle('ace-visible');
+        const icon = document.getElementById('fab-icon');
+        if (!isOpen) {
+          icon.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="white" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+        } else {
+          icon.innerHTML = spadeSVG(30, 'white');
+        }
+      } else if (mode === 'button') {
+        const container = document.getElementById('button-chat-container');
+        const chat = document.getElementById('button-chat');
+        if (!chat.innerHTML.trim()) chat.innerHTML = chatHTML('button');
+        const isVisible = chat.classList.contains('ace-visible');
+        if (isVisible) {
+          chat.classList.remove('ace-visible');
+          setTimeout(() => container.style.display = 'none', 250);
+        } else {
+          container.style.display = 'block';
+          requestAnimationFrame(() => chat.classList.add('ace-visible'));
+        }
+      }
+    }
+
+    // ── Mode switching ──
+    let currentMode = 'fab';
+    function setMode(mode) {
+      currentMode = mode;
+      document.querySelectorAll('.mode-btn').forEach(b => {
+        if (b.parentElement.classList.contains('mode-switch'))
+          b.classList.remove('active');
+      });
+      event.target.classList.add('active');
+
+      // Hide all
+      document.getElementById('fab-widget').style.display = 'none';
+      document.getElementById('button-widget').style.display = 'none';
+      document.getElementById('button-chat-container').style.display = 'none';
+      document.getElementById('inline-container').style.display = 'none';
+
+      // Close any open chats
+      document.getElementById('fab-chat').classList.remove('ace-visible');
+      document.getElementById('fab-icon').innerHTML = spadeSVG(30, 'white');
+      const btnChat = document.getElementById('button-chat');
+      btnChat.classList.remove('ace-visible');
+
+      if (mode === 'fab') {
+        document.getElementById('fab-widget').style.display = 'block';
+      } else if (mode === 'button') {
+        document.getElementById('button-widget').style.display = 'inline-flex';
+      } else if (mode === 'inline') {
+        document.getElementById('inline-container').style.display = 'block';
+      }
+    }
+
+    // ── Theme switching ──
+    function setTheme(theme) {
+      document.querySelectorAll('.theme-switch .mode-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('theme-' + theme).classList.add('active');
+      document.querySelectorAll('.ace-widget').forEach(w => {
+        if (theme === 'dark') w.classList.add('ace-dark');
+        else w.classList.remove('ace-dark');
+      });
+    }
+
+    // Start with FAB visible
+    setMode('fab');
+  </script>
+</body>
+</html>

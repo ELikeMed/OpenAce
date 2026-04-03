@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import {
   Box, TextField, Button, Paper, Typography, Avatar, alpha, IconButton, Chip,
   Checkbox, Select, MenuItem, CircularProgress, LinearProgress, Tooltip, Snackbar,
+  Divider, Menu,
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import AceSpadeIcon from './components/AceSpadeIcon';
@@ -33,6 +34,18 @@ import TrackChangesIcon from '@mui/icons-material/TrackChanges';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import RocketLaunchIcon from '@mui/icons-material/RocketLaunch';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import ThumbUpOutlinedIcon from '@mui/icons-material/ThumbUpOutlined';
+import ThumbDownOutlinedIcon from '@mui/icons-material/ThumbDownOutlined';
+import ThumbUpIcon from '@mui/icons-material/ThumbUp';
+import ThumbDownIcon from '@mui/icons-material/ThumbDown';
+import DownloadIcon from '@mui/icons-material/Download';
+import FormatQuoteIcon from '@mui/icons-material/FormatQuote';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import ConversationSidebar from './components/ConversationSidebar';
 import NewProcessDialog from './components/NewProcessDialog';
 import { BRAND } from './theme';
@@ -76,6 +89,514 @@ function stripMarkdownForSpeech(text) {
     .replace(/https?:\/\/[^\s]+/g, '')                // bare URLs
     .replace(/\n{3,}/g, '\n\n')                      // collapse whitespace
     .trim();
+}
+
+// ═══ Friendly tool labels for non-tech users ═══
+const TOOL_LABELS = {
+  web_search:           { label: 'Searched the web',      icon: PublicIcon,         color: BRAND.info },
+  read_webpage:         { label: 'Read a webpage',        icon: PublicIcon,         color: BRAND.info },
+  recall_research:      { label: 'Checked past research', icon: SearchIcon,         color: BRAND.info },
+  get_site_memory:      { label: 'Recalled site info',    icon: SearchIcon,         color: BRAND.info },
+  open_browser:         { label: 'Opened browser',        icon: PublicIcon,         color: BRAND.secondary },
+  browser_click:        { label: 'Clicked on page',       icon: MouseIcon,          color: BRAND.secondary },
+  browser_type:         { label: 'Typed on page',         icon: MouseIcon,          color: BRAND.secondary },
+  take_screenshot:      { label: 'Took screenshot',       icon: CameraAltIcon,      color: BRAND.secondary },
+  scroll_page:          { label: 'Scrolled page',         icon: MouseIcon,          color: BRAND.secondary },
+  read_screen:          { label: 'Read the screen',       icon: CameraAltIcon,      color: BRAND.secondary },
+  extract_page_data:    { label: 'Extracted page data',   icon: SearchIcon,         color: BRAND.secondary },
+  go_back:              { label: 'Went back',             icon: MouseIcon,          color: BRAND.secondary },
+  browse_and_extract:   { label: 'Browsed & extracted',   icon: PublicIcon,         color: BRAND.secondary },
+  send_email:           { label: 'Sent email',            icon: EmailIcon,          color: BRAND.accent },
+  send_sms:             { label: 'Sent text message',     icon: EmailIcon,          color: BRAND.accent },
+  make_call:            { label: 'Made a call',           icon: VolumeUpIcon,       color: BRAND.accent },
+  dispatch_phone_call:  { label: 'Started phone call',    icon: VolumeUpIcon,       color: BRAND.accent },
+  save_leads:           { label: 'Saved leads',           icon: TrackChangesIcon,   color: BRAND.success },
+  get_pipeline:         { label: 'Checked pipeline',      icon: TrackChangesIcon,   color: BRAND.success },
+  move_lead:            { label: 'Moved lead',            icon: TrackChangesIcon,   color: BRAND.success },
+  manage_contacts:      { label: 'Updated contacts',      icon: PersonIcon,         color: BRAND.primaryLight },
+  schedule_task:        { label: 'Scheduled task',        icon: ScheduleIcon,       color: BRAND.warning },
+  list_calendar_events: { label: 'Checked calendar',      icon: ScheduleIcon,       color: BRAND.warning },
+  create_calendar_event:{ label: 'Created event',         icon: ScheduleIcon,       color: BRAND.warning },
+  delete_calendar_event:{ label: 'Deleted event',         icon: ScheduleIcon,       color: BRAND.warning },
+  deploy_project:       { label: 'Deployed project',      icon: RocketLaunchIcon,   color: BRAND.success },
+  post_social_media:    { label: 'Posted to social',      icon: PublicIcon,         color: BRAND.accent },
+  schedule_social_post: { label: 'Scheduled post',        icon: ScheduleIcon,       color: BRAND.accent },
+  create_content_plan:  { label: 'Created content plan',  icon: AssignmentIcon,     color: BRAND.accent },
+  select_media_for_content: { label: 'Selected media',    icon: CameraAltIcon,      color: BRAND.accent },
+  search_workload:      { label: 'Searched your files',   icon: SearchIcon,         color: BRAND.primaryLight },
+  list_workload_sources:{ label: 'Listed your files',     icon: SearchIcon,         color: BRAND.primaryLight },
+  list_media:           { label: 'Browsed media',         icon: CameraAltIcon,      color: BRAND.primaryLight },
+  list_sops:            { label: 'Listed processes',      icon: AssignmentIcon,     color: BRAND.primaryLight },
+  update_sop:           { label: 'Updated process',       icon: AssignmentIcon,     color: BRAND.primaryLight },
+  create_sop:           { label: 'Created process',       icon: AssignmentIcon,     color: BRAND.primaryLight },
+  run_sop:              { label: 'Ran process',           icon: PlayArrowIcon,      color: BRAND.success },
+  create_project:       { label: 'Created project',       icon: CodeIcon,           color: BRAND.primaryLight },
+  write_project_file:   { label: 'Wrote code',            icon: CodeIcon,           color: BRAND.primaryLight },
+  list_projects:        { label: 'Listed projects',       icon: CodeIcon,           color: BRAND.primaryLight },
+  create_form:          { label: 'Created form',          icon: AssignmentIcon,     color: BRAND.secondary },
+  list_forms:           { label: 'Listed forms',          icon: AssignmentIcon,     color: BRAND.secondary },
+  get_form_submissions: { label: 'Checked submissions',   icon: AssignmentIcon,     color: BRAND.secondary },
+  save_note:            { label: 'Saved a note',          icon: AssignmentIcon,     color: BRAND.primaryLight },
+  recall_notes:         { label: 'Recalled notes',        icon: SearchIcon,         color: BRAND.primaryLight },
+};
+
+function getToolInfo(toolName) {
+  const info = TOOL_LABELS[toolName];
+  if (info) return info;
+  // Fallback: humanize the snake_case name
+  return {
+    label: toolName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+    icon: BuildIcon,
+    color: BRAND.primaryLight,
+  };
+}
+
+// ═══ Code Block with Syntax Highlighting + Copy ═══
+function CodeBlock({ children, className }) {
+  const [copied, setCopied] = useState(false);
+  const match = /language-(\w+)/.exec(className || '');
+  const lang = match ? match[1] : '';
+  const code = String(children).replace(/\n$/, '');
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <Box sx={{ position: 'relative', my: 1.5, borderRadius: '10px', overflow: 'hidden', border: `1px solid ${alpha(BRAND.border, 0.5)}` }}>
+      {/* Header bar */}
+      <Box sx={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        px: 1.5, py: 0.5,
+        background: alpha('#000', 0.3),
+        borderBottom: `1px solid ${alpha(BRAND.border, 0.3)}`,
+      }}>
+        <Typography sx={{ fontSize: '0.7rem', color: BRAND.textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          {lang || 'code'}
+        </Typography>
+        <Tooltip title={copied ? 'Copied!' : 'Copy code'} placement="top">
+          <IconButton size="small" onClick={handleCopy} sx={{
+            width: 24, height: 24,
+            color: copied ? BRAND.success : BRAND.textMuted,
+            '&:hover': { color: BRAND.textPrimary, background: alpha(BRAND.primary, 0.1) },
+            transition: 'all 0.2s ease',
+          }}>
+            {copied ? <CheckCircleIcon sx={{ fontSize: 14 }} /> : <ContentCopyIcon sx={{ fontSize: 14 }} />}
+          </IconButton>
+        </Tooltip>
+      </Box>
+      <SyntaxHighlighter
+        style={oneDark}
+        language={lang || 'text'}
+        PreTag="div"
+        customStyle={{
+          margin: 0,
+          padding: '12px 16px',
+          background: alpha('#0D1117', 0.9),
+          fontSize: '0.85rem',
+          lineHeight: 1.6,
+          borderRadius: 0,
+        }}
+      >
+        {code}
+      </SyntaxHighlighter>
+    </Box>
+  );
+}
+
+// ═══ Markdown Renderer — Replaces plain text with rich formatting ═══
+// ═══ Auto-linkify emails and phone numbers in text ═══
+const LINK_PATTERNS = [
+  // Email addresses
+  { regex: /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, href: (m) => `mailto:${m}`, label: (m) => m },
+  // Phone numbers — (555) 123-4567, 555-123-4567, +1-555-123-4567, etc.
+  { regex: /(\+?1?[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/g, href: (m) => `tel:${m.replace(/[^\d+]/g, '')}`, label: (m) => m },
+];
+
+function AutoLinkText({ children }) {
+  if (typeof children !== 'string') return children;
+  // Build a combined regex
+  const combined = new RegExp(
+    LINK_PATTERNS.map(p => p.regex.source).join('|'), 'g'
+  );
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+  while ((match = combined.exec(children)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(children.slice(lastIndex, match.index));
+    }
+    const matched = match[0];
+    // Figure out which pattern matched
+    const pattern = LINK_PATTERNS.find(p => new RegExp(p.regex.source).test(matched));
+    if (pattern) {
+      parts.push(
+        <Box key={match.index} component="a" href={pattern.href(matched)} target="_blank" rel="noopener noreferrer"
+          sx={{
+            color: BRAND.info,
+            textDecoration: 'none',
+            borderBottom: `1px dotted ${alpha(BRAND.info, 0.4)}`,
+            transition: 'all 0.15s ease',
+            '&:hover': { color: BRAND.primaryLight, borderBottomStyle: 'solid' },
+          }}
+        >
+          {pattern.label(matched)}
+        </Box>
+      );
+    } else {
+      parts.push(matched);
+    }
+    lastIndex = match.index + matched.length;
+  }
+  if (lastIndex < children.length) {
+    parts.push(children.slice(lastIndex));
+  }
+  return parts.length > 0 ? <>{parts}</> : children;
+}
+
+const markdownComponents = {
+  p: ({ children }) => {
+    // Auto-linkify emails and phone numbers in text nodes
+    const processed = Array.isArray(children) ? children.map((child, i) =>
+      typeof child === 'string' ? <AutoLinkText key={i}>{child}</AutoLinkText> : child
+    ) : typeof children === 'string' ? <AutoLinkText>{children}</AutoLinkText> : children;
+    return (
+      <Typography component="div" sx={{ fontSize: '1.06rem', lineHeight: 1.7, mb: 1, '&:last-child': { mb: 0 }, color: 'inherit', wordBreak: 'break-word' }}>
+        {processed}
+      </Typography>
+    );
+  },
+  h1: ({ children }) => (
+    <Typography sx={{ fontSize: '1.3rem', fontWeight: 700, mb: 1, mt: 1.5, color: 'inherit', borderBottom: `1px solid ${alpha(BRAND.border, 0.3)}`, pb: 0.5 }}>
+      {children}
+    </Typography>
+  ),
+  h2: ({ children }) => (
+    <Typography sx={{ fontSize: '1.15rem', fontWeight: 700, mb: 0.75, mt: 1.5, color: 'inherit', borderBottom: `1px solid ${alpha(BRAND.border, 0.2)}`, pb: 0.5 }}>
+      {children}
+    </Typography>
+  ),
+  h3: ({ children }) => (
+    <Typography sx={{ fontSize: '1.05rem', fontWeight: 700, mb: 0.5, mt: 1, color: 'inherit' }}>
+      {children}
+    </Typography>
+  ),
+  h4: ({ children }) => (
+    <Typography sx={{ fontSize: '1rem', fontWeight: 600, mb: 0.5, mt: 1, color: 'inherit' }}>{children}</Typography>
+  ),
+  h5: ({ children }) => (
+    <Typography sx={{ fontSize: '0.95rem', fontWeight: 600, mb: 0.5, color: 'inherit' }}>{children}</Typography>
+  ),
+  h6: ({ children }) => (
+    <Typography sx={{ fontSize: '0.9rem', fontWeight: 600, mb: 0.5, color: BRAND.textSecondary }}>{children}</Typography>
+  ),
+  strong: ({ children }) => (
+    <Box component="strong" sx={{ fontWeight: 700, color: 'inherit' }}>{children}</Box>
+  ),
+  em: ({ children }) => (
+    <Box component="em" sx={{ fontStyle: 'italic', color: 'inherit' }}>{children}</Box>
+  ),
+  ul: ({ children }) => (
+    <Box component="ul" sx={{ pl: 2.5, mb: 1, mt: 0.5, '& li': { mb: 0.4 }, '& li::marker': { color: BRAND.secondary } }}>
+      {children}
+    </Box>
+  ),
+  ol: ({ children }) => (
+    <Box component="ol" sx={{ pl: 2.5, mb: 1, mt: 0.5, '& li': { mb: 0.4 }, '& li::marker': { color: BRAND.primaryLight, fontWeight: 600 } }}>
+      {children}
+    </Box>
+  ),
+  li: ({ children }) => {
+    const processed = Array.isArray(children) ? children.map((child, i) =>
+      typeof child === 'string' ? <AutoLinkText key={i}>{child}</AutoLinkText> : child
+    ) : typeof children === 'string' ? <AutoLinkText>{children}</AutoLinkText> : children;
+    return <Box component="li" sx={{ fontSize: '1.02rem', lineHeight: 1.6, color: 'inherit', pl: 0.5 }}>{processed}</Box>;
+  },
+  a: ({ href, children }) => (
+    <Box component="a" href={href} target="_blank" rel="noopener noreferrer" sx={{
+      color: BRAND.info,
+      textDecoration: 'none',
+      borderBottom: `1px solid ${alpha(BRAND.info, 0.3)}`,
+      transition: 'all 0.15s ease',
+      '&:hover': { color: BRAND.primaryLight, borderBottomColor: BRAND.primaryLight },
+    }}>
+      {children}
+    </Box>
+  ),
+  blockquote: ({ children }) => (
+    <Box sx={{
+      borderLeft: `3px solid ${BRAND.primaryLight}`,
+      pl: 2, py: 0.5, my: 1,
+      background: alpha(BRAND.primary, 0.05),
+      borderRadius: '0 8px 8px 0',
+      '& p': { mb: 0.5 },
+    }}>
+      {children}
+    </Box>
+  ),
+  hr: () => (
+    <Divider sx={{ my: 1.5, borderColor: alpha(BRAND.border, 0.3) }} />
+  ),
+  code: ({ className, children, ...props }) => {
+    // Fenced code blocks have a className like "language-js"
+    const isBlock = className || (typeof children === 'string' && children.includes('\n'));
+    if (isBlock) return <CodeBlock className={className}>{children}</CodeBlock>;
+    // Inline code
+    return (
+      <Box component="code" sx={{
+        px: 0.75, py: 0.15,
+        borderRadius: '5px',
+        background: alpha(BRAND.primary, 0.12),
+        color: BRAND.primaryLight,
+        fontSize: '0.9em',
+        fontFamily: '"SF Mono", "Fira Code", "Consolas", monospace',
+        fontWeight: 500,
+      }}>
+        {children}
+      </Box>
+    );
+  },
+  pre: ({ children }) => <>{children}</>,
+  table: ({ children }) => (
+    <Box sx={{ overflowX: 'auto', my: 1.5, borderRadius: '8px', border: `1px solid ${alpha(BRAND.border, 0.4)}` }}>
+      <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.92rem' }}>
+        {children}
+      </Box>
+    </Box>
+  ),
+  thead: ({ children }) => (
+    <Box component="thead" sx={{ background: alpha(BRAND.primary, 0.08), '& th': { fontWeight: 700, color: BRAND.textPrimary } }}>
+      {children}
+    </Box>
+  ),
+  tbody: ({ children }) => (
+    <Box component="tbody" sx={{ '& tr:nth-of-type(even)': { background: alpha(BRAND.bgElevated, 0.4) } }}>
+      {children}
+    </Box>
+  ),
+  th: ({ children }) => (
+    <Box component="th" sx={{ px: 1.5, py: 0.75, textAlign: 'left', borderBottom: `1px solid ${alpha(BRAND.border, 0.3)}`, fontSize: '0.85rem' }}>
+      {children}
+    </Box>
+  ),
+  td: ({ children }) => {
+    const processed = Array.isArray(children) ? children.map((child, i) =>
+      typeof child === 'string' ? <AutoLinkText key={i}>{child}</AutoLinkText> : child
+    ) : typeof children === 'string' ? <AutoLinkText>{children}</AutoLinkText> : children;
+    return (
+      <Box component="td" sx={{ px: 1.5, py: 0.75, borderBottom: `1px solid ${alpha(BRAND.border, 0.15)}`, color: BRAND.textSecondary, fontSize: '0.9rem' }}>
+        {processed}
+      </Box>
+    );
+  },
+};
+
+// ═══ Message Action Bar — Hover-reveal copy, speak, thumbs ═══
+function MessageActions({ text, onSpeak, onStopSpeaking, isSpeaking, visible }) {
+  const [copied, setCopied] = useState(false);
+  const [thumbs, setThumbs] = useState(null); // 'up' | 'down' | null
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(stripMarkdownForSpeech(text));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <Box sx={{
+      display: 'flex', gap: 0.25, mt: 0.5, px: 0.5,
+      opacity: visible ? 1 : 0,
+      transition: 'opacity 0.2s ease',
+      pointerEvents: visible ? 'auto' : 'none',
+    }}>
+      <Tooltip title={copied ? 'Copied!' : 'Copy'} placement="top">
+        <IconButton size="small" onClick={handleCopy} sx={{
+          width: 28, height: 28,
+          color: copied ? BRAND.success : alpha(BRAND.textMuted, 0.5),
+          '&:hover': { color: BRAND.primaryLight, background: alpha(BRAND.primary, 0.08) },
+          transition: 'all 0.15s ease',
+        }}>
+          {copied ? <CheckCircleIcon sx={{ fontSize: 15 }} /> : <ContentCopyIcon sx={{ fontSize: 15 }} />}
+        </IconButton>
+      </Tooltip>
+      {onSpeak && (
+        <Tooltip title={isSpeaking ? 'Stop' : 'Read aloud'} placement="top">
+          <IconButton size="small" onClick={() => isSpeaking ? onStopSpeaking() : onSpeak()} sx={{
+            width: 28, height: 28,
+            color: isSpeaking ? BRAND.secondary : alpha(BRAND.textMuted, 0.5),
+            '&:hover': { color: isSpeaking ? BRAND.secondary : BRAND.primaryLight, background: alpha(BRAND.primary, 0.08) },
+            transition: 'all 0.15s ease',
+          }}>
+            {isSpeaking ? <StopCircleIcon sx={{ fontSize: 15 }} /> : <VolumeUpIcon sx={{ fontSize: 15 }} />}
+          </IconButton>
+        </Tooltip>
+      )}
+      <Tooltip title="Good response" placement="top">
+        <IconButton size="small" onClick={() => setThumbs(t => t === 'up' ? null : 'up')} sx={{
+          width: 28, height: 28,
+          color: thumbs === 'up' ? BRAND.success : alpha(BRAND.textMuted, 0.5),
+          '&:hover': { color: BRAND.success, background: alpha(BRAND.success, 0.08) },
+          transition: 'all 0.15s ease',
+        }}>
+          {thumbs === 'up' ? <ThumbUpIcon sx={{ fontSize: 14 }} /> : <ThumbUpOutlinedIcon sx={{ fontSize: 14 }} />}
+        </IconButton>
+      </Tooltip>
+      <Tooltip title="Bad response" placement="top">
+        <IconButton size="small" onClick={() => setThumbs(t => t === 'down' ? null : 'down')} sx={{
+          width: 28, height: 28,
+          color: thumbs === 'down' ? BRAND.error : alpha(BRAND.textMuted, 0.5),
+          '&:hover': { color: BRAND.error, background: alpha(BRAND.error, 0.08) },
+          transition: 'all 0.15s ease',
+        }}>
+          {thumbs === 'down' ? <ThumbDownIcon sx={{ fontSize: 14 }} /> : <ThumbDownOutlinedIcon sx={{ fontSize: 14 }} />}
+        </IconButton>
+      </Tooltip>
+    </Box>
+  );
+}
+
+// ═══ Selection Toolbar — Floating copy/quote on text select ═══
+function SelectionToolbar({ containerRef, onQuote }) {
+  const [pos, setPos] = useState(null);
+  const [selectedText, setSelectedText] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const handleSelect = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || !sel.toString().trim()) {
+        setPos(null);
+        return;
+      }
+      // Check if selection is within our container
+      const container = containerRef?.current;
+      if (!container) return;
+      const anchorInside = container.contains(sel.anchorNode);
+      if (!anchorInside) { setPos(null); return; }
+
+      const range = sel.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      setSelectedText(sel.toString());
+      setPos({
+        top: rect.top - containerRect.top - 40,
+        left: rect.left - containerRect.left + rect.width / 2 - 60,
+      });
+    };
+
+    document.addEventListener('selectionchange', handleSelect);
+    return () => document.removeEventListener('selectionchange', handleSelect);
+  }, [containerRef]);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(selectedText);
+    setCopied(true);
+    setTimeout(() => { setCopied(false); setPos(null); }, 1500);
+    window.getSelection()?.removeAllRanges();
+  };
+
+  const handleQuote = () => {
+    onQuote(selectedText);
+    setPos(null);
+    window.getSelection()?.removeAllRanges();
+  };
+
+  if (!pos) return null;
+
+  return (
+    <Box sx={{
+      position: 'absolute',
+      top: pos.top,
+      left: Math.max(8, pos.left),
+      zIndex: 100,
+      display: 'flex', gap: 0.25,
+      background: BRAND.bgElevated,
+      border: `1px solid ${alpha(BRAND.border, 0.6)}`,
+      borderRadius: '8px',
+      boxShadow: `0 4px 16px ${alpha('#000', 0.4)}`,
+      p: 0.25,
+      animation: 'fadeInScale 0.15s ease',
+      '@keyframes fadeInScale': {
+        from: { opacity: 0, transform: 'scale(0.9) translateY(4px)' },
+        to: { opacity: 1, transform: 'scale(1) translateY(0)' },
+      },
+    }}>
+      <Tooltip title={copied ? 'Copied!' : 'Copy selection'} placement="top">
+        <IconButton size="small" onClick={handleCopy} sx={{
+          width: 30, height: 30,
+          color: copied ? BRAND.success : BRAND.textSecondary,
+          '&:hover': { color: BRAND.primaryLight, background: alpha(BRAND.primary, 0.1) },
+        }}>
+          {copied ? <CheckCircleIcon sx={{ fontSize: 16 }} /> : <ContentCopyIcon sx={{ fontSize: 16 }} />}
+        </IconButton>
+      </Tooltip>
+      <Tooltip title="Quote in reply" placement="top">
+        <IconButton size="small" onClick={handleQuote} sx={{
+          width: 30, height: 30,
+          color: BRAND.textSecondary,
+          '&:hover': { color: BRAND.primaryLight, background: alpha(BRAND.primary, 0.1) },
+        }}>
+          <FormatQuoteIcon sx={{ fontSize: 16 }} />
+        </IconButton>
+      </Tooltip>
+    </Box>
+  );
+}
+
+// ═══ Export Conversation Menu ═══
+function ExportMenu({ messages, anchorEl, open, onClose }) {
+  const getConversationText = (format = 'text') => {
+    return messages
+      .filter(m => m.sender !== 'Ace Activity')
+      .map(m => {
+        const sender = m.sender || 'Unknown';
+        const text = format === 'markdown' ? m.text : stripMarkdownForSpeech(m.text);
+        return `${sender}:\n${text}`;
+      })
+      .join('\n\n---\n\n');
+  };
+
+  const handleCopyAll = () => {
+    navigator.clipboard.writeText(getConversationText('text'));
+    onClose();
+  };
+
+  const handleDownload = (format) => {
+    const ext = format === 'markdown' ? 'md' : 'txt';
+    const content = getConversationText(format);
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ace-conversation-${new Date().toISOString().slice(0, 10)}.${ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
+    onClose();
+  };
+
+  return (
+    <Menu anchorEl={anchorEl} open={open} onClose={onClose}
+      slotProps={{ paper: { sx: {
+        background: BRAND.bgElevated,
+        border: `1px solid ${alpha(BRAND.border, 0.5)}`,
+        borderRadius: '10px',
+        minWidth: 180,
+        boxShadow: `0 8px 24px ${alpha('#000', 0.4)}`,
+      }}}}
+    >
+      <MenuItem onClick={handleCopyAll} sx={{ fontSize: '0.85rem', gap: 1.5, color: BRAND.textSecondary, '&:hover': { color: BRAND.textPrimary, background: alpha(BRAND.primary, 0.08) } }}>
+        <ContentCopyIcon sx={{ fontSize: 16 }} /> Copy all
+      </MenuItem>
+      <MenuItem onClick={() => handleDownload('text')} sx={{ fontSize: '0.85rem', gap: 1.5, color: BRAND.textSecondary, '&:hover': { color: BRAND.textPrimary, background: alpha(BRAND.primary, 0.08) } }}>
+        <DownloadIcon sx={{ fontSize: 16 }} /> Download as .txt
+      </MenuItem>
+      <MenuItem onClick={() => handleDownload('markdown')} sx={{ fontSize: '0.85rem', gap: 1.5, color: BRAND.textSecondary, '&:hover': { color: BRAND.textPrimary, background: alpha(BRAND.primary, 0.08) } }}>
+        <DownloadIcon sx={{ fontSize: 16 }} /> Download as .md
+      </MenuItem>
+    </Menu>
+  );
 }
 
 function PendingActionsCard({ actions, onConfirm, onCancel }) {
@@ -1416,6 +1937,8 @@ function MessageBubble({ msg, msgIndex, onConfirmActions, onCancelActions, onQue
   const isUser = msg.sender === 'You';
   const isSystem = msg.sender === 'System';
   const isThinking = msg.sender?.includes('Thinking') || msg.sender?.includes('Thought');
+  const isAce = !isUser && !isSystem && !isThinking;
+  const [hovered, setHovered] = useState(false);
 
   const getBubbleStyle = () => {
     if (isUser) return {
@@ -1483,20 +2006,24 @@ function MessageBubble({ msg, msgIndex, onConfirmActions, onCancelActions, onQue
   };
 
   return (
-    <Box sx={{
-      display: 'flex',
-      flexDirection: isUser ? 'row-reverse' : 'row',
-      gap: 1.5,
-      mb: 2,
-      px: 1,
-      animation: 'fadeInUp 0.3s ease',
-      '@keyframes fadeInUp': {
-        from: { opacity: 0, transform: 'translateY(8px)' },
-        to: { opacity: 1, transform: 'translateY(0)' },
-      },
-    }}>
+    <Box
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      sx={{
+        display: 'flex',
+        flexDirection: isUser ? 'row-reverse' : 'row',
+        gap: 1.5,
+        mb: 2,
+        px: 1,
+        animation: 'fadeInUp 0.3s ease',
+        '@keyframes fadeInUp': {
+          from: { opacity: 0, transform: 'translateY(8px)' },
+          to: { opacity: 1, transform: 'translateY(0)' },
+        },
+      }}
+    >
       {getAvatar()}
-      <Box sx={{ maxWidth: '85%' }}>
+      <Box sx={{ maxWidth: '85%', minWidth: 0 }}>
         <Typography variant="caption" sx={{
           display: 'block',
           color: BRAND.textMuted,
@@ -1531,58 +2058,60 @@ function MessageBubble({ msg, msgIndex, onConfirmActions, onCancelActions, onQue
             </Box>
           )}
           {msg.text && (
-            <Typography variant="body2" sx={{
-              fontSize: '1.06rem',
-              lineHeight: 1.6,
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-            }}>
-              {msg.text}
-            </Typography>
+            isAce ? (
+              <Box sx={{ '& > *:first-of-type': { mt: 0 }, '& > *:last-child': { mb: 0 }, wordBreak: 'break-word' }}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                  {msg.text}
+                </ReactMarkdown>
+              </Box>
+            ) : (
+              <Typography variant="body2" sx={{
+                fontSize: '1.06rem',
+                lineHeight: 1.6,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}>
+                {msg.text}
+              </Typography>
+            )
           )}
         </Box>
 
-        {/* Tools used indicator */}
+        {/* Tools used — friendly labels */}
         {msg.toolsUsed?.length > 0 && (
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.75, px: 0.5 }}>
-            {msg.toolsUsed.map((tool, i) => (
-              <Chip key={i} label={tool.replace(/_/g, ' ')} size="small"
-                sx={{
-                  fontSize: '0.65rem', height: 20, fontWeight: 500,
-                  bgcolor: alpha(BRAND.primary, 0.1),
-                  color: alpha(BRAND.primaryLight, 0.8),
-                  border: `1px solid ${alpha(BRAND.primary, 0.15)}`,
-                  '& .MuiChip-icon': { fontSize: 11, color: alpha(BRAND.primaryLight, 0.6) },
-                }}
-                icon={<BuildIcon />}
-              />
-            ))}
+            {/* Deduplicate and show friendly labels */}
+            {[...new Set(msg.toolsUsed)].map((tool, i) => {
+              const info = getToolInfo(tool);
+              const ToolIcon = info.icon;
+              const count = msg.toolsUsed.filter(t => t === tool).length;
+              return (
+                <Chip key={i}
+                  label={count > 1 ? `${info.label} (${count}x)` : info.label}
+                  size="small"
+                  sx={{
+                    fontSize: '0.68rem', height: 22, fontWeight: 500,
+                    bgcolor: alpha(info.color, 0.08),
+                    color: alpha(info.color, 0.9),
+                    border: `1px solid ${alpha(info.color, 0.15)}`,
+                    '& .MuiChip-icon': { fontSize: 13, color: alpha(info.color, 0.7) },
+                  }}
+                  icon={<ToolIcon />}
+                />
+              );
+            })}
           </Box>
         )}
 
-        {/* Per-message speak button — only on Ace messages with text */}
-        {!isUser && !isSystem && !isThinking && msg.text && onSpeak && (
-          <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5, px: 0.5 }}>
-            <Tooltip title={isSpeakingThis ? 'Stop' : 'Read aloud'} placement="top">
-              <IconButton
-                size="small"
-                onClick={() => isSpeakingThis ? onStopSpeaking() : onSpeak(msg.text, msgIndex)}
-                sx={{
-                  width: 26, height: 26,
-                  color: isSpeakingThis ? BRAND.secondary : alpha(BRAND.textMuted, 0.5),
-                  '&:hover': {
-                    color: isSpeakingThis ? BRAND.secondary : BRAND.primaryLight,
-                    background: alpha(BRAND.primary, 0.08),
-                  },
-                }}
-              >
-                {isSpeakingThis
-                  ? <StopCircleIcon sx={{ fontSize: 16 }} />
-                  : <VolumeUpIcon sx={{ fontSize: 16 }} />
-                }
-              </IconButton>
-            </Tooltip>
-          </Box>
+        {/* Message action bar — hover reveal on Ace messages */}
+        {isAce && msg.text && (
+          <MessageActions
+            text={msg.text}
+            onSpeak={onSpeak ? () => onSpeak(msg.text, msgIndex) : null}
+            onStopSpeaking={onStopSpeaking}
+            isSpeaking={isSpeakingThis}
+            visible={hovered || isSpeakingThis}
+          />
         )}
 
         {/* Confirmation card for pending pipeline actions */}
@@ -1813,6 +2342,8 @@ function Chat() {
   const [newProcessOpen, setNewProcessOpen] = useState(false);
   const [recordingSteps, setRecordingSteps] = useState([]);
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
+  const [exportAnchor, setExportAnchor] = useState(null);
   const initializedRef = useRef(false);
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
@@ -3048,7 +3579,28 @@ function Chat() {
           backdropFilter: 'blur(20px)',
           borderRadius: 0,
         }}>
+          {/* Export button — top right of chat */}
+          {messages.length > 0 && (
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', px: 1.5, pt: 0.75, pb: 0 }}>
+              <Tooltip title="Export conversation" placement="left">
+                <IconButton size="small" onClick={(e) => setExportAnchor(e.currentTarget)} sx={{
+                  width: 30, height: 30,
+                  color: alpha(BRAND.textMuted, 0.5),
+                  '&:hover': { color: BRAND.textSecondary, background: alpha(BRAND.primary, 0.06) },
+                }}>
+                  <MoreVertIcon sx={{ fontSize: 18 }} />
+                </IconButton>
+              </Tooltip>
+              <ExportMenu
+                messages={messages}
+                anchorEl={exportAnchor}
+                open={Boolean(exportAnchor)}
+                onClose={() => setExportAnchor(null)}
+              />
+            </Box>
+          )}
           <Box
+            ref={messagesContainerRef}
             onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
             onDragLeave={() => setDragOver(false)}
             onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFileSelect(e.dataTransfer.files); }}
@@ -3293,6 +3845,14 @@ function Chat() {
               </Box>
             )}
             <div ref={messagesEndRef} />
+            {/* Selection toolbar — appears when user highlights text in messages */}
+            <SelectionToolbar
+              containerRef={messagesContainerRef}
+              onQuote={(text) => {
+                const quoted = text.split('\n').map(l => `> ${l}`).join('\n');
+                setInputText(prev => prev ? `${prev}\n${quoted}\n` : `${quoted}\n`);
+              }}
+            />
           </Box>
 
           {/* Input Area */}

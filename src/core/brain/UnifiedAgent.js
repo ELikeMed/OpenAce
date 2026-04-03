@@ -301,8 +301,8 @@ export class UnifiedAgent {
         properties: {
           to: { type: 'STRING', description: 'Recipient email address' },
           subject: { type: 'STRING', description: 'Email subject line' },
-          body: { type: 'STRING', description: 'Email body text (plain text)' },
-          html: { type: 'STRING', description: 'Optional HTML version of the email body for rich formatting' }
+          body: { type: 'STRING', description: 'Email body text. IMPORTANT: Use \\n\\n between paragraphs for proper spacing. Example: "Hi Name,\\n\\nFirst paragraph here.\\n\\nSecond paragraph here.\\n\\nBest regards,\\nEric"' },
+          html: { type: 'STRING', description: 'Optional HTML version of the email body for rich formatting. If omitted, HTML will be auto-generated from body text.' }
         },
         required: ['to', 'subject', 'body']
       }
@@ -1280,6 +1280,8 @@ User: "Make Net Profits purple" → search="Net Profits" → finds line 52 → r
 6. **NO FAKE URLS** — Never generate URLs like "https://example.com/property/123". Only share URLs that came from tool results.
 7. **NO FALSE CONTINUATION PROMISES** — NEVER say "I will continue", "I'll keep working on the remaining", or "I'll proceed with the rest." Each conversation turn is independent — you will NOT automatically continue. Instead, report exactly what you completed, what remains, and ask "Want me to keep going?" so the user can choose. Example: "Done — found and emailed 3 leads. 4 more needed to hit today's goal. Want me to keep searching?"
 8. **NEVER PASTE CODE IN CHAT** — You have project tools (write_project_file, edit_project_file). ALWAYS use them to modify files directly. NEVER paste HTML, CSS, JavaScript, or any code blocks in the chat for the user to copy. If a tool fails, retry it or explain the error briefly — do NOT dump the code as a fallback.
+9. **USE YOUR CONVERSATION HISTORY** — Before saying "I don't have that" or "Could you provide that?", CHECK the conversation above. If the user gave you an email address, drafted an email body, or shared contact info earlier in this chat, USE IT. Do not ask for information you were already given. If you truly cannot find it in the conversation, say "I can see we discussed this earlier but I need you to confirm the [specific detail]."
+10. **PIPELINE IS YOUR SOURCE OF TRUTH** — Before claiming a lead exists or doesn't exist, call get_pipeline to check. Never guess about pipeline contents. When you save a lead, note the returned ID so you can reference it later.
 
 `;
 
@@ -1354,7 +1356,7 @@ When calling create_calendar_event, you MUST pass start_time as an ISO 8601 stri
 - **move_lead**: Move a lead between pipeline stages (new → contacted → qualified → proposal → negotiation → won/lost).
 
 ## Action Tools
-- **send_email**: Send email via Gmail SMTP. Use when asked to email findings or contact someone.
+- **send_email**: Send email via Gmail SMTP. Use when asked to email findings or contact someone. CRITICAL: Always use \\n\\n between paragraphs in the body for proper formatting. Never send a wall of text — break it into readable paragraphs. If the user drafted an email body earlier in the conversation, use it EXACTLY as written (with proper paragraph breaks).
 - **set_lead_dnc**: Toggle do-not-contact on a lead. Protected leads cannot be emailed and are skipped in routines. Use when user says "don't contact them" or when form-submission leads shouldn't get sales outreach.
 - **manage_contacts**: Add, search, or list contacts.
 - **schedule_task**: Create recurring scheduled tasks.
@@ -2217,10 +2219,10 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
     const systemPrompt = await this._buildSystemPrompt(message);
     const messages = [];
 
-    // Include recent conversation history for context (last 10 messages)
-    // Too much history causes Gemini to repeat old patterns instead of calling tools fresh
+    // Include recent conversation history for context (last 25 messages)
+    // Keeps enough context so Ace remembers email drafts, contact info, and prior decisions
     // Gemini requires the first message to be role 'user' — skip leading assistant messages
-    const recentHistory = conversationHistory.slice(-10);
+    const recentHistory = conversationHistory.slice(-25);
     let foundFirstUser = false;
     for (const msg of recentHistory) {
       if (msg.role === 'system') continue;
@@ -2229,7 +2231,7 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
       foundFirstUser = true;
       messages.push({
         role,
-        content: String(msg.content || '').substring(0, 3000)
+        content: String(msg.content || '').substring(0, 5000)
       });
     }
 
@@ -3176,7 +3178,16 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
       await smtp.initialize();
 
       const emailOptions = { to, subject, body };
-      if (html) emailOptions.html = html;
+      if (html) {
+        emailOptions.html = html;
+      } else if (body && body.includes('\n')) {
+        // Auto-generate HTML from plain text so paragraph breaks are preserved
+        const htmlBody = body
+          .split(/\n\n+/)
+          .map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`)
+          .join('');
+        emailOptions.html = htmlBody;
+      }
 
       const result = await smtp.sendEmail(emailOptions);
 
@@ -3347,7 +3358,7 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
       // Quality validation — reject fabricated/placeholder leads
       const rejection = this._validateLead(lead);
       if (rejection) {
-        saved.push(`Rejected: ${lead.company || '(no name)'} — ${rejection}`);
+        saved.push({ status: 'rejected', company: lead.company || '(no name)', reason: rejection });
         continue;
       }
 
@@ -3360,7 +3371,7 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
         return false;
       });
       if (isDupe) {
-        saved.push(`Skipped (duplicate): ${lead.company}`);
+        saved.push({ status: 'skipped', company: lead.company, reason: 'duplicate' });
         continue;
       }
 
@@ -3374,17 +3385,23 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
           source: lead.source || 'research',
           notes: lead.notes ? [lead.notes] : [],
         });
-        saved.push(result.company || lead.company);
+        saved.push({
+          status: 'saved',
+          id: result.id,
+          company: result.company || lead.company,
+          email: result.email || lead.email || '',
+          contact_name: result.contact_name || lead.contact_name || ''
+        });
       } catch (e) {
-        saved.push(`Failed: ${lead.company} — ${e.message}`);
+        saved.push({ status: 'failed', company: lead.company, error: e.message });
       }
     }
 
-    this.onProgress(`Saved ${saved.length} leads`);
+    this.onProgress(`Processed ${saved.length} leads`);
 
     // Check if there's an active goal covering this work — hint to Gemini
     const gt = this.subsystems.goalTracker;
-    const actualSaved = saved.filter(s => !s.startsWith('Skipped') && !s.startsWith('Failed') && !s.startsWith('Rejected')).length;
+    const actualSaved = saved.filter(s => s.status === 'saved').length;
     let goalHint = null;
 
     if (gt && actualSaved > 0) {
@@ -3401,9 +3418,9 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
       }
     }
 
-    const rejected = saved.filter(s => s.startsWith('Rejected')).length;
-    const skipped = saved.filter(s => s.startsWith('Skipped')).length;
-    const failed = saved.filter(s => s.startsWith('Failed')).length;
+    const rejected = saved.filter(s => s.status === 'rejected').length;
+    const skipped = saved.filter(s => s.status === 'skipped').length;
+    const failed = saved.filter(s => s.status === 'failed').length;
     const result = {
       success: actualSaved > 0,
       savedCount: actualSaved,
@@ -3425,14 +3442,29 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
     const type = args.type || 'all';
     const pipeline = pm.pipeline || { items: [], leads: [] };
 
+    // Return full lead objects so Gemini can see IDs, emails, names, stages
+    const formatLead = (l) => ({
+      id: l.id,
+      company: l.company,
+      contact_name: l.contact_name || '',
+      email: l.email || '',
+      phone: l.phone || '',
+      website: l.website || '',
+      stage: l.stage || 'new',
+      notes: l.notes || []
+    });
+
     if (type === 'leads') {
-      return JSON.stringify({ leads: pipeline.leads.slice(-20), totalLeads: pipeline.leads.length });
+      return JSON.stringify({
+        leads: pipeline.leads.slice(-30).map(formatLead),
+        totalLeads: pipeline.leads.length
+      });
     } else if (type === 'tasks') {
       return JSON.stringify({ tasks: pipeline.items.slice(-20), totalTasks: pipeline.items.length });
     }
     return JSON.stringify({
       tasks: pipeline.items.slice(-10),
-      leads: pipeline.leads.slice(-10),
+      leads: pipeline.leads.slice(-20).map(formatLead),
       totalTasks: pipeline.items.length,
       totalLeads: pipeline.leads.length
     });
@@ -3449,11 +3481,29 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
       return JSON.stringify({ error: `Invalid stage "${stage}". Valid: ${validStages.join(', ')}` });
     }
 
+    // Allow finding lead by company name if lead_id doesn't look like an ID
+    let resolvedId = lead_id;
+    if (lead_id && !lead_id.startsWith('lead-')) {
+      // Try to find by company name
+      const leads = pm.pipeline?.leads || [];
+      const match = leads.find(l =>
+        (l.company || '').toLowerCase().includes(lead_id.toLowerCase()) ||
+        (l.contact_name || '').toLowerCase().includes(lead_id.toLowerCase())
+      );
+      if (match) {
+        resolvedId = match.id;
+      } else {
+        return JSON.stringify({
+          error: `Lead "${lead_id}" not found. Use get_pipeline to see all leads with their IDs.`
+        });
+      }
+    }
+
     try {
-      await pm.moveLead(lead_id, stage);
+      await pm.moveLead(resolvedId, stage);
       // Add note if provided
       if (note && pm.pipeline) {
-        const lead = pm.pipeline.leads.find(l => l.id === lead_id);
+        const lead = pm.pipeline.leads.find(l => l.id === resolvedId);
         if (lead) {
           if (!lead.notes) lead.notes = [];
           lead.notes.push(`[${new Date().toLocaleDateString()}] ${note}`);
@@ -3461,9 +3511,11 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
         }
       }
       this.onProgress(`Lead moved to "${stage}"`);
-      return JSON.stringify({ success: true, lead_id, newStage: stage });
+      return JSON.stringify({ success: true, lead_id: resolvedId, newStage: stage });
     } catch (e) {
-      return JSON.stringify({ error: e.message });
+      return JSON.stringify({
+        error: `${e.message}. Use get_pipeline to see all leads with their correct IDs.`
+      });
     }
   }
 

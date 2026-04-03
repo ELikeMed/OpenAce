@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenAce Embed — HTML Example</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 800px;
+      margin: 60px auto;
+      padding: 0 20px;
+      color: #1e293b;
+      line-height: 1.6;
+    }
+    h1 { color: #6366f1; margin-bottom: 8px; }
+    .subtitle { color: #64748b; margin-bottom: 32px; }
+    code {
+      background: #f1f5f9;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.9em;
+    }
+    pre {
+      background: #1e1e2e;
+      color: #e2e8f0;
+      padding: 20px;
+      border-radius: 12px;
+      overflow-x: auto;
+      line-height: 1.5;
+    }
+    pre .comment { color: #6b7280; }
+    pre .string { color: #a78bfa; }
+    .card {
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 24px;
+      margin: 24px 0;
+    }
+    .card h3 { margin-top: 0; color: #6366f1; }
+  </style>
+</head>
+<body>
+
+  <h1>OpenAce Embed SDK</h1>
+  <p class="subtitle">Drop an AI executive assistant into any website with 2 lines of code.</p>
+
+  <div class="card">
+    <h3>Quick Start (Script Tag)</h3>
+    <pre><code><span class="comment">&lt;!-- 1. Add the script --&gt;</span>
+&lt;script src=<span class="string">"https://cdn.openaceai.com/ace-embed.min.js"</span>&gt;&lt;/script&gt;
+
+<span class="comment">&lt;!-- 2. Initialize --&gt;</span>
+&lt;script&gt;
+  OpenAce.init({
+    serverUrl: <span class="string">'/api/ace'</span>,
+    theme: <span class="string">'dark'</span>,
+    accentColor: <span class="string">'#6366f1'</span>,
+    greeting: <span class="string">"Hey! I'm Ace, your AI assistant."</span>
+  });
+&lt;/script&gt;</code></pre>
+  </div>
+
+  <div class="card">
+    <h3>React / Next.js</h3>
+    <pre><code><span class="comment">// Install: npm install @openace/embed</span>
+
+<span class="comment">// Server (pages/api/ace/[...ace].js):</span>
+import { createAceServer } from <span class="string">'@openace/embed/server'</span>;
+export default createAceServer({
+  ai: { geminiKey: process.env.GEMINI_API_KEY }
+});
+
+<span class="comment">// Client (any component):</span>
+import { AceWidget } from <span class="string">'@openace/embed'</span>;
+&lt;AceWidget serverUrl=<span class="string">"/api/ace"</span> theme=<span class="string">"dark"</span> /&gt;</code></pre>
+  </div>
+
+  <div class="card">
+    <h3>What Ace Can Do</h3>
+    <ul>
+      <li><strong>Research</strong> — Web search, read pages, build knowledge base</li>
+      <li><strong>Pipeline</strong> — Find leads, manage CRM pipeline, track contacts</li>
+      <li><strong>Email</strong> — Draft and send emails, email campaigns</li>
+      <li><strong>SEO</strong> — Analyze SEO, generate blog posts, structured data</li>
+      <li><strong>Social</strong> — Post and schedule across platforms (Pro)</li>
+      <li><strong>Forms</strong> — Create forms, collect submissions</li>
+      <li><strong>Calendar</strong> — Google Calendar integration</li>
+      <li><strong>Deploy</strong> — Deploy projects to Netlify, Firebase, SFTP</li>
+      <li><strong>Phone/SMS</strong> — Send SMS, make calls via Twilio (Pro)</li>
+    </ul>
+  </div>
+
+  <p style="color: #64748b; text-align: center; margin-top: 40px;">
+    <a href="https://openaceai.com/embed" style="color: #6366f1;">openaceai.com/embed</a>
+    &nbsp;&middot;&nbsp;
+    <a href="https://github.com/openace-ai/OpenAce" style="color: #6366f1;">GitHub</a>
+  </p>
+
+  <!-- Widget would be loaded here in production -->
+  <!-- <script src="https://cdn.openaceai.com/ace-embed.min.js"></script> -->
+  <!-- <script>OpenAce.init({ serverUrl: '/api/ace' });</script> -->
+
+</body>
+</html>
