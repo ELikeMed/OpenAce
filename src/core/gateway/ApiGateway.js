@@ -3813,6 +3813,48 @@ export class ApiGateway {
       });
     });
 
+    // POST /api/system/update-fix — Clean up dirty files then retry update
+    // Used when a normal update fails due to uncommitted build artifacts
+    this.app.post('/api/system/update-fix', (req, res) => {
+      if (!updates()) return res.json({ success: false, error: 'UpdateManager not initialized' });
+
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      });
+
+      const sendProgress = (data) => {
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      };
+
+      // Run cleanup first, then normal update
+      (async () => {
+        sendProgress({ step: 'fix', status: 'active', detail: 'Cleaning up build files...' });
+        try {
+          const { exec } = await import('child_process');
+          const { promisify } = await import('util');
+          const execAsync = promisify(exec);
+          const baseDir = updates().baseDir;
+          // Reset build artifacts that cause merge conflicts
+          await execAsync('git checkout -- src/desktop/dashboard-ui/dist/ 2>/dev/null || true', { cwd: baseDir, timeout: 30000 });
+          await execAsync('git checkout -- src/studio/dist/ 2>/dev/null || true', { cwd: baseDir, timeout: 30000 });
+          // Stash any other local changes
+          await execAsync('git stash --include-untracked 2>/dev/null || true', { cwd: baseDir, timeout: 30000 });
+          sendProgress({ step: 'fix', status: 'done', detail: 'Build files cleaned' });
+        } catch (e) {
+          sendProgress({ step: 'fix', status: 'done', detail: 'Cleanup attempted (continuing)' });
+        }
+
+        // Now run normal update
+        const result = await updates().performUpdate((progress) => sendProgress(progress));
+        sendProgress({ step: 'complete', status: result.success ? 'done' : 'error', detail: result.success ? 'Update complete — restarting...' : result.error });
+      })().catch((error) => {
+        sendProgress({ step: 'error', status: 'error', detail: error.message });
+        res.end();
+      });
+    });
+
     // POST /api/system/dismiss-update — Dismiss update banner for this version
     this.app.post('/api/system/dismiss-update', this.wrap(async (req, res) => {
       if (!updates()) return res.json({ success: false, error: 'UpdateManager not initialized' });

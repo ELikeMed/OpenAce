@@ -950,11 +950,48 @@ function App() {
               <Typography sx={{ fontSize: '0.85rem', color: BRAND.error, fontWeight: 600 }}>
                 Update failed: {updateProgress.find(p => p.status === 'error')?.detail || 'Unknown error'}
               </Typography>
+              <Button
+                variant="contained"
+                size="small"
+                sx={{ mt: 1.5, mb: 1, textTransform: 'none', fontWeight: 600 }}
+                onClick={() => {
+                  setUpdateProgress([]);
+                  setUpdating(true);
+                  fetch(`${API}/api/system/update-fix`, { method: 'POST' }).then(async (response) => {
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+                    while (true) {
+                      const { done, value } = await reader.read();
+                      if (done) break;
+                      buffer += decoder.decode(value, { stream: true });
+                      const lines = buffer.split('\n');
+                      buffer = lines.pop() || '';
+                      for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                          try {
+                            const data = JSON.parse(line.slice(6));
+                            setUpdateProgress(prev => {
+                              const existing = prev.findIndex(p => p.step === data.step);
+                              if (existing >= 0) { const next = [...prev]; next[existing] = data; return next; }
+                              return [...prev, data];
+                            });
+                          } catch {}
+                        }
+                      }
+                    }
+                  }).catch(() => {
+                    setUpdateProgress(prev => [...prev, { step: 'error', status: 'error', detail: 'Connection lost' }]);
+                  }).finally(() => setUpdating(false));
+                }}
+              >
+                Fix & Retry Update
+              </Button>
               <Typography sx={{ fontSize: '0.8rem', color: BRAND.textMuted, mt: 1 }}>
-                Run this in your OpenAce folder to update manually:
+                Or run this in your OpenAce folder manually:
               </Typography>
               <Box sx={{ mt: 0.5, p: 1.5, background: 'rgba(0,0,0,0.3)', borderRadius: 1, fontFamily: 'monospace', fontSize: '0.75rem', color: BRAND.textPrimary, userSelect: 'all', cursor: 'text' }}>
-                git pull origin main && npm install && npm start
+                git checkout -- src/desktop/dashboard-ui/dist/ && git pull origin main && npm install && npm start
               </Box>
             </Box>
           )}
