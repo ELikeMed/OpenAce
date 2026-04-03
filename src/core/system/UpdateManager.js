@@ -165,10 +165,27 @@ export class UpdateManager {
 
       // Step 2: Git pull
       progress('pull', 'active', 'Pulling latest code...');
+
+      // Reset build artifacts that get regenerated in Step 4 (prevents merge conflicts)
+      try {
+        await this._exec('git checkout -- src/desktop/dashboard-ui/dist/ src/studio/dist/ 2>/dev/null || true', this.baseDir);
+      } catch { /* no dist changes — fine */ }
+
+      // Stash any other local changes (e.g. modified config that shouldn't block update)
+      try {
+        await this._exec('git stash --include-untracked 2>/dev/null || true', this.baseDir);
+      } catch { /* nothing to stash — fine */ }
+
       const pullResult = await this._exec('git pull origin main', this.baseDir);
       if (pullResult.includes('fatal:') || pullResult.includes('error:')) {
         throw new Error(`Git pull failed: ${pullResult}`);
       }
+
+      // Restore stashed changes (if any)
+      try {
+        await this._exec('git stash pop 2>/dev/null || true', this.baseDir);
+      } catch { /* no stash to pop — fine */ }
+
       progress('pull', 'done', pullResult.trim().split('\n').pop());
 
       // Step 3: npm install
