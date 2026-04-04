@@ -1,6 +1,6 @@
 /**
  * EmbedAgent — Lightweight AI agent for the embeddable SDK.
- * A simplified UnifiedAgent with 28 server-safe tools + 4 SEO tools.
+ * A simplified UnifiedAgent with server-safe tools + 4 SEO tools.
  * No desktop/browser automation. No SOP execution. No training mode.
  */
 
@@ -47,16 +47,16 @@ export class EmbedAgent {
   }
 
   // ═══════════════════════════════════════════════════════
-  // TOOL DECLARATIONS
+  // TOOL DECLARATIONS — Only tools that actually work
   // ═══════════════════════════════════════════════════════
 
   _buildToolDeclarations() {
     const declarations = [];
 
-    // ── Research ──
+    // ── Research (always available — uses fetch) ──
     declarations.push({
       name: 'web_search',
-      description: 'Search the web using DuckDuckGo. Returns titles, URLs, and snippets.',
+      description: 'Search the web using DuckDuckGo. Returns titles, URLs, and snippets. Use this to find information, businesses, articles, etc.',
       parameters: {
         type: 'OBJECT',
         properties: {
@@ -68,7 +68,7 @@ export class EmbedAgent {
 
     declarations.push({
       name: 'read_webpage',
-      description: 'Fetch and read the content of a webpage URL. Returns extracted text.',
+      description: 'Fetch and read the content of any webpage URL. Returns extracted text, title, and links. Use this to read articles, analyze pages, extract contact info, etc.',
       parameters: {
         type: 'OBJECT',
         properties: {
@@ -79,31 +79,30 @@ export class EmbedAgent {
       }
     });
 
-    // ── Email ──
-    declarations.push({
-      name: 'send_email',
-      description: 'Send an email via Gmail SMTP. CRITICAL: Always use \\n\\n between paragraphs in the body.',
-      parameters: {
-        type: 'OBJECT',
-        properties: {
-          to: { type: 'STRING', description: 'Recipient email address' },
-          subject: { type: 'STRING', description: 'Email subject line' },
-          body: { type: 'STRING', description: 'Email body text. Use \\n\\n between paragraphs for proper spacing.' },
-          html: { type: 'STRING', description: 'Optional HTML version. If omitted, HTML auto-generated from body.' }
-        },
-        required: ['to', 'subject', 'body']
-      }
-    });
+    // ── Read Site Page (if siteUrl configured) ──
+    if (this.subsystems.siteUrl) {
+      declarations.push({
+        name: 'read_site_page',
+        description: `Read a page from the host website (${this.subsystems.siteUrl}). Use this to understand site content, analyze pages, or check what's on a specific page.`,
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            path: { type: 'STRING', description: 'Page path, e.g. "/" for homepage, "/about", "/services", "/blog"' }
+          },
+          required: ['path']
+        }
+      });
+    }
 
-    // ── Pipeline / CRM ──
+    // ── Pipeline / CRM (always available — uses PipelineManager) ──
     declarations.push({
       name: 'find_leads',
-      description: 'Search for business leads by industry and location.',
+      description: 'Search for business leads by industry and location. Returns real businesses with contact info.',
       parameters: {
         type: 'OBJECT',
         properties: {
-          query: { type: 'STRING', description: 'Search query (e.g., "interior designers in Austin TX")' },
-          location: { type: 'STRING', description: 'City/state to search in' }
+          query: { type: 'STRING', description: 'Search query — include both industry and location (e.g., "interior designers in Austin TX")' },
+          count: { type: 'NUMBER', description: 'How many leads to find (default 5, max 20)' }
         },
         required: ['query']
       }
@@ -161,57 +160,47 @@ export class EmbedAgent {
       }
     });
 
-    // ── Contacts ──
-    declarations.push({
-      name: 'manage_contacts',
-      description: 'Add, search, or list contacts.',
-      parameters: {
-        type: 'OBJECT',
-        properties: {
-          action: { type: 'STRING', description: '"add", "search", or "list"' },
-          name: { type: 'STRING' },
-          email: { type: 'STRING' },
-          phone: { type: 'STRING' },
-          query: { type: 'STRING', description: 'Search query (for action=search)' }
-        },
-        required: ['action']
-      }
-    });
+    // ── Contacts (if ContactManager available) ──
+    if (this.subsystems.contactManager) {
+      declarations.push({
+        name: 'manage_contacts',
+        description: 'Add, search, or list contacts.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            action: { type: 'STRING', description: '"add", "search", or "list"' },
+            name: { type: 'STRING' },
+            email: { type: 'STRING' },
+            phone: { type: 'STRING' },
+            query: { type: 'STRING', description: 'Search query (for action=search)' }
+          },
+          required: ['action']
+        }
+      });
+    }
 
-    // ── Scheduling & Goals ──
-    declarations.push({
-      name: 'schedule_task',
-      description: 'Create a scheduled/recurring task.',
-      parameters: {
-        type: 'OBJECT',
-        properties: {
-          name: { type: 'STRING', description: 'Task name' },
-          schedule: { type: 'STRING', description: 'Cron expression or natural language (daily, weekly, etc.)' },
-          action: { type: 'STRING', description: 'What to do when triggered' }
-        },
-        required: ['name', 'schedule', 'action']
-      }
-    });
+    // ── Goals (if GoalTracker available) ──
+    if (this.subsystems.goalTracker) {
+      declarations.push({
+        name: 'manage_goals',
+        description: 'Track active missions and goals. Create, update progress, or list goals.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            action: { type: 'STRING', description: '"add", "update_progress", "list", "complete"' },
+            description: { type: 'STRING' },
+            goal_id: { type: 'STRING' },
+            progress_increment: { type: 'NUMBER' }
+          },
+          required: ['action']
+        }
+      });
+    }
 
-    declarations.push({
-      name: 'manage_goals',
-      description: 'Track active missions and goals. Create, update progress, or list goals.',
-      parameters: {
-        type: 'OBJECT',
-        properties: {
-          action: { type: 'STRING', description: '"create", "update", "list", "complete"' },
-          description: { type: 'STRING' },
-          goal_id: { type: 'STRING' },
-          progress_increment: { type: 'NUMBER' }
-        },
-        required: ['action']
-      }
-    });
-
-    // ── Memory ──
+    // ── Memory (always available — filesystem) ──
     declarations.push({
       name: 'save_note',
-      description: 'Save a note to memory for later recall.',
+      description: 'Save a note to memory for later recall. Use to remember important information.',
       parameters: {
         type: 'OBJECT',
         properties: {
@@ -234,7 +223,7 @@ export class EmbedAgent {
       }
     });
 
-    // ── Forms ──
+    // ── Forms (if FormManager available) ──
     if (this.subsystems.formManager) {
       declarations.push({
         name: 'create_form',
@@ -269,7 +258,7 @@ export class EmbedAgent {
       });
     }
 
-    // ── Projects ──
+    // ── Projects (always available — filesystem) ──
     declarations.push({
       name: 'create_project',
       description: 'Create a new web project (HTML/CSS/JS).',
@@ -323,22 +312,7 @@ export class EmbedAgent {
       }
     });
 
-    // ── Workload / Knowledge ──
-    if (this.subsystems.workloadStore) {
-      declarations.push({
-        name: 'search_workload',
-        description: 'Search ingested files and documents.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            query: { type: 'STRING', description: 'Search query' }
-          },
-          required: ['query']
-        }
-      });
-    }
-
-    // ── SEO Tools (NEW — SDK exclusive) ──
+    // ── SEO Tools (always available — uses fetch + AI) ──
     const seoDeclarations = getSeoToolDeclarations();
     declarations.push(...seoDeclarations);
 
@@ -353,38 +327,31 @@ export class EmbedAgent {
     const lower = message.toLowerCase();
     const allTools = this.toolDeclarations[0].functionDeclarations;
 
+    // Build groups from actually-declared tools only
+    const allToolNames = new Set(allTools.map(t => t.name));
+
     const groups = {
       memory:    ['save_note', 'recall_notes'],
-      research:  ['web_search', 'read_webpage'],
+      research:  ['web_search', 'read_webpage', 'read_site_page'],
       pipeline:  ['find_leads', 'save_leads', 'get_pipeline', 'move_lead'],
-      email:     ['send_email'],
       contacts:  ['manage_contacts'],
-      calendar:  ['list_calendar_events', 'create_calendar_event', 'delete_calendar_event'],
-      social:    ['post_social_media', 'schedule_social_post', 'create_content_plan', 'select_media_for_content'],
       projects:  ['create_project', 'write_project_file', 'read_project_file', 'list_project_files'],
       forms:     ['create_form', 'list_forms', 'get_form_submissions'],
-      workload:  ['search_workload'],
       goals:     ['manage_goals'],
-      scheduler: ['schedule_task'],
       seo:       ['analyze_seo', 'generate_blog_post', 'optimize_page_seo', 'generate_structured_data'],
     };
 
     const triggers = [
-      { group: 'research',  patterns: [/\bsearch\b/, /\bfind\b/, /\blook\s*up\b/, /\bresearch\b/, /\bgoogle\b/, /\binvestigate\b/] },
-      { group: 'pipeline',  patterns: [/\blead/i, /\bpipeline\b/, /\bprospect/i, /\bcrm\b/, /\bsave.*lead/i] },
-      { group: 'email',     patterns: [/\bemail\b/, /\bsend\b.*\b(message|note|mail)\b/, /\breach out\b/, /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/] },
+      { group: 'research',  patterns: [/\bsearch\b/, /\bfind\b/, /\blook\s*up\b/, /\bresearch\b/, /\bgoogle\b/, /\binvestigate\b/, /\bwebsite\b/, /\bpage\b/, /\bsite\b/, /\bread\b/, /\bcheck\b/, /\bwhat('s| is)\b/] },
+      { group: 'pipeline',  patterns: [/\blead/i, /\bpipeline\b/, /\bprospect/i, /\bcrm\b/, /\bsave.*lead/i, /\bbusiness/i] },
       { group: 'contacts',  patterns: [/\bcontact/i] },
-      { group: 'calendar',  patterns: [/\bcalendar\b/, /\bmeeting\b/, /\bevent\b/, /\bappointment\b/] },
-      { group: 'social',    patterns: [/\bpost\b/, /\bsocial\b/, /\btwitter\b/, /\blinkedin\b/, /\bfacebook\b/, /\binstagram\b/, /\btiktok\b/, /\bcontent\s*plan\b/] },
-      { group: 'projects',  patterns: [/\bproject\b/, /\bcode\b/, /\bbuild\b/, /\bhtml\b/, /\bcss\b/, /\bfile\b/, /\bedit\b/] },
+      { group: 'projects',  patterns: [/\bproject\b/, /\bcode\b/, /\bbuild\b/, /\bhtml\b/, /\bcss\b/, /\bfile\b/, /\bedit\b/, /\blandning\s*page\b/i, /\bcreate\b.*\b(page|site|website)\b/] },
       { group: 'forms',     patterns: [/\bform\b/, /\bquiz\b/, /\bsurvey\b/, /\bsubmission/i] },
-      { group: 'workload',  patterns: [/\bworkload\b/, /\bdocument\b/, /\bmedia\b/, /\bupload\b/] },
       { group: 'goals',     patterns: [/\bgoal/i, /\btarget\b/, /\bmission\b/, /\bper\s*(day|week|month)\b/] },
-      { group: 'scheduler', patterns: [/\bschedule\b/, /\broutine\b/, /\bdaily\b/, /\bweekly\b/] },
       { group: 'seo',       patterns: [/\bseo\b/i, /\bblog\b/, /\bschema\b/, /\bmeta\s*tag/i, /\bstructured\s*data\b/i, /\brank/i, /\boptimize\b/, /\bkeyword/i, /\bjson-?ld\b/i] },
     ];
 
-    const selectedGroups = new Set(['memory']);
+    const selectedGroups = new Set(['memory', 'research']);
 
     for (const { group, patterns } of triggers) {
       for (const pattern of patterns) {
@@ -398,19 +365,14 @@ export class EmbedAgent {
     // Cross-group dependencies
     if (selectedGroups.has('pipeline')) {
       selectedGroups.add('research');
-      selectedGroups.add('email');
-    }
-    if (selectedGroups.has('email')) {
-      selectedGroups.add('contacts');
     }
     if (selectedGroups.has('seo')) {
       selectedGroups.add('research');
       selectedGroups.add('projects');
     }
 
-    // Fallback — if only memory matched
-    if (selectedGroups.size <= 1) {
-      selectedGroups.add('research');
+    // Fallback — if only defaults matched, give a broader set
+    if (selectedGroups.size <= 2) {
       selectedGroups.add('pipeline');
       selectedGroups.add('goals');
       selectedGroups.add('seo');
@@ -419,7 +381,9 @@ export class EmbedAgent {
     const selectedToolNames = new Set();
     for (const group of selectedGroups) {
       if (groups[group]) {
-        for (const tool of groups[group]) selectedToolNames.add(tool);
+        for (const tool of groups[group]) {
+          if (allToolNames.has(tool)) selectedToolNames.add(tool);
+        }
       }
     }
 
@@ -444,7 +408,7 @@ export class EmbedAgent {
         prompt += soul.personality.traits.map(t => `- ${t}`).join('\n') + '\n\n';
       }
     } else {
-      prompt += `# WHO YOU ARE\nYou are Ace — an AI executive assistant embedded in the user's app. You handle SEO, content, leads, email, and more. You're direct, helpful, and honest.\n\n`;
+      prompt += `# WHO YOU ARE\nYou are Ace — an AI executive assistant embedded in the user's app. You handle SEO, content, leads, research, and more. You're direct, helpful, and honest.\n\n`;
     }
 
     // Anti-hallucination rules
@@ -452,12 +416,11 @@ export class EmbedAgent {
 1. **TOOLS ARE MANDATORY** — To perform ANY action, you MUST call the corresponding tool. NEVER describe doing something without calling the tool.
 2. **NEVER FABRICATE DATA** — Do not invent URLs, email addresses, phone numbers, or search results. If you don't know, say so and offer to look it up.
 3. **NEVER CLAIM ACTIONS YOU DIDN'T TAKE** — If you didn't call send_email, don't say "I sent the email."
-4. **SAY "I DON'T KNOW" WHEN APPROPRIATE** — If the user asks for factual data you don't have, use web_search to find real data.
+4. **SAY "I DON'T KNOW" WHEN APPROPRIATE** — If the user asks for factual data you don't have, use web_search or read_webpage to find real data.
 5. **TOOL RESULTS ARE TRUTH** — Your response must be based on actual tool results.
 6. **NO FAKE URLS** — Only share URLs that came from tool results.
-7. **USE YOUR CONVERSATION HISTORY** — Before saying "I don't have that", check the conversation above. Don't ask for information you were already given.
-8. **PIPELINE IS YOUR SOURCE OF TRUTH** — Before claiming a lead exists or doesn't, call get_pipeline. When you save a lead, note the returned ID.
-9. **EMAIL FORMATTING** — When composing emails, ALWAYS use \\n\\n between paragraphs. Never send a wall of text. If the user drafted an email body, use it EXACTLY with proper paragraph breaks.
+7. **USE YOUR CONVERSATION HISTORY** — Before saying "I don't have that", check the conversation above.
+8. **PIPELINE IS YOUR SOURCE OF TRUTH** — Before claiming a lead exists or doesn't, call get_pipeline.
 
 `;
 
@@ -467,49 +430,77 @@ export class EmbedAgent {
     const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     prompt += `# CURRENT DATE & TIME\nToday is **${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}**.\n\n`;
 
-    // Tool guidance
-    prompt += `# AVAILABLE TOOLS
-## Research & SEO
-- **web_search**: Search the web. Use for finding information, leads, competitors.
-- **read_webpage**: Read a URL's content. Use to extract contact info, analyze pages.
-- **analyze_seo**: Analyze a page's SEO (meta tags, headings, structured data, images). Returns scored report.
-- **generate_blog_post**: Generate an SEO-optimized blog post. Returns title, content, meta, structured data.
-- **optimize_page_seo**: Get SEO improvement suggestions for a URL + target keywords.
-- **generate_structured_data**: Create JSON-LD schema (Article, FAQ, HowTo, LocalBusiness, etc.).
+    // ── WEBSITE CONTEXT (the key missing piece) ──
+    const siteCtx = this.subsystems.siteContext;
+    const siteUrl = this.subsystems.siteUrl;
 
-## Lead Management
-- **find_leads**: Search for business leads by industry/location.
-- **save_leads**: Save leads to the pipeline. Returns saved IDs.
-- **get_pipeline**: View all leads/tasks with full details (ID, email, stage, notes).
-- **move_lead**: Move a lead to a new stage (new → contacted → qualified → proposal → won/lost).
+    if (siteCtx || siteUrl) {
+      prompt += `# THE WEBSITE YOU'RE EMBEDDED IN\n`;
+      if (siteUrl) prompt += `**URL**: ${siteUrl}\n`;
+      if (siteCtx) {
+        if (siteCtx.title) prompt += `**Site Name**: ${siteCtx.title}\n`;
+        if (siteCtx.description) prompt += `**Description**: ${siteCtx.description}\n`;
+        if (siteCtx.headings?.length > 0) {
+          prompt += `**Key Headings**: ${siteCtx.headings.slice(0, 8).join(' | ')}\n`;
+        }
+        if (siteCtx.navLinks?.length > 0) {
+          prompt += `**Site Pages**:\n`;
+          for (const link of siteCtx.navLinks.slice(0, 12)) {
+            prompt += `  - ${link.path} — "${link.text}"\n`;
+          }
+        }
+        if (siteCtx.bodyText) {
+          prompt += `**Homepage Content (excerpt)**: ${siteCtx.bodyText.substring(0, 800)}\n`;
+        }
+      }
+      prompt += `\nYou know this website. When the user asks about the site, its pages, or its content, use this context. If you need more detail about a specific page, use the **read_site_page** or **read_webpage** tool.\n\n`;
+    }
 
-## Communication
-- **send_email**: Send email via Gmail SMTP. Always format with paragraph breaks.
-- **manage_contacts**: Add, search, or list contacts.
-
-## Content & Social
-- **create_form**: Create forms, quizzes, surveys.
-- **save_note** / **recall_notes**: Save and retrieve notes.
-
-## Projects
-- **create_project**: Create a new web project.
-- **write_project_file**: Write a file in a project.
-- **read_project_file**: Read a file from a project.
-
-`;
-
-    // Desktop upsell guidance
-    prompt += `# DESKTOP CAPABILITIES
-Some tasks require the full OpenAce desktop app (browser automation, SOP recording, screen control, teaching processes). When the user asks for these, respond helpfully but note:
-"That feature requires the full OpenAce desktop app — it can control your browser, record processes, manage your full pipeline, and more. Check it out at openaceai.com."
-Do NOT pretend you can do desktop-level automation from the embedded version.
-
-`;
-
-    // Business context from subsystems
+    // Business context from config
     if (this.subsystems.businessContext) {
       prompt += `# BUSINESS CONTEXT\n${this.subsystems.businessContext}\n\n`;
     }
+
+    // Tool guidance — only list tools that are actually available
+    prompt += `# AVAILABLE TOOLS\n`;
+    prompt += `## Research & Web\n`;
+    prompt += `- **web_search**: Search the web. Use for finding information, leads, competitors, anything.\n`;
+    prompt += `- **read_webpage**: Read any URL's content. Use to extract info, analyze pages, get contact details.\n`;
+    if (siteUrl) {
+      prompt += `- **read_site_page**: Read a page from the host website (${siteUrl}). Use to check site content.\n`;
+    }
+    prompt += `\n## SEO & Content\n`;
+    prompt += `- **analyze_seo**: Analyze a page's SEO (meta tags, headings, structured data). Returns scored report.\n`;
+    prompt += `- **generate_blog_post**: Generate an SEO-optimized blog post. Returns title, content, meta, schema.\n`;
+    prompt += `- **optimize_page_seo**: Get SEO improvement suggestions for a URL + target keywords.\n`;
+    prompt += `- **generate_structured_data**: Create JSON-LD schema (Article, FAQ, HowTo, etc.).\n`;
+    prompt += `\n## Lead Management\n`;
+    prompt += `- **find_leads**: Search for business leads by industry/location.\n`;
+    prompt += `- **save_leads**: Save leads to the pipeline.\n`;
+    prompt += `- **get_pipeline**: View all leads/tasks with full details.\n`;
+    prompt += `- **move_lead**: Move a lead to a new stage.\n`;
+    prompt += `\n## Projects & Memory\n`;
+    prompt += `- **create_project** / **write_project_file** / **read_project_file**: Create and manage web projects.\n`;
+    prompt += `- **save_note** / **recall_notes**: Save and retrieve notes.\n`;
+
+    if (this.subsystems.goalTracker) {
+      prompt += `- **manage_goals**: Track missions with progress tracking.\n`;
+    }
+    if (this.subsystems.contactManager) {
+      prompt += `- **manage_contacts**: Add, search, or list contacts.\n`;
+    }
+    if (this.subsystems.formManager) {
+      prompt += `- **create_form** / **list_forms**: Create forms, quizzes, surveys.\n`;
+    }
+    prompt += '\n';
+
+    // Desktop upsell guidance
+    prompt += `# DESKTOP CAPABILITIES
+Some tasks require the full OpenAce desktop app (browser automation, SOP recording, screen control, sending emails, making calls, social media posting). When the user asks for these, respond helpfully but note:
+"That feature requires the full OpenAce desktop app — it can control your browser, send emails, make calls, post to social media, and more. Check it out at openaceai.com."
+Do NOT pretend you can do desktop-level automation or send emails/SMS from the embedded version unless those integrations are configured.
+
+`;
 
     return prompt;
   }
@@ -530,12 +521,10 @@ Do NOT pretend you can do desktop-level automation from the embedded version.
       // Research
       case 'web_search': return await toolkit.toolWebSearch(args, ctx);
       case 'read_webpage': return await toolkit.toolReadWebpage(args, ctx);
-
-      // Email
-      case 'send_email': return await toolkit.toolSendEmail(args, ctx);
+      case 'read_site_page': return await this._toolReadSitePage(args, ctx);
 
       // Pipeline
-      case 'find_leads': return await toolkit.toolFindLeads(args, ctx);
+      case 'find_leads': return await this._toolFindLeads(args, ctx);
       case 'save_leads': return await toolkit.toolSaveLeads(args, ctx);
       case 'get_pipeline': return await toolkit.toolGetPipeline(args, ctx);
       case 'move_lead': return await toolkit.toolMoveLead(args, ctx);
@@ -544,8 +533,7 @@ Do NOT pretend you can do desktop-level automation from the embedded version.
       // Contacts
       case 'manage_contacts': return await toolkit.toolManageContacts(args, ctx);
 
-      // Scheduling & Goals
-      case 'schedule_task': return await toolkit.toolScheduleTask(args, ctx);
+      // Goals
       case 'manage_goals': return await toolkit.toolManageGoals(args, ctx);
 
       // Memory
@@ -563,10 +551,7 @@ Do NOT pretend you can do desktop-level automation from the embedded version.
       case 'read_project_file': return await toolkit.toolReadProjectFile(args, ctx);
       case 'list_project_files': return await toolkit.toolListProjectFiles(args, ctx);
 
-      // Workload
-      case 'search_workload': return await toolkit.toolSearchWorkload(args, ctx);
-
-      // SEO (NEW)
+      // SEO
       case 'analyze_seo': return await seoKit.toolAnalyzeSeo(args, ctx);
       case 'generate_blog_post': return await seoKit.toolGenerateBlogPost(args, ctx);
       case 'optimize_page_seo': return await seoKit.toolOptimizePageSeo(args, ctx);
@@ -574,6 +559,92 @@ Do NOT pretend you can do desktop-level automation from the embedded version.
 
       default:
         return JSON.stringify({ error: `Unknown tool: ${name}` });
+    }
+  }
+
+  /**
+   * Read a page from the host website.
+   * Combines siteUrl with the requested path and fetches it.
+   */
+  async _toolReadSitePage(args, ctx) {
+    const siteUrl = this.subsystems.siteUrl;
+    if (!siteUrl) return JSON.stringify({ error: 'Site URL not configured. Set siteUrl in createAceServer config.' });
+
+    const pagePath = args.path || '/';
+    const fullUrl = new URL(pagePath, siteUrl).href;
+
+    ctx.onProgress(`Reading site page: ${pagePath}`);
+    return await toolkit.toolReadWebpage({ url: fullUrl, extract: args.extract || 'text' }, ctx);
+  }
+
+  /**
+   * Find leads — fixed to parse query into industry + location.
+   * The AI sends { query: "plumbers in Austin TX" } but LeadFinder needs industry + location.
+   */
+  async _toolFindLeads(args, ctx) {
+    const { query, count: rawCount } = args;
+    const countNum = Math.min(Math.max(parseInt(rawCount) || 5, 1), 20);
+
+    // Parse query into industry + location
+    // Patterns: "X in Y", "X near Y", "X Y,Z"
+    let industry = query;
+    let location = args.location || '';
+
+    const inMatch = query.match(/^(.+?)\s+(?:in|near|around)\s+(.+)$/i);
+    if (inMatch) {
+      industry = inMatch[1].trim();
+      location = inMatch[2].trim();
+    }
+
+    ctx.onProgress(`Finding ${countNum} ${industry} businesses${location ? ` in ${location}` : ''}...`);
+
+    try {
+      const { LeadFinder } = await import('./subsystems/LeadFinder.js');
+      const finder = new LeadFinder({
+        config: ctx.config || {},
+        onProgress: ctx.onProgress,
+      });
+
+      const leads = await finder.findLeads(industry, location, countNum);
+
+      // Filter out generated fallback leads — only return real scraped results
+      const realLeads = leads.filter(l => l.source !== 'generated_fallback');
+
+      if (realLeads.length === 0) {
+        return JSON.stringify({
+          success: false,
+          industry,
+          location,
+          leads: [],
+          message: `Could not find real ${industry} businesses${location ? ` in ${location}` : ''}. Try a more specific search or use web_search as a fallback.`
+        });
+      }
+
+      ctx.onProgress(`Found ${realLeads.length} real businesses`);
+
+      return JSON.stringify({
+        success: true,
+        industry,
+        location,
+        count: realLeads.length,
+        leads: realLeads.map(l => ({
+          company: l.company || l.name,
+          phone: l.phone || '',
+          email: l.email || '',
+          website: l.website || '',
+          address: l.address || '',
+          source: l.source || 'web_search',
+          notes: l.notes || ''
+        })),
+        hint: 'Use save_leads to add these to the pipeline. Present the results to the user first.'
+      });
+    } catch (e) {
+      console.error(`[EmbedAgent] find_leads error:`, e.message);
+      return JSON.stringify({
+        success: false,
+        error: `Lead search failed: ${e.message}`,
+        hint: 'Try web_search with a Google query like "plumbers in Austin TX" as a fallback.'
+      });
     }
   }
 

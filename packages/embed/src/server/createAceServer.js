@@ -8,17 +8,11 @@
  *   import { createAceServer } from '@openace/embed/server';
  *   export default createAceServer({ licenseKey: process.env.OPENACE_LICENSE_KEY });
  *
- * Explicit keys:
+ * With website awareness:
  *   createAceServer({
- *     licenseKey: '...',
- *     ai: { geminiKey: '...', claudeKey: '...' },
- *     adminSecret: process.env.ACE_ADMIN_SECRET,
+ *     siteUrl: 'https://what2dotoday.com',
+ *     businessContext: 'We are an activity recommendation platform...',
  *   });
- *
- * Express with custom auth:
- *   app.use('/api/ace', createAceServer({
- *     auth: (req) => req.session?.user?.role === 'admin',
- *   }));
  */
 
 import { EmbedAgent } from './EmbedAgent.js';
@@ -70,6 +64,84 @@ function autoDetectKeys() {
   return detected;
 }
 
+/**
+ * Fetch a URL and extract useful text content (title, description, body text).
+ * Used to auto-learn about the host website on init.
+ */
+async function fetchPageContext(url, timeoutMs = 8000) {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const resp = await fetch(url, {
+      headers: {
+        'User-Agent': 'OpenAce-Embed/1.0 (+https://openaceai.com)',
+        'Accept': 'text/html',
+      },
+      signal: controller.signal,
+      redirect: 'follow',
+    });
+    clearTimeout(timeout);
+    if (!resp.ok) return null;
+
+    const html = await resp.text();
+
+    // Extract key info
+    const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    const title = titleMatch ? titleMatch[1].replace(/\s+/g, ' ').trim() : '';
+
+    const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([\s\S]*?)["']/i)
+      || html.match(/<meta[^>]+content=["']([\s\S]*?)["'][^>]+name=["']description["']/i);
+    const description = descMatch ? descMatch[1].trim() : '';
+
+    // Extract headings
+    const headings = [];
+    const hRe = /<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/gi;
+    let hm;
+    while ((hm = hRe.exec(html)) !== null && headings.length < 15) {
+      const text = hm[1].replace(/<[^>]+>/g, '').trim();
+      if (text.length > 2 && text.length < 200) headings.push(text);
+    }
+
+    // Extract navigation links (internal pages)
+    const navLinks = [];
+    const baseUrl = new URL(url);
+    const linkRe = /<a[^>]+href=["']([^"'#]+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    let lm;
+    while ((lm = linkRe.exec(html)) !== null && navLinks.length < 20) {
+      const href = lm[1];
+      const text = lm[2].replace(/<[^>]+>/g, '').trim();
+      if (!text || text.length > 60) continue;
+      // Only internal links
+      if (href.startsWith('/') || href.startsWith(baseUrl.origin)) {
+        const fullUrl = href.startsWith('/') ? `${baseUrl.origin}${href}` : href;
+        const pathname = new URL(fullUrl).pathname;
+        if (pathname !== '/' && !navLinks.some(n => n.path === pathname)) {
+          navLinks.push({ path: pathname, text });
+        }
+      }
+    }
+
+    // Extract body text (cleaned)
+    const bodyText = html
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<nav[\s\S]*?<\/nav>/gi, '')
+      .replace(/<footer[\s\S]*?<\/footer>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .substring(0, 2000);
+
+    return { url, title, description, headings, navLinks, bodyText };
+  } catch (e) {
+    console.warn(`[OpenAce Embed] Could not fetch ${url}: ${e.message}`);
+    return null;
+  }
+}
+
+
 export function createAceServer(config = {}) {
   const {
     licenseKey,
@@ -78,8 +150,9 @@ export function createAceServer(config = {}) {
     tools = 'all',
     cron = {},
     businessContext = '',
-    auth,           // Function: (req) => boolean | Promise<boolean>
-    adminSecret,    // String: shared secret (simpler alternative to auth function)
+    siteUrl = '',        // Host website URL — enables website awareness
+    auth,                // Function: (req) => boolean | Promise<boolean>
+    adminSecret,         // String: shared secret (simpler alternative to auth function)
   } = config;
 
   // ── Merge AI keys: explicit config > auto-detected env vars > proxy fallback ──
@@ -149,12 +222,12 @@ export function createAceServer(config = {}) {
     await fs.mkdir(path.join(absDataDir, 'notes'), { recursive: true });
     await fs.mkdir(path.join(absDataDir, 'projects'), { recursive: true });
     await fs.mkdir(path.join(absDataDir, 'cron'), { recursive: true });
+    await fs.mkdir(path.join(absDataDir, 'goals'), { recursive: true });
 
     // ── AI Provider ──
     let aiManager;
     try {
       if (useProxy) {
-        // Proxy mode: AI calls route through OpenAce servers
         const { ProxyAIProvider } = await import('./ProxyAIProvider.js');
         aiManager = new ProxyAIProvider(licenseKey);
       } else {
@@ -220,7 +293,73 @@ export function createAceServer(config = {}) {
       console.warn('[OpenAce Embed] FormManager not available:', e.message);
     }
 
+    // ── Lightweight GoalTracker (file-based) ──
+    try {
+      const goalsPath = path.join(absDataDir, 'goals', 'goals.json');
+      subsystems.goalTracker = {
+        _goalsPath: goalsPath,
+        _goals: [],
+        async _load() {
+          try {
+            const data = await fs.readFile(this._goalsPath, 'utf-8');
+            this._goals = JSON.parse(data);
+          } catch { this._goals = []; }
+        },
+        async _save() { await fs.writeFile(this._goalsPath, JSON.stringify(this._goals, null, 2)); },
+        async addGoal(g) {
+          await this._load();
+          const goal = { id: `goal_${Date.now()}`, ...g, status: 'active', progress: { current: 0 }, createdAt: new Date().toISOString() };
+          this._goals.push(goal);
+          await this._save();
+          return goal;
+        },
+        getActiveGoals() { return this._goals.filter(g => g.status === 'active'); },
+        getAllGoals() { return this._goals; },
+        async updateProgress(id, increment, note) {
+          await this._load();
+          const g = this._goals.find(x => x.id === id);
+          if (!g) return null;
+          g.progress.current += increment;
+          if (note) { if (!g.notes) g.notes = []; g.notes.push(note); }
+          await this._save();
+          return g;
+        },
+        async completeGoal(id) {
+          await this._load();
+          const g = this._goals.find(x => x.id === id);
+          if (!g) return null;
+          g.status = 'completed';
+          await this._save();
+          return g;
+        },
+        async updateGoal(id, updates) {
+          await this._load();
+          const g = this._goals.find(x => x.id === id);
+          if (!g) return null;
+          Object.assign(g, updates);
+          await this._save();
+          return g;
+        },
+        getSuggestionBehavior() { return 'normal'; },
+        async recordSuggestionResponse() {},
+      };
+      await subsystems.goalTracker._load();
+    } catch (e) {
+      console.warn('[OpenAce Embed] GoalTracker init failed:', e.message);
+    }
+
+    // ── Website context (auto-crawl on init) ──
     subsystems.businessContext = businessContext;
+    subsystems.siteUrl = siteUrl || process.env.SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || '';
+    subsystems.siteContext = null;
+
+    if (subsystems.siteUrl) {
+      console.log(`[OpenAce Embed] Crawling site: ${subsystems.siteUrl}`);
+      subsystems.siteContext = await fetchPageContext(subsystems.siteUrl);
+      if (subsystems.siteContext) {
+        console.log(`[OpenAce Embed] Site context loaded: "${subsystems.siteContext.title}" (${subsystems.siteContext.navLinks.length} pages found)`);
+      }
+    }
 
     // ── License ──
     const license = new LicenseValidator(licenseKey, absDataDir);
@@ -302,6 +441,23 @@ export function createAceServer(config = {}) {
         if (!authorized) {
           res.status?.(401);
           return res.json({ error: 'Unauthorized. Ace is admin-only.' });
+        }
+      }
+
+      // Auto-detect siteUrl from request Host header if not configured
+      if (!_instance?.subsystems?.siteUrl && req.headers?.host) {
+        const proto = req.headers['x-forwarded-proto'] || 'https';
+        const detectedUrl = `${proto}://${req.headers.host}`;
+        // Store for later use but don't block on crawl
+        if (_instance?.subsystems) {
+          _instance.subsystems.siteUrl = detectedUrl;
+          // Crawl in background (non-blocking)
+          fetchPageContext(detectedUrl).then(ctx => {
+            if (ctx && _instance?.subsystems) {
+              _instance.subsystems.siteContext = ctx;
+              console.log(`[OpenAce Embed] Auto-detected site: "${ctx.title}"`);
+            }
+          });
         }
       }
 
