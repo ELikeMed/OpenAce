@@ -174,7 +174,7 @@ function findLayoutFiles(framework) {
  * Inject the AceWidget import + component into a React/JSX file.
  * Finds the closing tag of the outermost return and inserts before it.
  */
-function injectWidgetIntoReactFile(filePath, mode, position, theme) {
+function injectWidgetIntoReactFile(filePath, mode, position, theme, framework) {
   const absPath = path.join(cwd, filePath);
   let content = fs.readFileSync(absPath, 'utf-8');
 
@@ -183,20 +183,28 @@ function injectWidgetIntoReactFile(filePath, mode, position, theme) {
     return { success: false, reason: 'already_injected' };
   }
 
-  // Add import at the top (after last import)
-  const importLine = `import { AceWidget } from '@openace/embed';`;
+  // Add imports at the top (after last import)
+  // Include both the component and the CSS
+  const importLines = [
+    `import { AceWidget } from '@openace/embed';`,
+    `import '@openace/embed/css';`,
+  ].join('\n');
   const lastImportIdx = content.lastIndexOf('\nimport ');
   if (lastImportIdx !== -1) {
     const endOfImportLine = content.indexOf('\n', lastImportIdx + 1);
-    content = content.slice(0, endOfImportLine + 1) + importLine + '\n' + content.slice(endOfImportLine + 1);
+    content = content.slice(0, endOfImportLine + 1) + importLines + '\n' + content.slice(endOfImportLine + 1);
   } else {
-    content = importLine + '\n' + content;
+    content = importLines + '\n' + content;
   }
+
+  // Pick the correct public env var prefix for this framework
+  const envPrefix = getPublicEnvPrefix(framework);
+  const envVarName = `${envPrefix}ACE_ADMIN_SECRET`;
 
   // Build the widget JSX
   const widgetProps = [];
   widgetProps.push(`serverUrl="/api/ace"`);
-  widgetProps.push(`authToken={process.env.NEXT_PUBLIC_ACE_ADMIN_SECRET || ''}`);
+  widgetProps.push(`authToken={process.env.${envVarName} || ''}`);
   if (mode !== 'fab') widgetProps.push(`mode="${mode}"`);
   if (position !== 'bottom-right') widgetProps.push(`position="${position}"`);
   if (theme !== 'light') widgetProps.push(`theme="${theme}"`);
@@ -394,6 +402,31 @@ export default createAceServer({
 function readJSON(f) { try { return JSON.parse(fs.readFileSync(path.join(cwd, f), 'utf-8')); } catch { return null; } }
 function fileExists(p) { return fs.existsSync(path.join(cwd, p)); }
 
+/**
+ * Returns the correct public env var prefix for a framework.
+ * - Next.js → NEXT_PUBLIC_
+ * - CRA (react-scripts) → REACT_APP_
+ * - Vite → VITE_
+ * - Remix → (no prefix needed, uses server loader)
+ * - Default → NEXT_PUBLIC_ (safe fallback)
+ */
+function getPublicEnvPrefix(framework) {
+  if (framework === 'nextjs') return 'NEXT_PUBLIC_';
+  if (framework === 'react-spa') {
+    // Detect CRA vs Vite
+    const pkg = readJSON('package.json') || {};
+    const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+    if (deps['vite'] || deps['@vitejs/plugin-react']) return 'VITE_';
+    if (deps['react-scripts']) return 'REACT_APP_';
+    // Fallback: check for vite.config.*
+    if (fileExists('vite.config.js') || fileExists('vite.config.ts')) return 'VITE_';
+    return 'REACT_APP_'; // CRA is more common
+  }
+  if (framework === 'remix') return ''; // Remix uses server loaders
+  if (framework === 'astro') return 'PUBLIC_';
+  return 'NEXT_PUBLIC_'; // safe default
+}
+
 function appendToEnv(key, value) {
   const envPath = path.join(cwd, '.env');
   const line = `${key}=${value}\n`;
@@ -483,9 +516,12 @@ async function main() {
     const cr = await import('crypto');
     adminSecret = cr.randomBytes(24).toString('hex');
     appendToEnv('ACE_ADMIN_SECRET', adminSecret);
-    // Also add the NEXT_PUBLIC version for client-side access in React frameworks
+    // Also add the public version for client-side access in React frameworks
     if (isReact) {
-      appendToEnv('NEXT_PUBLIC_ACE_ADMIN_SECRET', adminSecret);
+      const prefix = getPublicEnvPrefix(framework);
+      if (prefix) {
+        appendToEnv(`${prefix}ACE_ADMIN_SECRET`, adminSecret);
+      }
     }
     success('Generated admin secret and added to .env');
   }
@@ -589,7 +625,7 @@ async function main() {
       let result;
 
       if (isJSX) {
-        result = injectWidgetIntoReactFile(targetFile, mode, position, theme);
+        result = injectWidgetIntoReactFile(targetFile, mode, position, theme, framework);
       } else if (isHTML) {
         result = injectWidgetIntoHTML(targetFile, mode, position, theme, adminSecret);
       } else if (isVue) {
@@ -653,11 +689,14 @@ async function main() {
 function printManualSnippet(framework, isReact, mode, position, theme, adminSecret) {
   log();
   if (isReact) {
+    const envPrefix = getPublicEnvPrefix(framework);
+    const envVarName = `${envPrefix}ACE_ADMIN_SECRET`;
     log(`${c.dim}  // Add to your admin layout:${c.reset}`);
     log(`${c.cyan}  import { AceWidget } from '@openace/embed';${c.reset}`);
+    log(`${c.cyan}  import '@openace/embed/css';${c.reset}`);
     log();
     const props = [`serverUrl="/api/ace"`];
-    props.push(`authToken={process.env.NEXT_PUBLIC_ACE_ADMIN_SECRET || ''}`);
+    props.push(`authToken={process.env.${envVarName} || ''}`);
     if (mode !== 'fab') props.push(`mode="${mode}"`);
     if (position !== 'bottom-right') props.push(`position="${position}"`);
     if (theme !== 'light') props.push(`theme="${theme}"`);

@@ -26,6 +26,20 @@ export class LicenseValidator {
   }
 
   async validate() {
+    // Owner bypass — unlimited Pro, no watermark, no API call
+    if (this.licenseKey === 'owner') {
+      this.cachedLicense = {
+        valid: true,
+        plan: 'pro',
+        trialDaysLeft: 0,
+        features: PRO_FEATURES,
+        watermark: false,
+        validatedAt: Date.now(),
+      };
+      this.lastValidated = Date.now();
+      return this.cachedLicense;
+    }
+
     // 1. Check local cache (valid for 24 hours)
     const cachePath = path.join(this.dataDir, 'license.json');
     try {

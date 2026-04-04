@@ -83,8 +83,17 @@ export function ChatWindow({
     '--ace-shadow-button': `0 4px 16px ${accentColor}66`,
   } : undefined;
 
+  const wrapperStyle = {
+    ...style,
+    display: 'flex',
+    flexDirection: 'column',
+    height: '100%',
+    minHeight: 0,
+    overflow: 'hidden',
+  };
+
   return (
-    <div style={style}>
+    <div style={wrapperStyle}>
       {/* ── Header with OpenAce branding ── */}
       <div className="ace-header">
         <div className="ace-header-left">

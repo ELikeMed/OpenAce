@@ -371,7 +371,7 @@ export class EmbedAgent {
 
     const triggers = [
       { group: 'research',  patterns: [/\bsearch\b/, /\bfind\b/, /\blook\s*up\b/, /\bresearch\b/, /\bgoogle\b/, /\binvestigate\b/] },
-      { group: 'pipeline',  patterns: [/\blead/i, /\bpipeline\b/, /\bprospect/i, /\bcrm\b/, /\bsave.*lead/i/] },
+      { group: 'pipeline',  patterns: [/\blead/i, /\bpipeline\b/, /\bprospect/i, /\bcrm\b/, /\bsave.*lead/i] },
       { group: 'email',     patterns: [/\bemail\b/, /\bsend\b.*\b(message|note|mail)\b/, /\breach out\b/, /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/] },
       { group: 'contacts',  patterns: [/\bcontact/i] },
       { group: 'calendar',  patterns: [/\bcalendar\b/, /\bmeeting\b/, /\bevent\b/, /\bappointment\b/] },

@@ -49,7 +49,7 @@ export class AceRouter {
 
     // License check
     if (this.license) {
-      const check = this.license.checkLimit('interactions');
+      const check = await this.license.checkLimit('interactions');
       if (!check.allowed) {
         return res.json({
           type: 'error',

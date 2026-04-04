@@ -88,13 +88,21 @@ export function AceWidget({
   const posClass = position === 'bottom-left' ? 'ace-bottom-left' : 'ace-bottom-right';
 
   // Inject CSS on first render (once)
+  // Developers should import '@openace/embed/css' in their app, or add a <link> tag.
+  // This block is a fallback that injects the CSS file path as a <link> if nothing else loaded it.
   if (typeof document !== 'undefined' && !document.getElementById('ace-widget-styles')) {
-    const style = document.createElement('style');
-    style.id = 'ace-widget-styles';
-    try {
-      style.textContent = typeof __ACE_CSS__ !== 'undefined' ? __ACE_CSS__ : '';
-    } catch { /* CSS loaded via separate file or <link> tag */ }
-    document.head.appendChild(style);
+    // Check if any ace-widget styles already exist (from a <link> or bundler import)
+    const hasStyles = document.querySelector('style[data-ace]') ||
+      [...document.styleSheets].some(s => { try { return s.cssRules?.[0]?.selectorText?.includes('ace-widget'); } catch { return false; } });
+    if (!hasStyles) {
+      // Mark that we tried so we don't repeat
+      const marker = document.createElement('meta');
+      marker.id = 'ace-widget-styles';
+      marker.name = 'ace-css-status';
+      marker.content = 'needs-import';
+      document.head.appendChild(marker);
+      console.warn('[OpenAce] CSS not detected. Add this import to your app:\n  import \'@openace/embed/css\';');
+    }
   }
 
   const chatWindow = (

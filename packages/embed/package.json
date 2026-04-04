@@ -1,28 +1,28 @@
 {
   "name": "@openace/embed",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Embed Ace — your AI executive assistant — directly into any web app",
   "type": "module",
-  "main": "dist/index.cjs",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "src/index.js",
+  "module": "src/index.js",
   "bin": {
     "ace-init": "./bin/ace-init.js",
     "openace-init": "./bin/ace-init.js"
   },
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": "./src/index.js",
+      "default": "./src/index.js"
     },
     "./server": {
       "import": "./src/server/createAceServer.js",
-      "require": "./src/server/createAceServer.js"
+      "default": "./src/server/createAceServer.js"
     },
     "./widget": {
       "import": "./src/client/AceWidget.jsx",
-      "require": "./src/client/AceWidget.jsx"
-    }
+      "default": "./src/client/AceWidget.jsx"
+    },
+    "./css": "./src/client/styles/ace-widget.css"
   },
   "scripts": {
     "build": "rollup -c rollup.config.js",

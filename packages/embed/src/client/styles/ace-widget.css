@@ -733,7 +733,7 @@
 }
 
 /* ── Responsive ── */
-@media (max-width: 480px) {
+@media (max-width: 768px) {
   .ace-chat-window {
     width: calc(100vw - 24px);
     height: calc(100vh - 100px);
