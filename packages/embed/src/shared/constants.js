@@ -39,9 +39,12 @@ export const LIMITS = {
 export const TOOL_GROUPS = {
   research:   ['web_search', 'read_webpage', 'read_site_page'],
   seo:        ['analyze_seo', 'generate_blog_post', 'optimize_page_seo', 'generate_structured_data'],
+  source:     ['list_source_files', 'read_source_file', 'edit_source_file'],
   leads:      ['find_leads'],
   projects:   ['create_project', 'write_project_file', 'list_project_files', 'read_project_file', 'edit_project_file', 'list_projects'],
   forms:      ['create_form', 'list_forms', 'get_form_submissions'],
+  images:     ['generate_image'],
+  calendar:   ['plan_content_calendar'],
   memory:     ['save_note', 'recall_notes'],
 };
 
@@ -50,6 +53,9 @@ export const TOOL_LABELS = {
   web_search: { label: 'Searching the web', icon: 'search' },
   read_webpage: { label: 'Reading webpage', icon: 'web' },
   read_site_page: { label: 'Reading site page', icon: 'web' },
+  list_source_files: { label: 'Browsing source files', icon: 'folder' },
+  read_source_file: { label: 'Reading source file', icon: 'code' },
+  edit_source_file: { label: 'Editing source file', icon: 'code' },
   find_leads: { label: 'Finding leads', icon: 'people' },
   create_form: { label: 'Creating form', icon: 'form' },
   list_forms: { label: 'Listing forms', icon: 'form' },
@@ -65,7 +71,9 @@ export const TOOL_LABELS = {
   analyze_seo: { label: 'Analyzing SEO', icon: 'seo' },
   generate_blog_post: { label: 'Writing blog post', icon: 'blog' },
   optimize_page_seo: { label: 'Optimizing SEO', icon: 'seo' },
-  generate_structured_data: { label: 'Generating schema', icon: 'code' }
+  generate_structured_data: { label: 'Generating schema', icon: 'code' },
+  generate_image: { label: 'Generating image', icon: 'image' },
+  plan_content_calendar: { label: 'Planning content', icon: 'calendar' },
 };
 
 // ── Desktop-Only Tools (used for upsell detection) ──

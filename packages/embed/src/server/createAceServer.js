@@ -155,6 +155,7 @@ export function createAceServer(config = {}) {
     cron = {},
     businessContext = '',
     siteUrl = '',        // Host website URL — enables website awareness
+    sourceDir = '',      // Path to site's source code — enables direct file editing
     auth,                // Function: (req) => boolean | Promise<boolean>
     adminSecret,         // String: shared secret (simpler alternative to auth function)
   } = config;
@@ -278,6 +279,23 @@ export function createAceServer(config = {}) {
       await subsystems.formManager.initialize?.();
     } catch (e) {
       console.warn('[OpenAce Embed] FormManager not available:', e.message);
+    }
+
+    // ── Source directory (direct site file access) ──
+    if (sourceDir) {
+      const absSourceDir = path.resolve(sourceDir);
+      try {
+        await fs.access(absSourceDir);
+        subsystems.sourceDir = absSourceDir;
+        console.log(`[OpenAce Embed] Source directory: ${absSourceDir}`);
+      } catch {
+        console.warn(`[OpenAce Embed] sourceDir "${sourceDir}" not accessible — direct file editing disabled`);
+      }
+    }
+
+    // ── Pass OpenAI key for image generation ──
+    if (resolvedAI.openaiKey) {
+      subsystems.openaiKey = resolvedAI.openaiKey;
     }
 
     // ── Website context (auto-crawl on init) ──

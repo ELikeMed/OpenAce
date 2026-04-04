@@ -2060,6 +2060,577 @@ export async function toolGenerateStructuredData(args, ctx) {
 
 
 // ═══════════════════════════════════════════════════════
+// DIRECT SITE FILE ACCESS — Read/edit actual source files
+// ═══════════════════════════════════════════════════════
+
+const BLOCKED_PATTERNS = [
+  /^\.env/i, /^\.git\b/, /node_modules\b/, /package-lock\.json$/,
+  /\.pem$/, /\.key$/, /\.cert$/, /\.p12$/, /\.pfx$/,
+  /credentials/i, /secrets?\./i, /\.sqlite3?$/, /\.db$/,
+];
+
+const TEXT_EXTENSIONS = new Set([
+  '.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs',
+  '.html', '.htm', '.css', '.scss', '.sass', '.less',
+  '.json', '.yaml', '.yml', '.toml', '.xml', '.svg',
+  '.md', '.mdx', '.txt', '.csv', '.env.example',
+  '.py', '.rb', '.php', '.go', '.rs', '.java',
+  '.sh', '.bash', '.zsh', '.fish',
+  '.vue', '.svelte', '.astro',
+  '.graphql', '.gql', '.sql',
+  '.conf', '.cfg', '.ini', '.properties',
+  '.dockerfile', '.gitignore', '.npmrc',
+]);
+
+function _isPathSafe(filePath) {
+  if (!filePath) return false;
+  const normalized = path.normalize(filePath);
+  if (normalized.includes('..')) return false;
+  if (path.isAbsolute(normalized)) return false;
+  for (const pattern of BLOCKED_PATTERNS) {
+    if (pattern.test(normalized)) return false;
+  }
+  return true;
+}
+
+function _isTextFile(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (TEXT_EXTENSIONS.has(ext)) return true;
+  // Also allow extensionless files like Dockerfile, Makefile, etc.
+  const base = path.basename(filePath);
+  if (['Dockerfile', 'Makefile', 'Procfile', 'Gemfile', 'Rakefile'].includes(base)) return true;
+  return false;
+}
+
+/**
+ * List files in the site's source directory. Supports glob-like pattern matching.
+ */
+export async function toolListSourceFiles(args, ctx) {
+  const sourceDir = ctx.subsystems?.sourceDir;
+  if (!sourceDir) return JSON.stringify({ error: 'Source directory not configured. Set sourceDir in createAceServer config.' });
+
+  const dir = args.directory || '.';
+  const pattern = (args.pattern || '').toLowerCase();
+
+  if (!_isPathSafe(dir === '.' ? 'safe' : dir)) {
+    return JSON.stringify({ error: 'Invalid directory path.' });
+  }
+
+  const targetDir = dir === '.' ? sourceDir : path.join(sourceDir, dir);
+
+  try {
+    const files = await _walkDir(targetDir, sourceDir, pattern, 0, 3);
+    ctx.onProgress(`Found ${files.length} files`);
+
+    return JSON.stringify({
+      success: true,
+      sourceDir: path.basename(sourceDir),
+      directory: dir,
+      files: files.slice(0, 100),
+      total: files.length,
+      truncated: files.length > 100,
+    });
+  } catch (e) {
+    return JSON.stringify({ error: `Failed to list files: ${e.message}` });
+  }
+}
+
+async function _walkDir(dir, rootDir, pattern, depth, maxDepth) {
+  if (depth > maxDepth) return [];
+  const files = [];
+
+  try {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const relPath = path.relative(rootDir, path.join(dir, entry.name));
+
+      // Skip blocked paths
+      if (!_isPathSafe(relPath)) continue;
+      if (entry.name.startsWith('.') && entry.name !== '.env.example') continue;
+
+      if (entry.isDirectory()) {
+        if (['node_modules', '.git', '.next', 'dist', 'build', '.cache', '__pycache__'].includes(entry.name)) continue;
+        const subFiles = await _walkDir(path.join(dir, entry.name), rootDir, pattern, depth + 1, maxDepth);
+        files.push(...subFiles);
+      } else if (entry.isFile()) {
+        if (!pattern || relPath.toLowerCase().includes(pattern) || entry.name.toLowerCase().includes(pattern)) {
+          const stat = await fs.stat(path.join(dir, entry.name));
+          files.push({
+            path: relPath,
+            size: stat.size,
+            modified: stat.mtime.toISOString(),
+            isText: _isTextFile(entry.name),
+          });
+        }
+      }
+    }
+  } catch (e) {
+    // Permission denied or inaccessible — skip
+  }
+
+  return files;
+}
+
+/**
+ * Read a source file from the site's codebase.
+ */
+export async function toolReadSourceFile(args, ctx) {
+  const sourceDir = ctx.subsystems?.sourceDir;
+  if (!sourceDir) return JSON.stringify({ error: 'Source directory not configured. Set sourceDir in createAceServer config.' });
+
+  const filePath = args.file_path;
+  if (!filePath) return JSON.stringify({ error: 'file_path is required' });
+  if (!_isPathSafe(filePath)) return JSON.stringify({ error: 'Invalid file path. Cannot access dotfiles, node_modules, or credentials.' });
+
+  const fullPath = path.join(sourceDir, filePath);
+
+  try {
+    await fs.access(fullPath);
+  } catch {
+    return JSON.stringify({ error: `File not found: ${filePath}` });
+  }
+
+  if (!_isTextFile(filePath)) {
+    const stat = await fs.stat(fullPath);
+    return JSON.stringify({
+      success: true,
+      file: filePath,
+      binary: true,
+      size: stat.size,
+      message: 'This is a binary file. Cannot display contents. Use edit_source_file for text files only.'
+    });
+  }
+
+  try {
+    const stat = await fs.stat(fullPath);
+    if (stat.size > 500_000) {
+      return JSON.stringify({ error: `File too large (${(stat.size / 1024).toFixed(0)} KB). Max 500 KB.` });
+    }
+
+    let content = await fs.readFile(fullPath, 'utf-8');
+    const lineCount = content.split('\n').length;
+
+    // If a line range is requested
+    if (args.start_line || args.end_line) {
+      const lines = content.split('\n');
+      const start = Math.max(1, parseInt(args.start_line) || 1) - 1;
+      const end = Math.min(lines.length, parseInt(args.end_line) || lines.length);
+      content = lines.slice(start, end).map((l, i) => `${start + i + 1}: ${l}`).join('\n');
+      ctx.onProgress(`Read ${filePath} (lines ${start + 1}-${end})`);
+    } else {
+      // Add line numbers for files over 20 lines
+      if (lineCount > 20) {
+        content = content.split('\n').map((l, i) => `${i + 1}: ${l}`).join('\n');
+      }
+      ctx.onProgress(`Read ${filePath} (${lineCount} lines)`);
+    }
+
+    // Search within file if requested
+    let searchResults = null;
+    if (args.search) {
+      const lines = content.split('\n');
+      searchResults = lines
+        .map((line, i) => ({ line: i + 1, text: line.replace(/^\d+: /, '') }))
+        .filter(l => l.text.toLowerCase().includes(args.search.toLowerCase()))
+        .slice(0, 20);
+    }
+
+    const result = {
+      success: true,
+      file: filePath,
+      lines: lineCount,
+      content: content.substring(0, 50_000),
+      truncated: content.length > 50_000,
+    };
+    if (searchResults) result.searchResults = searchResults;
+
+    return JSON.stringify(result);
+  } catch (e) {
+    return JSON.stringify({ error: `Failed to read file: ${e.message}` });
+  }
+}
+
+/**
+ * Edit a source file in the site's codebase.
+ * Same edit operations as edit_project_file: search/replace, line edit, insert, etc.
+ */
+export async function toolEditSourceFile(args, ctx) {
+  const sourceDir = ctx.subsystems?.sourceDir;
+  if (!sourceDir) return JSON.stringify({ error: 'Source directory not configured. Set sourceDir in createAceServer config.' });
+
+  const filePath = args.file_path;
+  if (!filePath || !args.edits) return JSON.stringify({ error: 'file_path and edits are required' });
+  if (!_isPathSafe(filePath)) return JSON.stringify({ error: 'Invalid file path. Cannot edit dotfiles, node_modules, or credentials.' });
+  if (!_isTextFile(filePath)) return JSON.stringify({ error: 'Can only edit text files.' });
+
+  const fullPath = path.join(sourceDir, filePath);
+
+  let edits;
+  try {
+    edits = typeof args.edits === 'string' ? JSON.parse(args.edits) : args.edits;
+    if (!Array.isArray(edits)) edits = [edits];
+  } catch (e) {
+    return JSON.stringify({ error: `Invalid edits JSON: ${e.message}` });
+  }
+
+  try {
+    // For new files, create with content if the edit is a single "content" operation
+    let content;
+    try {
+      content = await fs.readFile(fullPath, 'utf-8');
+    } catch {
+      // File doesn't exist — check if this is a create operation
+      if (edits.length === 1 && edits[0].content && !edits[0].search && !edits[0].lineNumber) {
+        await fs.mkdir(path.dirname(fullPath), { recursive: true });
+        await fs.writeFile(fullPath, edits[0].content, 'utf-8');
+        ctx.onProgress(`Created new file: ${filePath}`);
+        return JSON.stringify({
+          success: true,
+          file: filePath,
+          created: true,
+          message: `Created new file: ${filePath}`
+        });
+      }
+      return JSON.stringify({ error: `File not found: ${filePath}` });
+    }
+
+    let applied = 0;
+    const errors = [];
+
+    for (let i = 0; i < edits.length; i++) {
+      const edit = edits[i];
+
+      if (edit.delete_lines) {
+        const { start, end } = edit.delete_lines;
+        const lines = content.split('\n');
+        if (start >= 1 && end <= lines.length && start <= end) {
+          lines.splice(start - 1, end - start + 1);
+          content = lines.join('\n');
+          applied++;
+        } else {
+          errors.push(`Edit ${i + 1}: delete_lines range ${start}-${end} invalid (file has ${lines.length} lines)`);
+        }
+      } else if (edit.replace_lines) {
+        const { start, end } = edit.replace_lines;
+        const lines = content.split('\n');
+        if (start >= 1 && end <= lines.length && start <= end) {
+          const newLines = (edit.content || '').split('\n');
+          lines.splice(start - 1, end - start + 1, ...newLines);
+          content = lines.join('\n');
+          applied++;
+        } else {
+          errors.push(`Edit ${i + 1}: replace_lines range ${start}-${end} invalid (file has ${lines.length} lines)`);
+        }
+      } else if (edit.search !== undefined && edit.replace !== undefined) {
+        if (content.includes(edit.search)) {
+          content = edit.replace_all
+            ? content.replaceAll(edit.search, edit.replace)
+            : content.replace(edit.search, edit.replace);
+          applied++;
+        } else {
+          const preview = edit.search.substring(0, 80).replace(/\n/g, '\\n');
+          errors.push(`Edit ${i + 1}: search string not found: "${preview}..."`);
+        }
+      } else if (edit.lineNumber !== undefined && edit.newContent !== undefined) {
+        const lines = content.split('\n');
+        const idx = edit.lineNumber - 1;
+        if (idx >= 0 && idx < lines.length) {
+          lines[idx] = edit.newContent;
+          content = lines.join('\n');
+          applied++;
+        } else {
+          errors.push(`Edit ${i + 1}: line ${edit.lineNumber} out of range (file has ${lines.length} lines)`);
+        }
+      } else if (edit.insertAfter !== undefined && edit.content !== undefined) {
+        const idx = content.indexOf(edit.insertAfter);
+        if (idx !== -1) {
+          const insertPos = idx + edit.insertAfter.length;
+          content = content.slice(0, insertPos) + '\n' + edit.content + content.slice(insertPos);
+          applied++;
+        } else {
+          errors.push(`Edit ${i + 1}: insertAfter marker not found`);
+        }
+      } else if (edit.insertBefore !== undefined && edit.content !== undefined) {
+        const idx = content.indexOf(edit.insertBefore);
+        if (idx !== -1) {
+          content = content.slice(0, idx) + edit.content + '\n' + content.slice(idx);
+          applied++;
+        } else {
+          errors.push(`Edit ${i + 1}: insertBefore marker not found`);
+        }
+      } else if (edit.append !== undefined) {
+        content += '\n' + edit.append;
+        applied++;
+      } else if (edit.prepend !== undefined) {
+        content = edit.prepend + '\n' + content;
+        applied++;
+      } else {
+        errors.push(`Edit ${i + 1}: unknown operation`);
+      }
+    }
+
+    await fs.writeFile(fullPath, content, 'utf-8');
+
+    const result = {
+      success: true,
+      file: filePath,
+      changes_applied: applied,
+      total_edits: edits.length,
+      lines: content.split('\n').length,
+      message: applied === edits.length
+        ? `All ${applied} edits applied to ${filePath}`
+        : `Applied ${applied}/${edits.length} edits to ${filePath}. ${errors.length} failed.`
+    };
+    if (errors.length > 0) result.errors = errors;
+
+    ctx.onProgress(`Edited: ${filePath} — ${applied}/${edits.length} changes`);
+    return JSON.stringify(result);
+  } catch (e) {
+    return JSON.stringify({ error: `Edit failed: ${e.message}` });
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════
+// IMAGE GENERATION — DALL-E 3 / OpenAI Images API
+// ═══════════════════════════════════════════════════════
+
+/**
+ * Generate an image using AI (DALL-E 3 via OpenAI API).
+ * Returns the image URL. Can optionally save to a project.
+ */
+export async function toolGenerateImage(args, ctx) {
+  const { prompt: imagePrompt, size, style, save_to_project, save_to_source, file_name } = args;
+
+  if (!imagePrompt) return JSON.stringify({ error: 'prompt is required — describe the image you want.' });
+
+  // Get OpenAI key from AI manager config
+  const openaiKey = ctx.subsystems?.openaiKey
+    || process.env.OPENAI_API_KEY
+    || process.env.OPENAI_KEY;
+
+  if (!openaiKey) {
+    return JSON.stringify({
+      error: 'Image generation requires an OpenAI API key (for DALL-E 3). Add OPENAI_API_KEY to your .env file.',
+      hint: 'Get a key at platform.openai.com/api-keys'
+    });
+  }
+
+  ctx.onProgress('Generating image...');
+
+  try {
+    const imageSize = size || '1024x1024'; // 1024x1024, 1024x1792, 1792x1024
+    const imageStyle = style || 'natural';  // natural or vivid
+
+    const resp = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openaiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'dall-e-3',
+        prompt: imagePrompt,
+        n: 1,
+        size: imageSize,
+        style: imageStyle,
+        response_format: 'url',
+      }),
+    });
+
+    if (!resp.ok) {
+      const errBody = await resp.text();
+      const errJson = JSON.parse(errBody).error?.message || errBody;
+      return JSON.stringify({ error: `DALL-E API error: ${errJson}` });
+    }
+
+    const data = await resp.json();
+    const imageUrl = data.data?.[0]?.url;
+    const revisedPrompt = data.data?.[0]?.revised_prompt;
+
+    if (!imageUrl) {
+      return JSON.stringify({ error: 'No image URL returned from DALL-E.' });
+    }
+
+    const result = {
+      success: true,
+      url: imageUrl,
+      prompt: imagePrompt,
+      revised_prompt: revisedPrompt,
+      size: imageSize,
+      style: imageStyle,
+      expires: 'URL expires in ~1 hour. Download or save to a project to keep it.',
+    };
+
+    // Optionally save to a project
+    if (save_to_project) {
+      try {
+        const imgResp = await fetch(imageUrl);
+        const buffer = Buffer.from(await imgResp.arrayBuffer());
+        const dataDir = ctx.dataDir || process.cwd();
+        const sanitized = save_to_project.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').substring(0, 50);
+        const projectDir = path.join(dataDir, 'projects', sanitized);
+
+        await fs.mkdir(path.join(projectDir, 'images'), { recursive: true });
+        const fileName = file_name || `image-${Date.now()}.png`;
+        const savePath = path.join(projectDir, 'images', fileName);
+        await fs.writeFile(savePath, buffer);
+
+        result.saved = true;
+        result.savedPath = `images/${fileName}`;
+        result.project = save_to_project;
+        ctx.onProgress(`Image saved to ${save_to_project}/images/${fileName}`);
+      } catch (saveErr) {
+        result.saveError = `Could not save to project: ${saveErr.message}`;
+      }
+    }
+
+    // Optionally save to site's source directory
+    if (save_to_source && ctx.subsystems?.sourceDir) {
+      try {
+        if (!_isPathSafe(save_to_source)) {
+          result.saveError = 'Invalid save path — must be a safe relative path within source directory.';
+        } else {
+          const imgResp2 = await fetch(imageUrl);
+          const buffer2 = Buffer.from(await imgResp2.arrayBuffer());
+          const destPath = path.join(ctx.subsystems.sourceDir, save_to_source);
+          await fs.mkdir(path.dirname(destPath), { recursive: true });
+          await fs.writeFile(destPath, buffer2);
+
+          result.savedToSource = true;
+          result.sourcePath = save_to_source;
+          ctx.onProgress(`Image saved to source: ${save_to_source}`);
+        }
+      } catch (srcErr) {
+        result.saveError = `Could not save to source: ${srcErr.message}`;
+      }
+    } else if (save_to_source && !ctx.subsystems?.sourceDir) {
+      result.saveError = 'save_to_source requires sourceDir to be configured in createAceServer().';
+    }
+
+    ctx.onProgress('Image generated');
+    return JSON.stringify(result);
+  } catch (e) {
+    return JSON.stringify({ error: `Image generation failed: ${e.message}` });
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════
+// CONTENT CALENDAR PLANNER
+// ═══════════════════════════════════════════════════════
+
+/**
+ * Plan a content calendar — generates topic ideas with keywords, dates, and notes.
+ * Saves the plan to memory (notes) so it can be recalled later.
+ */
+export async function toolPlanContentCalendar(args, ctx) {
+  const { topic, count, timeframe, platforms } = args;
+
+  if (!topic) return JSON.stringify({ error: 'topic is required — what niche or subject area?' });
+
+  const postCount = Math.min(Math.max(parseInt(count) || 8, 1), 30);
+  const period = timeframe || 'this month';
+
+  ctx.onProgress(`Planning ${postCount} content pieces about "${topic}"...`);
+
+  // Use AI to generate the content plan
+  const aiManager = ctx.aiManager;
+  if (!aiManager) {
+    return JSON.stringify({ error: 'AI provider not available for content planning.' });
+  }
+
+  const now = new Date();
+  const platformNote = platforms ? `Target platforms: ${platforms}. ` : '';
+
+  const planPrompt = `You are a content marketing expert. Create a content calendar with exactly ${postCount} pieces of content about "${topic}" for ${period}.
+
+${platformNote}Today's date: ${now.toISOString().split('T')[0]}
+
+For EACH piece of content, provide:
+1. **title** — Engaging, SEO-friendly title
+2. **type** — "blog_post", "social_post", "video_script", "infographic", "case_study", or "newsletter"
+3. **publish_date** — Suggested publish date (YYYY-MM-DD format, spread across the timeframe)
+4. **keywords** — 3-5 target keywords (array)
+5. **outline** — Brief 2-3 bullet point outline of what to cover
+6. **cta** — Call to action for the piece
+7. **notes** — Any special considerations
+
+Respond with ONLY a valid JSON array of objects. No markdown, no explanation.`;
+
+  try {
+    const result = await aiManager.chatWithTools(
+      [{ role: 'user', content: planPrompt }],
+      { systemPrompt: 'You are a content strategy assistant. Respond with valid JSON only.', tools: [] }
+    );
+
+    let planText = result.text || '';
+    // Strip markdown code blocks if present
+    planText = planText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+
+    let plan;
+    try {
+      plan = JSON.parse(planText);
+      if (!Array.isArray(plan)) plan = [plan];
+    } catch {
+      // If AI didn't return clean JSON, try to extract it
+      const jsonMatch = planText.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        plan = JSON.parse(jsonMatch[0]);
+      } else {
+        return JSON.stringify({
+          success: false,
+          error: 'Could not parse content plan from AI. Try again.',
+          raw: planText.substring(0, 500),
+        });
+      }
+    }
+
+    // Enrich with status tracking
+    const calendar = plan.map((item, i) => ({
+      id: i + 1,
+      ...item,
+      status: 'planned',
+    }));
+
+    // Save to notes for later recall
+    const dataDir = ctx.dataDir || process.cwd();
+    const notesDir = path.join(dataDir, 'notes');
+    await fs.mkdir(notesDir, { recursive: true });
+
+    const noteKey = `content-calendar-${now.toISOString().split('T')[0]}`;
+    const noteContent = {
+      topic,
+      created: now.toISOString(),
+      timeframe: period,
+      items: calendar,
+    };
+
+    await fs.writeFile(
+      path.join(notesDir, `${noteKey}.json`),
+      JSON.stringify(noteContent, null, 2),
+      'utf-8'
+    );
+
+    ctx.onProgress(`Content calendar created: ${calendar.length} pieces planned`);
+
+    return JSON.stringify({
+      success: true,
+      topic,
+      timeframe: period,
+      total: calendar.length,
+      calendar,
+      saved_as: noteKey,
+      hint: 'Use recall_notes with "content calendar" to view this plan later. Use generate_blog_post to write any of these pieces.',
+    });
+  } catch (e) {
+    return JSON.stringify({ error: `Content calendar planning failed: ${e.message}` });
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════
 // PRIVATE HELPERS
 // ═══════════════════════════════════════════════════════
 
@@ -2256,4 +2827,15 @@ export const TOOL_REGISTRY = {
   generate_blog_post: toolGenerateBlogPost,
   optimize_page_seo: toolOptimizePageSeo,
   generate_structured_data: toolGenerateStructuredData,
+
+  // Direct site file access
+  list_source_files: toolListSourceFiles,
+  read_source_file: toolReadSourceFile,
+  edit_source_file: toolEditSourceFile,
+
+  // Image generation
+  generate_image: toolGenerateImage,
+
+  // Content calendar
+  plan_content_calendar: toolPlanContentCalendar,
 };

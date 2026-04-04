@@ -106,6 +106,56 @@ export class EmbedAgent {
     }
 
     // ═══════════════════════════════════════════════════════
+    // DIRECT SITE FILE ACCESS (if sourceDir configured)
+    // ═══════════════════════════════════════════════════════
+
+    if (this.subsystems.sourceDir) {
+      declarations.push({
+        name: 'list_source_files',
+        description: 'List files in the site\'s source code directory. Use to explore the codebase structure before reading or editing files.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            directory: { type: 'STRING', description: 'Subdirectory to list (e.g. "src", "pages", "content"). Default: root' },
+            pattern: { type: 'STRING', description: 'Filter by filename pattern (e.g. "blog", ".tsx", "index")' }
+          }
+        }
+      });
+
+      declarations.push({
+        name: 'read_source_file',
+        description: 'Read a source file from the site\'s actual codebase. Use to check code, review meta tags, inspect page content before editing.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            file_path: { type: 'STRING', description: 'File path relative to source root (e.g. "src/pages/about.tsx", "content/blog/my-post.md")' },
+            start_line: { type: 'NUMBER', description: 'Start reading from this line (optional)' },
+            end_line: { type: 'NUMBER', description: 'Stop reading at this line (optional)' },
+            search: { type: 'STRING', description: 'Search for text within the file (optional)' }
+          },
+          required: ['file_path']
+        }
+      });
+
+      declarations.push({
+        name: 'edit_source_file',
+        description: 'Edit a source file in the site\'s actual codebase. Supports search-and-replace, line editing, insert, append. Use to update meta tags, fix content, modify code, add blog posts directly.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            file_path: { type: 'STRING', description: 'File path relative to source root' },
+            edits: {
+              type: 'ARRAY',
+              description: 'Array of edit operations: { search: "old", replace: "new" }, { lineNumber: 5, newContent: "..." }, { insertAfter: "marker", content: "..." }, { append: "..." }. For new files: { content: "full file content" }',
+              items: { type: 'OBJECT' }
+            }
+          },
+          required: ['file_path', 'edits']
+        }
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════
     // SEO & CONTENT (the core value proposition)
     // ═══════════════════════════════════════════════════════
 
@@ -277,6 +327,46 @@ export class EmbedAgent {
       }
     });
 
+    // ═══════════════════════════════════════════════════════
+    // IMAGE GENERATION (requires OpenAI key for DALL-E 3)
+    // ═══════════════════════════════════════════════════════
+
+    declarations.push({
+      name: 'generate_image',
+      description: 'Generate an AI image using DALL-E 3. Great for blog headers, social media graphics, hero banners, product mockups. Returns a URL.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          prompt: { type: 'STRING', description: 'Describe the image you want in detail. Be specific about style, composition, and mood.' },
+          size: { type: 'STRING', description: 'Image size: "1024x1024" (square, default), "1024x1792" (portrait), "1792x1024" (landscape)' },
+          style: { type: 'STRING', description: '"natural" (realistic, default) or "vivid" (hyper-real, dramatic)' },
+          save_to_project: { type: 'STRING', description: 'Optional: project name to save the image to' },
+          save_to_source: { type: 'STRING', description: 'Optional: path within site source dir to save (e.g. "public/images/hero.png", "assets/blog/banner.png"). Requires sourceDir.' },
+          file_name: { type: 'STRING', description: 'Optional: filename for saved image when using save_to_project (e.g. "hero-banner.png")' }
+        },
+        required: ['prompt']
+      }
+    });
+
+    // ═══════════════════════════════════════════════════════
+    // CONTENT CALENDAR PLANNER
+    // ═══════════════════════════════════════════════════════
+
+    declarations.push({
+      name: 'plan_content_calendar',
+      description: 'Plan a content calendar with AI-generated topics, keywords, outlines, and publish dates. Saves the plan to memory for later recall.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          topic: { type: 'STRING', description: 'Content niche or subject area (e.g. "AI in real estate", "home renovation tips")' },
+          count: { type: 'NUMBER', description: 'Number of content pieces to plan (default 8, max 30)' },
+          timeframe: { type: 'STRING', description: 'Time period: "this week", "this month", "next 2 weeks", "Q2 2024"' },
+          platforms: { type: 'STRING', description: 'Target platforms: "blog", "blog + linkedin", "blog + twitter + instagram"' }
+        },
+        required: ['topic']
+      }
+    });
+
     return [{ functionDeclarations: declarations }];
   }
 
@@ -295,16 +385,22 @@ export class EmbedAgent {
       seo:       ['analyze_seo', 'generate_blog_post', 'optimize_page_seo', 'generate_structured_data'],
       leads:     ['find_leads'],
       projects:  ['create_project', 'write_project_file', 'read_project_file', 'edit_project_file', 'list_project_files', 'list_projects'],
+      source:    ['list_source_files', 'read_source_file', 'edit_source_file'],
       forms:     ['create_form', 'list_forms', 'get_form_submissions'],
       memory:    ['save_note', 'recall_notes'],
+      images:    ['generate_image'],
+      calendar:  ['plan_content_calendar'],
     };
 
     const triggers = [
       { group: 'research',  patterns: [/\bsearch\b/, /\bfind\b/, /\blook\s*up\b/, /\bresearch\b/, /\bgoogle\b/, /\bwebsite\b/, /\bpage\b/, /\bsite\b/, /\bread\b/, /\bcheck\b/, /\bwhat('s| is)\b/, /\bcompetitor/i, /\banalyze\b/] },
-      { group: 'seo',       patterns: [/\bseo\b/i, /\bblog\b/, /\bschema\b/, /\bmeta\s*tag/i, /\bstructured\s*data\b/i, /\brank/i, /\boptimize\b/, /\bkeyword/i, /\bjson-?ld\b/i, /\bcontent\b/, /\barticle\b/, /\bheading/i, /\btitle\s*tag/i, /\bmeta\s*desc/i] },
-      { group: 'leads',     patterns: [/\blead/i, /\bprospect/i, /\bbusiness/i, /\bfind.*(company|companies|people|client)/i] },
-      { group: 'projects',  patterns: [/\bproject\b/, /\bcode\b/, /\bbuild\b/, /\bhtml\b/, /\bcss\b/, /\bfile\b/, /\bedit\b/, /\bwrite\b/, /\bcreate\b.*\b(page|site|post)\b/, /\blanding\s*page\b/i, /\bjavascript\b/i, /\btemplate\b/] },
+      { group: 'seo',       patterns: [/\bseo\b/i, /\bblog\b/, /\bschema\b/, /\bmeta\s*tag/i, /\bstructured\s*data\b/i, /\brank/i, /\boptimize\b/, /\bkeyword/i, /\bjson-?ld\b/i, /\barticle\b/, /\bheading/i, /\btitle\s*tag/i, /\bmeta\s*desc/i] },
+      { group: 'leads',     patterns: [/\blead/i, /\bprospect/i, /\bfind.*(company|companies|people|client)/i] },
+      { group: 'projects',  patterns: [/\bproject\b/, /\bcode\b/, /\bbuild\b/, /\bhtml\b/, /\bcss\b/, /\bfile\b/, /\blanding\s*page\b/i, /\bjavascript\b/i, /\btemplate\b/] },
+      { group: 'source',    patterns: [/\bsource\b/, /\bedit\b/, /\bupdate\b/, /\bmodif/i, /\bfix\b/, /\bchange\b/, /\bmeta\b/, /\btitle\b/, /\bcode\b/, /\bcontent\b/, /\bpage\b/, /\bcomponent\b/, /\btsx?\b/, /\bjsx?\b/] },
       { group: 'forms',     patterns: [/\bform\b/, /\bquiz\b/, /\bsurvey\b/, /\bsubmission/i, /\bcontact\s*form/i, /\blead\s*capture/i] },
+      { group: 'images',    patterns: [/\bimage\b/, /\bphoto\b/, /\bpicture\b/, /\bgraphic\b/, /\bbanner\b/, /\bhero\b/, /\bthumbnail\b/, /\billustrat/i, /\bgenerate.*image/i, /\bcreate.*image/i, /\bdesign\b/] },
+      { group: 'calendar',  patterns: [/\bcalendar\b/, /\bplan\b/, /\bschedule\b/, /\bcontent\s*plan/i, /\beditorial\b/, /\bposts?\s*(for|this|next)\b/i, /\btopics?\b/] },
     ];
 
     // Always include memory + research as baseline
@@ -319,15 +415,22 @@ export class EmbedAgent {
       }
     }
 
-    // Cross-group: SEO work often needs projects (to write blog posts)
+    // Cross-group dependencies
     if (selectedGroups.has('seo')) {
-      selectedGroups.add('projects');
+      selectedGroups.add('projects');  // blog posts need project tools
+      selectedGroups.add('source');    // SEO fixes need source file access
+    }
+    if (selectedGroups.has('source')) {
+      selectedGroups.add('research');  // reading site pages for context
+    }
+    if (selectedGroups.has('calendar')) {
+      selectedGroups.add('seo');       // calendar often leads to blog writing
     }
 
     // Fallback — if only defaults matched, show the core tools
     if (selectedGroups.size <= 2) {
       selectedGroups.add('seo');
-      selectedGroups.add('projects');
+      selectedGroups.add('source');
     }
 
     const selectedToolNames = new Set();
@@ -417,11 +520,30 @@ You are embedded directly in the site owner's website as a chat widget. Everythi
 - **optimize_page_seo** — Get specific improvement suggestions for a page + target keywords.
 - **generate_blog_post** — Write a full SEO-optimized blog post with title, meta description, content, and JSON-LD schema.
 - **generate_structured_data** — Create JSON-LD markup (Article, FAQ, HowTo, LocalBusiness, etc.) for Google rich snippets.
+`;
 
+    if (this.subsystems.sourceDir) {
+      prompt += `
+## Direct Site Editing (POWERFUL — you can edit the actual codebase)
+- **list_source_files** — Browse the site's source code directory structure.
+- **read_source_file** — Read any source file (pages, components, styles, config, blog posts, etc.).
+- **edit_source_file** — Edit source files directly: update meta tags, fix content, add blog posts, modify code, change styles. Supports search-and-replace, line edits, insertions, and creating new files.
+
+When the user asks to "update the title on the about page" or "add a new blog post" or "fix the meta description", use these tools to directly modify their source files. This is your most powerful capability — you can make real changes to their site.
+`;
+    }
+
+    prompt += `
 ## Site Analysis
-- **read_site_page** — Read any page on the site to check content, structure, or copy.${siteUrl ? ` (${siteUrl})` : ''}
+- **read_site_page** — Read any page on the live site to check content and structure.${siteUrl ? ` (${siteUrl})` : ''}
 - **web_search** — Research competitors, trends, keywords, or anything on the web.
 - **read_webpage** — Read any external URL.
+
+## Image Generation
+- **generate_image** — Create AI images using DALL-E 3. Blog headers, social media graphics, hero banners, product mockups, illustrations. Specify size, style, and optionally save to a project.
+
+## Content Calendar
+- **plan_content_calendar** — Plan a content calendar with AI-generated topics, keywords, outlines, and publish dates. Specify how many pieces and what timeframe. Saved to memory for later recall.
 
 ## Lead Research
 - **find_leads** — Search for potential customers by industry and location. Returns business names, phones, emails, and websites directly in chat.
@@ -444,7 +566,7 @@ You are embedded directly in the site owner's website as a chat widget. Everythi
 - **save_note** / **recall_notes** — Save and recall notes (brand guidelines, SEO strategies, preferred keywords, etc.).
 
 ## Desktop-Only Features
-Some capabilities require the full OpenAce desktop app: browser automation, SOP recording, sending emails/SMS, making phone calls, social media posting, calendar management. When the user asks for these, be helpful but let them know:
+Some capabilities require the full OpenAce desktop app: browser automation, SOP recording, sending emails/SMS, making phone calls, social media posting. When the user asks for these, be helpful but let them know:
 "That's a desktop-level feature — the full OpenAce app can handle that. Check it out at openaceai.com."
 `;
 
@@ -494,6 +616,17 @@ Some capabilities require the full OpenAce desktop app: browser automation, SOP 
       // Memory
       case 'save_note': return await toolkit.toolSaveNote(args, ctx);
       case 'recall_notes': return await toolkit.toolRecallNotes(args, ctx);
+
+      // Direct site file access
+      case 'list_source_files': return await toolkit.toolListSourceFiles(args, ctx);
+      case 'read_source_file': return await toolkit.toolReadSourceFile(args, ctx);
+      case 'edit_source_file': return await toolkit.toolEditSourceFile(args, ctx);
+
+      // Image generation
+      case 'generate_image': return await toolkit.toolGenerateImage(args, ctx);
+
+      // Content calendar
+      case 'plan_content_calendar': return await toolkit.toolPlanContentCalendar(args, ctx);
 
       default:
         return JSON.stringify({ error: `Unknown tool: ${name}` });
