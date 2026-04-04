@@ -1,17 +1,21 @@
 /**
  * createAceServer — One-line server setup for the OpenAce embeddable SDK.
  *
+ * Ace is a website management assistant for site owners. It helps with:
+ *   - SEO analysis & optimization
+ *   - Blog post & content generation
+ *   - Code/file editing
+ *   - Lead research
+ *   - Form creation (contact forms, surveys)
+ *
  * IMPORTANT: Ace is admin-only. Public visitors should NEVER see the widget.
  * Use `auth` or `adminSecret` to protect all routes.
  *
- * Zero-config usage (auto-detects API keys from environment):
+ * Usage:
  *   import { createAceServer } from '@openace/embed/server';
- *   export default createAceServer({ licenseKey: process.env.OPENACE_LICENSE_KEY });
- *
- * With website awareness:
- *   createAceServer({
- *     siteUrl: 'https://what2dotoday.com',
- *     businessContext: 'We are an activity recommendation platform...',
+ *   export default createAceServer({
+ *     siteUrl: 'https://mysite.com',         // Your website URL
+ *     adminSecret: process.env.ACE_SECRET,    // Protect the widget
  *   });
  */
 
@@ -217,12 +221,10 @@ export function createAceServer(config = {}) {
 
     const absDataDir = path.resolve(dataDir);
     await fs.mkdir(absDataDir, { recursive: true });
-    await fs.mkdir(path.join(absDataDir, 'pipeline'), { recursive: true });
     await fs.mkdir(path.join(absDataDir, 'forms'), { recursive: true });
     await fs.mkdir(path.join(absDataDir, 'notes'), { recursive: true });
     await fs.mkdir(path.join(absDataDir, 'projects'), { recursive: true });
     await fs.mkdir(path.join(absDataDir, 'cron'), { recursive: true });
-    await fs.mkdir(path.join(absDataDir, 'goals'), { recursive: true });
 
     // ── AI Provider ──
     let aiManager;
@@ -266,86 +268,16 @@ export function createAceServer(config = {}) {
       throw new Error(`AI Provider setup failed: ${err.message}. Set an API key in your .env or pass one via config.`);
     }
 
-    // ── Subsystems ──
+    // ── Subsystems (only what a site management widget actually needs) ──
     const subsystems = {};
 
-    try {
-      const { PipelineManager } = await import('./subsystems/PipelineManager.js');
-      subsystems.pipelineManager = new PipelineManager(path.join(absDataDir, 'pipeline'));
-      await subsystems.pipelineManager.initialize?.();
-    } catch (e) {
-      console.warn('[OpenAce Embed] PipelineManager not available:', e.message);
-    }
-
-    try {
-      const { ContactManager } = await import('./subsystems/ContactManager.js');
-      subsystems.contactManager = new ContactManager(absDataDir);
-      await subsystems.contactManager.initialize?.();
-    } catch (e) {
-      console.warn('[OpenAce Embed] ContactManager not available:', e.message);
-    }
-
+    // Forms — site owners can create contact/lead capture forms with live URLs
     try {
       const { FormManager } = await import('./subsystems/FormManager.js');
       subsystems.formManager = new FormManager(path.join(absDataDir, 'forms'));
       await subsystems.formManager.initialize?.();
     } catch (e) {
       console.warn('[OpenAce Embed] FormManager not available:', e.message);
-    }
-
-    // ── Lightweight GoalTracker (file-based) ──
-    try {
-      const goalsPath = path.join(absDataDir, 'goals', 'goals.json');
-      subsystems.goalTracker = {
-        _goalsPath: goalsPath,
-        _goals: [],
-        async _load() {
-          try {
-            const data = await fs.readFile(this._goalsPath, 'utf-8');
-            this._goals = JSON.parse(data);
-          } catch { this._goals = []; }
-        },
-        async _save() { await fs.writeFile(this._goalsPath, JSON.stringify(this._goals, null, 2)); },
-        async addGoal(g) {
-          await this._load();
-          const goal = { id: `goal_${Date.now()}`, ...g, status: 'active', progress: { current: 0 }, createdAt: new Date().toISOString() };
-          this._goals.push(goal);
-          await this._save();
-          return goal;
-        },
-        getActiveGoals() { return this._goals.filter(g => g.status === 'active'); },
-        getAllGoals() { return this._goals; },
-        async updateProgress(id, increment, note) {
-          await this._load();
-          const g = this._goals.find(x => x.id === id);
-          if (!g) return null;
-          g.progress.current += increment;
-          if (note) { if (!g.notes) g.notes = []; g.notes.push(note); }
-          await this._save();
-          return g;
-        },
-        async completeGoal(id) {
-          await this._load();
-          const g = this._goals.find(x => x.id === id);
-          if (!g) return null;
-          g.status = 'completed';
-          await this._save();
-          return g;
-        },
-        async updateGoal(id, updates) {
-          await this._load();
-          const g = this._goals.find(x => x.id === id);
-          if (!g) return null;
-          Object.assign(g, updates);
-          await this._save();
-          return g;
-        },
-        getSuggestionBehavior() { return 'normal'; },
-        async recordSuggestionResponse() {},
-      };
-      await subsystems.goalTracker._load();
-    } catch (e) {
-      console.warn('[OpenAce Embed] GoalTracker init failed:', e.message);
     }
 
     // ── Website context (auto-crawl on init) ──

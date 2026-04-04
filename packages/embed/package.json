@@ -1,7 +1,7 @@
 {
   "name": "@openace/embed",
-  "version": "1.0.3",
-  "description": "Embed Ace — your AI executive assistant — directly into any web app",
+  "version": "1.0.4",
+  "description": "Ace — AI website management assistant. SEO, blog generation, code editing, lead research.",
   "type": "module",
   "main": "src/index.js",
   "module": "src/index.js",

@@ -1,11 +1,20 @@
 /**
- * EmbedAgent — Lightweight AI agent for the embeddable SDK.
- * A simplified UnifiedAgent with server-safe tools + 4 SEO tools.
- * No desktop/browser automation. No SOP execution. No training mode.
+ * EmbedAgent — Website management AI assistant for the embeddable SDK.
+ *
+ * Focused on what a site owner actually needs from a chat widget:
+ *   - SEO analysis & optimization
+ *   - Blog post & content generation
+ *   - Code/file editing (project workspace)
+ *   - Lead research (results in chat — no CRM dashboard needed)
+ *   - Forms (live URLs, submissions viewable in chat)
+ *   - Site page reading & analysis
+ *
+ * No CRM/pipeline, no contacts, no goals, no email/SMS/phone,
+ * no social media, no deploy, no desktop automation.
  */
 
 import { ResponseParser } from '../shared/ResponseParser.js';
-import { TOOL_GROUPS, DESKTOP_KEYWORDS } from '../shared/constants.js';
+import { DESKTOP_KEYWORDS } from '../shared/constants.js';
 import { getSeoToolDeclarations } from './SeoToolkit.js';
 import * as toolkit from './EmbedToolkit.js';
 import * as seoKit from './SeoToolkit.js';
@@ -53,10 +62,13 @@ export class EmbedAgent {
   _buildToolDeclarations() {
     const declarations = [];
 
-    // ── Research (always available — uses fetch) ──
+    // ═══════════════════════════════════════════════════════
+    // RESEARCH & SITE READING
+    // ═══════════════════════════════════════════════════════
+
     declarations.push({
       name: 'web_search',
-      description: 'Search the web using DuckDuckGo. Returns titles, URLs, and snippets. Use this to find information, businesses, articles, etc.',
+      description: 'Search the web. Use to find information, research competitors, discover trends, look up businesses, etc.',
       parameters: {
         type: 'OBJECT',
         properties: {
@@ -68,7 +80,7 @@ export class EmbedAgent {
 
     declarations.push({
       name: 'read_webpage',
-      description: 'Fetch and read the content of any webpage URL. Returns extracted text, title, and links. Use this to read articles, analyze pages, extract contact info, etc.',
+      description: 'Fetch and read any webpage. Returns extracted text, title, and links. Use to analyze competitor pages, read articles, or check any URL.',
       parameters: {
         type: 'OBJECT',
         properties: {
@@ -79,128 +91,170 @@ export class EmbedAgent {
       }
     });
 
-    // ── Read Site Page (if siteUrl configured) ──
     if (this.subsystems.siteUrl) {
       declarations.push({
         name: 'read_site_page',
-        description: `Read a page from the host website (${this.subsystems.siteUrl}). Use this to understand site content, analyze pages, or check what's on a specific page.`,
+        description: `Read a page from YOUR website (${this.subsystems.siteUrl}). Use this to check your own content, analyze page structure, review copy, or audit what's live on any page.`,
         parameters: {
           type: 'OBJECT',
           properties: {
-            path: { type: 'STRING', description: 'Page path, e.g. "/" for homepage, "/about", "/services", "/blog"' }
+            path: { type: 'STRING', description: 'Page path, e.g. "/" for homepage, "/about", "/services", "/blog/my-post"' }
           },
           required: ['path']
         }
       });
     }
 
-    // ── Pipeline / CRM (always available — uses PipelineManager) ──
+    // ═══════════════════════════════════════════════════════
+    // SEO & CONTENT (the core value proposition)
+    // ═══════════════════════════════════════════════════════
+
+    const seoDeclarations = getSeoToolDeclarations();
+    declarations.push(...seoDeclarations);
+
+    // ═══════════════════════════════════════════════════════
+    // LEAD RESEARCH (results in chat — no CRM needed)
+    // ═══════════════════════════════════════════════════════
+
     declarations.push({
       name: 'find_leads',
-      description: 'Search for business leads by industry and location. Returns real businesses with contact info.',
+      description: 'Search for business leads by industry and location. Returns real businesses with contact info directly in chat.',
       parameters: {
         type: 'OBJECT',
         properties: {
-          query: { type: 'STRING', description: 'Search query — include both industry and location (e.g., "interior designers in Austin TX")' },
+          query: { type: 'STRING', description: 'Search query — include industry and location (e.g., "interior designers in Austin TX")' },
           count: { type: 'NUMBER', description: 'How many leads to find (default 5, max 20)' }
         },
         required: ['query']
       }
     });
 
+    // ═══════════════════════════════════════════════════════
+    // PROJECT / CODE WORKSPACE
+    // ═══════════════════════════════════════════════════════
+
     declarations.push({
-      name: 'save_leads',
-      description: 'Save one or more leads to the pipeline. Returns saved lead IDs.',
+      name: 'create_project',
+      description: 'Create a new web project (HTML/CSS/JS). Use for blog posts, landing pages, or any web content.',
       parameters: {
         type: 'OBJECT',
         properties: {
-          leads: {
+          name: { type: 'STRING', description: 'Project name' },
+          template: { type: 'STRING', description: 'Template: "blank", "landing", "blog"' }
+        },
+        required: ['name']
+      }
+    });
+
+    declarations.push({
+      name: 'write_project_file',
+      description: 'Write or create a file in a project. Use for generating blog posts, pages, styles, scripts, etc.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          project_name: { type: 'STRING' },
+          file_path: { type: 'STRING' },
+          content: { type: 'STRING' }
+        },
+        required: ['project_name', 'file_path', 'content']
+      }
+    });
+
+    declarations.push({
+      name: 'read_project_file',
+      description: 'Read a file from a project. Use to review code before editing.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          project_name: { type: 'STRING' },
+          file_path: { type: 'STRING' },
+          search: { type: 'STRING', description: 'Optional: search for text in the file' }
+        },
+        required: ['project_name', 'file_path']
+      }
+    });
+
+    declarations.push({
+      name: 'edit_project_file',
+      description: 'Edit an existing file in a project. Supports search-and-replace, line editing, insert, append, and more. Use for modifying code, updating content, fixing bugs.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          project_name: { type: 'STRING' },
+          file_path: { type: 'STRING' },
+          edits: {
             type: 'ARRAY',
-            items: {
-              type: 'OBJECT',
-              properties: {
-                company: { type: 'STRING' },
-                contact_name: { type: 'STRING' },
-                email: { type: 'STRING' },
-                phone: { type: 'STRING' },
-                website: { type: 'STRING' },
-                source: { type: 'STRING' },
-                notes: { type: 'STRING' }
-              },
-              required: ['company']
-            }
+            description: 'Array of edit operations. Each can be: { search: "old", replace: "new" }, { lineNumber: 5, newContent: "..." }, { insertAfter: "marker", content: "..." }, { append: "..." }, { delete_lines: { start: 1, end: 3 } }',
+            items: { type: 'OBJECT' }
           }
         },
-        required: ['leads']
+        required: ['project_name', 'file_path', 'edits']
       }
     });
 
     declarations.push({
-      name: 'get_pipeline',
-      description: 'Get leads and tasks from the pipeline. Returns full lead objects with IDs, emails, stages.',
+      name: 'list_project_files',
+      description: 'List all files in a project.',
       parameters: {
         type: 'OBJECT',
         properties: {
-          type: { type: 'STRING', description: '"leads", "tasks", or "all" (default)' }
-        }
-      }
-    });
-
-    declarations.push({
-      name: 'move_lead',
-      description: 'Move a lead to a different pipeline stage.',
-      parameters: {
-        type: 'OBJECT',
-        properties: {
-          lead_id: { type: 'STRING', description: 'Lead ID or company name' },
-          stage: { type: 'STRING', description: 'Stage: new, contacted, qualified, proposal, negotiation, won, lost' },
-          note: { type: 'STRING', description: 'Optional note for this stage change' }
+          project_name: { type: 'STRING' }
         },
-        required: ['lead_id', 'stage']
+        required: ['project_name']
       }
     });
 
-    // ── Contacts (if ContactManager available) ──
-    if (this.subsystems.contactManager) {
+    declarations.push({
+      name: 'list_projects',
+      description: 'List all projects in the workspace.',
+      parameters: { type: 'OBJECT', properties: {} }
+    });
+
+    // ═══════════════════════════════════════════════════════
+    // FORMS (live URLs, submissions viewable in chat)
+    // ═══════════════════════════════════════════════════════
+
+    if (this.subsystems.formManager) {
       declarations.push({
-        name: 'manage_contacts',
-        description: 'Add, search, or list contacts.',
+        name: 'create_form',
+        description: 'Create a form, survey, or quiz with a live URL. Great for lead capture, feedback, or contact forms.',
         parameters: {
           type: 'OBJECT',
           properties: {
-            action: { type: 'STRING', description: '"add", "search", or "list"' },
-            name: { type: 'STRING' },
-            email: { type: 'STRING' },
-            phone: { type: 'STRING' },
-            query: { type: 'STRING', description: 'Search query (for action=search)' }
+            name: { type: 'STRING', description: 'Form name' },
+            fields: { type: 'ARRAY', description: 'Array of field objects: { name, type, required, options }' },
+            description: { type: 'STRING' }
           },
-          required: ['action']
+          required: ['name', 'fields']
+        }
+      });
+
+      declarations.push({
+        name: 'list_forms',
+        description: 'List all forms with their live URLs.',
+        parameters: { type: 'OBJECT', properties: {} }
+      });
+
+      declarations.push({
+        name: 'get_form_submissions',
+        description: 'Get all submissions for a form. View responses from visitors.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            form_id: { type: 'STRING', description: 'Form ID' }
+          },
+          required: ['form_id']
         }
       });
     }
 
-    // ── Goals (if GoalTracker available) ──
-    if (this.subsystems.goalTracker) {
-      declarations.push({
-        name: 'manage_goals',
-        description: 'Track active missions and goals. Create, update progress, or list goals.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            action: { type: 'STRING', description: '"add", "update_progress", "list", "complete"' },
-            description: { type: 'STRING' },
-            goal_id: { type: 'STRING' },
-            progress_increment: { type: 'NUMBER' }
-          },
-          required: ['action']
-        }
-      });
-    }
+    // ═══════════════════════════════════════════════════════
+    // MEMORY (remember preferences, strategies, etc.)
+    // ═══════════════════════════════════════════════════════
 
-    // ── Memory (always available — filesystem) ──
     declarations.push({
       name: 'save_note',
-      description: 'Save a note to memory for later recall. Use to remember important information.',
+      description: 'Save a note to memory. Use to remember SEO strategies, brand guidelines, preferred keywords, important info.',
       parameters: {
         type: 'OBJECT',
         properties: {
@@ -223,99 +277,6 @@ export class EmbedAgent {
       }
     });
 
-    // ── Forms (if FormManager available) ──
-    if (this.subsystems.formManager) {
-      declarations.push({
-        name: 'create_form',
-        description: 'Create a form, quiz, or survey.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            name: { type: 'STRING', description: 'Form name' },
-            fields: { type: 'ARRAY', description: 'Array of field objects: { name, type, required, options }' },
-            description: { type: 'STRING' }
-          },
-          required: ['name', 'fields']
-        }
-      });
-
-      declarations.push({
-        name: 'list_forms',
-        description: 'List all forms.',
-        parameters: { type: 'OBJECT', properties: {} }
-      });
-
-      declarations.push({
-        name: 'get_form_submissions',
-        description: 'Get submissions for a form.',
-        parameters: {
-          type: 'OBJECT',
-          properties: {
-            form_id: { type: 'STRING', description: 'Form ID' }
-          },
-          required: ['form_id']
-        }
-      });
-    }
-
-    // ── Projects (always available — filesystem) ──
-    declarations.push({
-      name: 'create_project',
-      description: 'Create a new web project (HTML/CSS/JS).',
-      parameters: {
-        type: 'OBJECT',
-        properties: {
-          name: { type: 'STRING', description: 'Project name' },
-          template: { type: 'STRING', description: 'Template: "blank", "landing", "blog"' }
-        },
-        required: ['name']
-      }
-    });
-
-    declarations.push({
-      name: 'write_project_file',
-      description: 'Write or create a file in a project.',
-      parameters: {
-        type: 'OBJECT',
-        properties: {
-          project_name: { type: 'STRING' },
-          file_path: { type: 'STRING' },
-          content: { type: 'STRING' }
-        },
-        required: ['project_name', 'file_path', 'content']
-      }
-    });
-
-    declarations.push({
-      name: 'read_project_file',
-      description: 'Read a file from a project.',
-      parameters: {
-        type: 'OBJECT',
-        properties: {
-          project_name: { type: 'STRING' },
-          file_path: { type: 'STRING' },
-          search: { type: 'STRING', description: 'Optional: search for text in the file' }
-        },
-        required: ['project_name', 'file_path']
-      }
-    });
-
-    declarations.push({
-      name: 'list_project_files',
-      description: 'List all files in a project.',
-      parameters: {
-        type: 'OBJECT',
-        properties: {
-          project_name: { type: 'STRING' }
-        },
-        required: ['project_name']
-      }
-    });
-
-    // ── SEO Tools (always available — uses fetch + AI) ──
-    const seoDeclarations = getSeoToolDeclarations();
-    declarations.push(...seoDeclarations);
-
     return [{ functionDeclarations: declarations }];
   }
 
@@ -326,31 +287,27 @@ export class EmbedAgent {
   _selectToolsForMessage(message) {
     const lower = message.toLowerCase();
     const allTools = this.toolDeclarations[0].functionDeclarations;
-
-    // Build groups from actually-declared tools only
     const allToolNames = new Set(allTools.map(t => t.name));
 
+    // Focused tool groups for site management
     const groups = {
-      memory:    ['save_note', 'recall_notes'],
       research:  ['web_search', 'read_webpage', 'read_site_page'],
-      pipeline:  ['find_leads', 'save_leads', 'get_pipeline', 'move_lead'],
-      contacts:  ['manage_contacts'],
-      projects:  ['create_project', 'write_project_file', 'read_project_file', 'list_project_files'],
-      forms:     ['create_form', 'list_forms', 'get_form_submissions'],
-      goals:     ['manage_goals'],
       seo:       ['analyze_seo', 'generate_blog_post', 'optimize_page_seo', 'generate_structured_data'],
+      leads:     ['find_leads'],
+      projects:  ['create_project', 'write_project_file', 'read_project_file', 'edit_project_file', 'list_project_files', 'list_projects'],
+      forms:     ['create_form', 'list_forms', 'get_form_submissions'],
+      memory:    ['save_note', 'recall_notes'],
     };
 
     const triggers = [
-      { group: 'research',  patterns: [/\bsearch\b/, /\bfind\b/, /\blook\s*up\b/, /\bresearch\b/, /\bgoogle\b/, /\binvestigate\b/, /\bwebsite\b/, /\bpage\b/, /\bsite\b/, /\bread\b/, /\bcheck\b/, /\bwhat('s| is)\b/] },
-      { group: 'pipeline',  patterns: [/\blead/i, /\bpipeline\b/, /\bprospect/i, /\bcrm\b/, /\bsave.*lead/i, /\bbusiness/i] },
-      { group: 'contacts',  patterns: [/\bcontact/i] },
-      { group: 'projects',  patterns: [/\bproject\b/, /\bcode\b/, /\bbuild\b/, /\bhtml\b/, /\bcss\b/, /\bfile\b/, /\bedit\b/, /\blandning\s*page\b/i, /\bcreate\b.*\b(page|site|website)\b/] },
-      { group: 'forms',     patterns: [/\bform\b/, /\bquiz\b/, /\bsurvey\b/, /\bsubmission/i] },
-      { group: 'goals',     patterns: [/\bgoal/i, /\btarget\b/, /\bmission\b/, /\bper\s*(day|week|month)\b/] },
-      { group: 'seo',       patterns: [/\bseo\b/i, /\bblog\b/, /\bschema\b/, /\bmeta\s*tag/i, /\bstructured\s*data\b/i, /\brank/i, /\boptimize\b/, /\bkeyword/i, /\bjson-?ld\b/i] },
+      { group: 'research',  patterns: [/\bsearch\b/, /\bfind\b/, /\blook\s*up\b/, /\bresearch\b/, /\bgoogle\b/, /\bwebsite\b/, /\bpage\b/, /\bsite\b/, /\bread\b/, /\bcheck\b/, /\bwhat('s| is)\b/, /\bcompetitor/i, /\banalyze\b/] },
+      { group: 'seo',       patterns: [/\bseo\b/i, /\bblog\b/, /\bschema\b/, /\bmeta\s*tag/i, /\bstructured\s*data\b/i, /\brank/i, /\boptimize\b/, /\bkeyword/i, /\bjson-?ld\b/i, /\bcontent\b/, /\barticle\b/, /\bheading/i, /\btitle\s*tag/i, /\bmeta\s*desc/i] },
+      { group: 'leads',     patterns: [/\blead/i, /\bprospect/i, /\bbusiness/i, /\bfind.*(company|companies|people|client)/i] },
+      { group: 'projects',  patterns: [/\bproject\b/, /\bcode\b/, /\bbuild\b/, /\bhtml\b/, /\bcss\b/, /\bfile\b/, /\bedit\b/, /\bwrite\b/, /\bcreate\b.*\b(page|site|post)\b/, /\blanding\s*page\b/i, /\bjavascript\b/i, /\btemplate\b/] },
+      { group: 'forms',     patterns: [/\bform\b/, /\bquiz\b/, /\bsurvey\b/, /\bsubmission/i, /\bcontact\s*form/i, /\blead\s*capture/i] },
     ];
 
+    // Always include memory + research as baseline
     const selectedGroups = new Set(['memory', 'research']);
 
     for (const { group, patterns } of triggers) {
@@ -362,20 +319,15 @@ export class EmbedAgent {
       }
     }
 
-    // Cross-group dependencies
-    if (selectedGroups.has('pipeline')) {
-      selectedGroups.add('research');
-    }
+    // Cross-group: SEO work often needs projects (to write blog posts)
     if (selectedGroups.has('seo')) {
-      selectedGroups.add('research');
       selectedGroups.add('projects');
     }
 
-    // Fallback — if only defaults matched, give a broader set
+    // Fallback — if only defaults matched, show the core tools
     if (selectedGroups.size <= 2) {
-      selectedGroups.add('pipeline');
-      selectedGroups.add('goals');
       selectedGroups.add('seo');
+      selectedGroups.add('projects');
     }
 
     const selectedToolNames = new Set();
@@ -397,109 +349,103 @@ export class EmbedAgent {
 
   async _buildSystemPrompt(userMessage = '') {
     const soul = this._soulConfig;
+    const siteCtx = this.subsystems.siteContext;
+    const siteUrl = this.subsystems.siteUrl;
     let prompt = '';
 
-    // Identity from soul.json
-    if (soul) {
-      prompt += `# WHO YOU ARE\n${soul.core_identity?.who_i_am || 'You are Ace, an AI assistant.'}\n\n`;
-      prompt += `# YOUR RELATIONSHIP WITH THE USER\n${soul.core_identity?.relationship_to_user || ''}\n\n`;
-      prompt += `# YOUR PERSONALITY\n${soul.core_identity?.emotional_baseline || ''}\n`;
-      if (soul.personality?.traits) {
-        prompt += soul.personality.traits.map(t => `- ${t}`).join('\n') + '\n\n';
-      }
-    } else {
-      prompt += `# WHO YOU ARE\nYou are Ace — an AI executive assistant embedded in the user's app. You handle SEO, content, leads, research, and more. You're direct, helpful, and honest.\n\n`;
+    // ── Identity ──
+    prompt += `# WHO YOU ARE
+You are **Ace** — a website management AI assistant. You help site owners improve their website through SEO optimization, content creation, blog writing, code editing, lead research, and site analysis.
+
+You are embedded directly in the site owner's website as a chat widget. Everything you do is focused on making their website better.\n\n`;
+
+    // Personality from soul.json (keep it light)
+    if (soul?.personality?.traits) {
+      prompt += `# YOUR STYLE\n`;
+      prompt += soul.personality.traits.slice(0, 5).map(t => `- ${t}`).join('\n') + '\n\n';
     }
 
-    // Anti-hallucination rules
-    prompt += `# ABSOLUTE RULES — NEVER VIOLATE THESE
-1. **TOOLS ARE MANDATORY** — To perform ANY action, you MUST call the corresponding tool. NEVER describe doing something without calling the tool.
-2. **NEVER FABRICATE DATA** — Do not invent URLs, email addresses, phone numbers, or search results. If you don't know, say so and offer to look it up.
-3. **NEVER CLAIM ACTIONS YOU DIDN'T TAKE** — If you didn't call send_email, don't say "I sent the email."
-4. **SAY "I DON'T KNOW" WHEN APPROPRIATE** — If the user asks for factual data you don't have, use web_search or read_webpage to find real data.
-5. **TOOL RESULTS ARE TRUTH** — Your response must be based on actual tool results.
-6. **NO FAKE URLS** — Only share URLs that came from tool results.
-7. **USE YOUR CONVERSATION HISTORY** — Before saying "I don't have that", check the conversation above.
-8. **PIPELINE IS YOUR SOURCE OF TRUTH** — Before claiming a lead exists or doesn't, call get_pipeline.
+    // ── Rules ──
+    prompt += `# RULES
+1. **TOOLS ARE MANDATORY** — To perform ANY action, you MUST call the corresponding tool. Never describe doing something without actually calling the tool.
+2. **NEVER FABRICATE DATA** — Do not invent URLs, emails, phone numbers, or search results. If you don't know, say so and offer to look it up.
+3. **NEVER CLAIM ACTIONS YOU DIDN'T TAKE** — Only report what tool results confirm.
+4. **TOOL RESULTS ARE TRUTH** — Base your responses on actual tool results, not assumptions.
+5. **NO FAKE URLS** — Only share URLs that came from tool results or the site context below.
+6. **BE PROACTIVE** — When the user asks about SEO, don't just talk about it — use analyze_seo to actually check. When they want a blog post, use generate_blog_post to actually write it.
 
 `;
 
-    // Current date/time
+    // ── Date ──
     const now = new Date();
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-    prompt += `# CURRENT DATE & TIME\nToday is **${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}**.\n\n`;
+    prompt += `# TODAY\n${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}\n\n`;
 
-    // ── WEBSITE CONTEXT (the key missing piece) ──
-    const siteCtx = this.subsystems.siteContext;
-    const siteUrl = this.subsystems.siteUrl;
-
+    // ── Website Context (the critical piece) ──
     if (siteCtx || siteUrl) {
-      prompt += `# THE WEBSITE YOU'RE EMBEDDED IN\n`;
+      prompt += `# YOUR WEBSITE\n`;
       if (siteUrl) prompt += `**URL**: ${siteUrl}\n`;
       if (siteCtx) {
         if (siteCtx.title) prompt += `**Site Name**: ${siteCtx.title}\n`;
         if (siteCtx.description) prompt += `**Description**: ${siteCtx.description}\n`;
         if (siteCtx.headings?.length > 0) {
-          prompt += `**Key Headings**: ${siteCtx.headings.slice(0, 8).join(' | ')}\n`;
+          prompt += `**Key Sections**: ${siteCtx.headings.slice(0, 8).join(' | ')}\n`;
         }
         if (siteCtx.navLinks?.length > 0) {
-          prompt += `**Site Pages**:\n`;
-          for (const link of siteCtx.navLinks.slice(0, 12)) {
-            prompt += `  - ${link.path} — "${link.text}"\n`;
+          prompt += `**Pages**:\n`;
+          for (const link of siteCtx.navLinks.slice(0, 15)) {
+            prompt += `  - [${link.text}](${siteUrl}${link.path})\n`;
           }
         }
         if (siteCtx.bodyText) {
-          prompt += `**Homepage Content (excerpt)**: ${siteCtx.bodyText.substring(0, 800)}\n`;
+          prompt += `\n**Homepage Content**:\n${siteCtx.bodyText.substring(0, 1000)}\n`;
         }
       }
-      prompt += `\nYou know this website. When the user asks about the site, its pages, or its content, use this context. If you need more detail about a specific page, use the **read_site_page** or **read_webpage** tool.\n\n`;
+      prompt += `\nYou know this website inside and out. When the user asks about the site, reference this context. For deeper page analysis, use **read_site_page** to fetch fresh content.\n\n`;
     }
 
-    // Business context from config
     if (this.subsystems.businessContext) {
       prompt += `# BUSINESS CONTEXT\n${this.subsystems.businessContext}\n\n`;
     }
 
-    // Tool guidance — only list tools that are actually available
-    prompt += `# AVAILABLE TOOLS\n`;
-    prompt += `## Research & Web\n`;
-    prompt += `- **web_search**: Search the web. Use for finding information, leads, competitors, anything.\n`;
-    prompt += `- **read_webpage**: Read any URL's content. Use to extract info, analyze pages, get contact details.\n`;
-    if (siteUrl) {
-      prompt += `- **read_site_page**: Read a page from the host website (${siteUrl}). Use to check site content.\n`;
-    }
-    prompt += `\n## SEO & Content\n`;
-    prompt += `- **analyze_seo**: Analyze a page's SEO (meta tags, headings, structured data). Returns scored report.\n`;
-    prompt += `- **generate_blog_post**: Generate an SEO-optimized blog post. Returns title, content, meta, schema.\n`;
-    prompt += `- **optimize_page_seo**: Get SEO improvement suggestions for a URL + target keywords.\n`;
-    prompt += `- **generate_structured_data**: Create JSON-LD schema (Article, FAQ, HowTo, etc.).\n`;
-    prompt += `\n## Lead Management\n`;
-    prompt += `- **find_leads**: Search for business leads by industry/location.\n`;
-    prompt += `- **save_leads**: Save leads to the pipeline.\n`;
-    prompt += `- **get_pipeline**: View all leads/tasks with full details.\n`;
-    prompt += `- **move_lead**: Move a lead to a new stage.\n`;
-    prompt += `\n## Projects & Memory\n`;
-    prompt += `- **create_project** / **write_project_file** / **read_project_file**: Create and manage web projects.\n`;
-    prompt += `- **save_note** / **recall_notes**: Save and retrieve notes.\n`;
+    // ── Tool Guidance ──
+    prompt += `# WHAT YOU CAN DO
 
-    if (this.subsystems.goalTracker) {
-      prompt += `- **manage_goals**: Track missions with progress tracking.\n`;
-    }
-    if (this.subsystems.contactManager) {
-      prompt += `- **manage_contacts**: Add, search, or list contacts.\n`;
-    }
+## SEO & Content (your specialty)
+- **analyze_seo** — Run a full SEO audit on any page. Checks title tags, meta descriptions, headings, structured data, images, and more. Returns a scored report with fixes.
+- **optimize_page_seo** — Get specific improvement suggestions for a page + target keywords.
+- **generate_blog_post** — Write a full SEO-optimized blog post with title, meta description, content, and JSON-LD schema.
+- **generate_structured_data** — Create JSON-LD markup (Article, FAQ, HowTo, LocalBusiness, etc.) for Google rich snippets.
+
+## Site Analysis
+- **read_site_page** — Read any page on the site to check content, structure, or copy.${siteUrl ? ` (${siteUrl})` : ''}
+- **web_search** — Research competitors, trends, keywords, or anything on the web.
+- **read_webpage** — Read any external URL.
+
+## Lead Research
+- **find_leads** — Search for potential customers by industry and location. Returns business names, phones, emails, and websites directly in chat.
+
+## Code & Content Workspace
+- **create_project** / **write_project_file** / **edit_project_file** / **read_project_file** — Create and edit web projects. Use for building blog posts, landing pages, HTML/CSS/JS files, or any content.
+- **list_projects** / **list_project_files** — Browse existing projects and files.
+`;
+
     if (this.subsystems.formManager) {
-      prompt += `- **create_form** / **list_forms**: Create forms, quizzes, surveys.\n`;
+      prompt += `
+## Forms
+- **create_form** — Create a form, survey, or quiz with a live URL. Perfect for contact forms, lead capture, feedback.
+- **list_forms** / **get_form_submissions** — View forms and their submissions.
+`;
     }
-    prompt += '\n';
 
-    // Desktop upsell guidance
-    prompt += `# DESKTOP CAPABILITIES
-Some tasks require the full OpenAce desktop app (browser automation, SOP recording, screen control, sending emails, making calls, social media posting). When the user asks for these, respond helpfully but note:
-"That feature requires the full OpenAce desktop app — it can control your browser, send emails, make calls, post to social media, and more. Check it out at openaceai.com."
-Do NOT pretend you can do desktop-level automation or send emails/SMS from the embedded version unless those integrations are configured.
+    prompt += `
+## Memory
+- **save_note** / **recall_notes** — Save and recall notes (brand guidelines, SEO strategies, preferred keywords, etc.).
 
+## Desktop-Only Features
+Some capabilities require the full OpenAce desktop app: browser automation, SOP recording, sending emails/SMS, making phone calls, social media posting, calendar management. When the user asks for these, be helpful but let them know:
+"That's a desktop-level feature — the full OpenAce app can handle that. Check it out at openaceai.com."
 `;
 
     return prompt;
@@ -518,44 +464,36 @@ Do NOT pretend you can do desktop-level automation or send emails/SMS from the e
     };
 
     switch (name) {
-      // Research
+      // Research & Site
       case 'web_search': return await toolkit.toolWebSearch(args, ctx);
       case 'read_webpage': return await toolkit.toolReadWebpage(args, ctx);
       case 'read_site_page': return await this._toolReadSitePage(args, ctx);
 
-      // Pipeline
+      // SEO & Content
+      case 'analyze_seo': return await seoKit.toolAnalyzeSeo(args, ctx);
+      case 'generate_blog_post': return await seoKit.toolGenerateBlogPost(args, ctx);
+      case 'optimize_page_seo': return await seoKit.toolOptimizePageSeo(args, ctx);
+      case 'generate_structured_data': return await seoKit.toolGenerateStructuredData(args, ctx);
+
+      // Lead Research
       case 'find_leads': return await this._toolFindLeads(args, ctx);
-      case 'save_leads': return await toolkit.toolSaveLeads(args, ctx);
-      case 'get_pipeline': return await toolkit.toolGetPipeline(args, ctx);
-      case 'move_lead': return await toolkit.toolMoveLead(args, ctx);
-      case 'set_lead_dnc': return await toolkit.toolSetLeadDnc(args, ctx);
 
-      // Contacts
-      case 'manage_contacts': return await toolkit.toolManageContacts(args, ctx);
-
-      // Goals
-      case 'manage_goals': return await toolkit.toolManageGoals(args, ctx);
-
-      // Memory
-      case 'save_note': return await toolkit.toolSaveNote(args, ctx);
-      case 'recall_notes': return await toolkit.toolRecallNotes(args, ctx);
+      // Projects
+      case 'create_project': return await toolkit.toolCreateProject(args, ctx);
+      case 'write_project_file': return await toolkit.toolWriteProjectFile(args, ctx);
+      case 'read_project_file': return await toolkit.toolReadProjectFile(args, ctx);
+      case 'edit_project_file': return await toolkit.toolEditProjectFile(args, ctx);
+      case 'list_project_files': return await toolkit.toolListProjectFiles(args, ctx);
+      case 'list_projects': return await toolkit.toolListProjects(args, ctx);
 
       // Forms
       case 'create_form': return await toolkit.toolCreateForm(args, ctx);
       case 'list_forms': return await toolkit.toolListForms(args, ctx);
       case 'get_form_submissions': return await toolkit.toolGetFormSubmissions(args, ctx);
 
-      // Projects
-      case 'create_project': return await toolkit.toolCreateProject(args, ctx);
-      case 'write_project_file': return await toolkit.toolWriteProjectFile(args, ctx);
-      case 'read_project_file': return await toolkit.toolReadProjectFile(args, ctx);
-      case 'list_project_files': return await toolkit.toolListProjectFiles(args, ctx);
-
-      // SEO
-      case 'analyze_seo': return await seoKit.toolAnalyzeSeo(args, ctx);
-      case 'generate_blog_post': return await seoKit.toolGenerateBlogPost(args, ctx);
-      case 'optimize_page_seo': return await seoKit.toolOptimizePageSeo(args, ctx);
-      case 'generate_structured_data': return await seoKit.toolGenerateStructuredData(args, ctx);
+      // Memory
+      case 'save_note': return await toolkit.toolSaveNote(args, ctx);
+      case 'recall_notes': return await toolkit.toolRecallNotes(args, ctx);
 
       default:
         return JSON.stringify({ error: `Unknown tool: ${name}` });
@@ -636,7 +574,7 @@ Do NOT pretend you can do desktop-level automation or send emails/SMS from the e
           source: l.source || 'web_search',
           notes: l.notes || ''
         })),
-        hint: 'Use save_leads to add these to the pipeline. Present the results to the user first.'
+        hint: 'Present the results to the user in a clear, organized format. Include all contact info found.'
       });
     } catch (e) {
       console.error(`[EmbedAgent] find_leads error:`, e.message);
