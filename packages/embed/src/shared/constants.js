@@ -14,13 +14,15 @@ export const TIERS = {
 export const TRIAL_DAYS = 30;
 
 // ── Feature Limits (Trial vs Pro) ──
+// Trial is generous — users bring their own AI keys, we're not paying for usage.
+// Pro value = watermark removal + cron scheduling.
 export const LIMITS = {
   trial: {
-    interactions: 100,
-    forms: 1,
-    seoAudits: 5,
-    blogPosts: 3,
-    leadSearches: 10,
+    interactions: Infinity,
+    forms: 3,
+    seoAudits: Infinity,
+    blogPosts: Infinity,
+    leadSearches: Infinity,
     cron: false,
     watermark: true
   },
@@ -75,13 +77,6 @@ export const TOOL_LABELS = {
   generate_image: { label: 'Generating image', icon: 'image' },
   plan_content_calendar: { label: 'Planning content', icon: 'calendar' },
 };
-
-// ── Desktop-Only Tools (used for upsell detection) ──
-export const DESKTOP_KEYWORDS = [
-  'automate my browser', 'control my browser', 'click on', 'browser automation',
-  'record this process', 'teach you how', 'train you', 'create a procedure',
-  'take a screenshot', 'screen', 'SOP', 'playbook', 'desktop'
-];
 
 // ── License API ──
 export const LICENSE_API_URL = 'https://api.openaceai.com/v1/license';

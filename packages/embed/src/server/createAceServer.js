@@ -184,10 +184,14 @@ export function createAceServer(config = {}) {
   } else if (useProxy) {
     console.log('[OpenAce Embed] No local AI keys found — using OpenAce proxy (via license key)');
   } else {
-    console.warn('\n\u26a0\ufe0f  [OpenAce Embed] WARNING: No AI API keys found!');
-    console.warn('   Set GEMINI_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY in your .env');
-    console.warn('   Or pass keys via: createAceServer({ ai: { geminiKey: "..." } })');
-    console.warn('   Or add a licenseKey to use the OpenAce proxy.\n');
+    console.error('\n\u274c [OpenAce Embed] FATAL: No AI API keys found!');
+    console.error('   Ace cannot work without an AI provider. Set one of these in your .env:');
+    console.error('     GEMINI_API_KEY=...    (free tier — recommended)');
+    console.error('     OPENAI_API_KEY=...    (enables DALL-E image generation too)');
+    console.error('     ANTHROPIC_API_KEY=... (Claude)');
+    console.error('   Or pass directly: createAceServer({ ai: { geminiKey: "..." } })');
+    console.error('   Get a free Gemini key at: https://aistudio.google.com/apikey\n');
+    throw new Error('OpenAce Embed requires at least one AI API key. See console output above.');
   }
 
   // ── Auth enforcement ──
@@ -282,14 +286,38 @@ export function createAceServer(config = {}) {
     }
 
     // ── Source directory (direct site file access) ──
-    if (sourceDir) {
-      const absSourceDir = path.resolve(sourceDir);
+    // If not explicitly configured, auto-detect common project structures
+    let resolvedSourceDir = sourceDir;
+    if (!resolvedSourceDir) {
+      const cwd = process.cwd();
+      const candidates = [
+        'src', 'app', 'pages', 'components', 'public',  // common app dirs
+        'content', 'posts', 'blog',                       // content dirs
+      ];
+      // Check if cwd itself has source files (package.json = it's a project root)
+      try {
+        await fs.access(path.join(cwd, 'package.json'));
+        resolvedSourceDir = '.';  // project root
+      } catch {
+        // Try common subdirectories
+        for (const dir of candidates) {
+          try {
+            await fs.access(path.join(cwd, dir));
+            resolvedSourceDir = '.';  // found project structure, use root
+            break;
+          } catch { /* skip */ }
+        }
+      }
+    }
+
+    if (resolvedSourceDir) {
+      const absSourceDir = path.resolve(resolvedSourceDir);
       try {
         await fs.access(absSourceDir);
         subsystems.sourceDir = absSourceDir;
-        console.log(`[OpenAce Embed] Source directory: ${absSourceDir}`);
+        console.log(`[OpenAce Embed] Source directory: ${absSourceDir}${!sourceDir ? ' (auto-detected)' : ''}`);
       } catch {
-        console.warn(`[OpenAce Embed] sourceDir "${sourceDir}" not accessible — direct file editing disabled`);
+        console.warn(`[OpenAce Embed] sourceDir "${resolvedSourceDir}" not accessible — direct file editing disabled`);
       }
     }
 
@@ -334,6 +362,7 @@ export function createAceServer(config = {}) {
     }
 
     // ── Router ──
+    subsystems.dataDir = absDataDir;
     const router = new AceRouter({ agent, license, cronRunner, subsystems });
 
     _instance = { agent, router, license, cronRunner, subsystems };

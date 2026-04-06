@@ -1,7 +1,10 @@
 /**
  * AceRouter — Express-compatible route handler for the embedded SDK.
- * Handles chat (SSE streaming), pipeline, license, and Stripe webhook routes.
+ * Handles chat (SSE streaming), license status, and Stripe webhook routes.
  */
+
+import fs from 'fs/promises';
+import path from 'path';
 
 export class AceRouter {
   constructor({ agent, license, cronRunner, subsystems }) {
@@ -10,6 +13,10 @@ export class AceRouter {
     this.cronRunner = cronRunner;
     this.subsystems = subsystems;
     this.conversations = new Map(); // channelId → message history
+    this.dataDir = subsystems?.dataDir || agent?.dataDir || './data/ace';
+
+    // Load persisted conversations on startup (non-blocking)
+    this._loadConversations();
   }
 
   // ── Route dispatcher (framework-agnostic) ──
@@ -23,10 +30,9 @@ export class AceRouter {
     try {
       if (method === 'POST' && route === '/chat') return await this.handleChat(req, res);
       if (method === 'POST' && route === '/stop') return await this.handleStop(req, res);
-      if (method === 'GET' && route === '/pipeline') return await this.handlePipeline(req, res);
       if (method === 'GET' && route === '/license') return await this.handleLicense(req, res);
       if (method === 'POST' && route === '/webhook/stripe') return await this.handleStripeWebhook(req, res);
-      if (method === 'GET' && route === '/health') return res.json({ ok: true, version: '1.0.0' });
+      if (method === 'GET' && route === '/health') return res.json({ ok: true, version: '1.0.6' });
 
       res.status?.(404);
       return res.json({ error: 'Not found' });
@@ -45,18 +51,6 @@ export class AceRouter {
     if (!message) {
       res.status?.(400);
       return res.json({ error: 'Missing "message" in request body' });
-    }
-
-    // License check
-    if (this.license) {
-      const check = await this.license.checkLimit('interactions');
-      if (!check.allowed) {
-        return res.json({
-          type: 'error',
-          content: 'Free trial limit reached. Upgrade to Pro at openaceai.com for unlimited access.',
-          upgrade: true
-        });
-      }
     }
 
     // Set up SSE headers
@@ -100,6 +94,9 @@ export class AceRouter {
         history.splice(0, history.length - 60);
       }
 
+      // Persist conversations (non-blocking)
+      this._saveConversations();
+
       // Send response
       send({
         type: 'response',
@@ -129,20 +126,6 @@ export class AceRouter {
     return res.json({ success: true });
   }
 
-  // ── Get pipeline ──
-  async handlePipeline(req, res) {
-    const pm = this.subsystems.pipelineManager;
-    if (!pm) return res.json({ error: 'Pipeline not available' });
-
-    const pipeline = pm.pipeline || { items: [], leads: [] };
-    return res.json({
-      leads: pipeline.leads || [],
-      tasks: pipeline.items || [],
-      totalLeads: (pipeline.leads || []).length,
-      totalTasks: (pipeline.items || []).length
-    });
-  }
-
   // ── License status ──
   async handleLicense(req, res) {
     if (!this.license) {
@@ -160,7 +143,6 @@ export class AceRouter {
 
   // ── Stripe webhook ──
   async handleStripeWebhook(req, res) {
-    // Stripe webhook handling — update license status on payment
     try {
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const event = body;
@@ -172,8 +154,13 @@ export class AceRouter {
             ...(this.license.cachedLicense || {}),
             plan: 'pro',
             watermark: false,
+            validatedAt: Date.now(),
           };
-          await this.license.saveLicenseCache();
+          // Persist to cache file
+          await this.license._writeCache(
+            path.join(this.license.dataDir, 'license.json'),
+            this.license.cachedLicense
+          );
         }
       }
 
@@ -182,6 +169,35 @@ export class AceRouter {
       console.error('[AceRouter] Stripe webhook error:', err.message);
       res.status?.(400);
       return res.json({ error: err.message });
+    }
+  }
+
+  // ── Conversation Persistence ──
+
+  async _loadConversations() {
+    try {
+      const filePath = path.join(this.dataDir, 'conversations.json');
+      const raw = await fs.readFile(filePath, 'utf-8');
+      const data = JSON.parse(raw);
+      for (const [id, history] of Object.entries(data)) {
+        this.conversations.set(id, history);
+      }
+    } catch {
+      // No saved conversations — start fresh
+    }
+  }
+
+  async _saveConversations() {
+    try {
+      const filePath = path.join(this.dataDir, 'conversations.json');
+      const data = {};
+      for (const [id, history] of this.conversations) {
+        data[id] = history;
+      }
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(filePath, JSON.stringify(data));
+    } catch {
+      // Non-critical — conversations still work in-memory
     }
   }
 }

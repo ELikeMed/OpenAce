@@ -1,14 +1,16 @@
 import fs from 'fs/promises';
 import path from 'path';
 
+// Trial limits — generous because users bring their own AI keys.
+// We're not paying for their API usage, so don't punish them.
+// Pro value = watermark removal + cron scheduling.
 const TRIAL_LIMITS = {
-  interactions: 100,
-  leads: 25,
-  forms: 1,
-  emails: 10,
-  seoAudits: 5,
-  blogPosts: 3,
-  workloadFiles: 3,
+  interactions: Infinity,  // unlimited — they pay for their own AI
+  leads: Infinity,
+  forms: 3,               // light limit to encourage upgrade
+  seoAudits: Infinity,
+  blogPosts: Infinity,
+  workloadFiles: 10,
 };
 
 const TRIAL_FEATURES = ['chat', 'seo', 'blog', 'pipeline', 'email'];

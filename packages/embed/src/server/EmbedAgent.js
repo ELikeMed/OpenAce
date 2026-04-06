@@ -14,7 +14,7 @@
  */
 
 import { ResponseParser } from '../shared/ResponseParser.js';
-import { DESKTOP_KEYWORDS } from '../shared/constants.js';
+// DESKTOP_KEYWORDS import removed — widget no longer upsells desktop app
 import { getSeoToolDeclarations } from './SeoToolkit.js';
 import * as toolkit from './EmbedToolkit.js';
 import * as seoKit from './SeoToolkit.js';
@@ -403,8 +403,8 @@ export class EmbedAgent {
       { group: 'calendar',  patterns: [/\bcalendar\b/, /\bplan\b/, /\bschedule\b/, /\bcontent\s*plan/i, /\beditorial\b/, /\bposts?\s*(for|this|next)\b/i, /\btopics?\b/] },
     ];
 
-    // Always include memory + research as baseline
-    const selectedGroups = new Set(['memory', 'research']);
+    // Always include memory + research + source (source is the killer feature)
+    const selectedGroups = new Set(['memory', 'research', 'source']);
 
     for (const { group, patterns } of triggers) {
       for (const pattern of patterns) {
@@ -454,28 +454,39 @@ export class EmbedAgent {
     const soul = this._soulConfig;
     const siteCtx = this.subsystems.siteContext;
     const siteUrl = this.subsystems.siteUrl;
+    const hasSourceDir = !!this.subsystems.sourceDir;
     let prompt = '';
 
     // ── Identity ──
-    prompt += `# WHO YOU ARE
-You are **Ace** — a website management AI assistant. You help site owners improve their website through SEO optimization, content creation, blog writing, code editing, lead research, and site analysis.
+    prompt += `# YOU ARE ACE — A WEBSITE MANAGEMENT ENGINE
+You are embedded in this site owner's website. You DO things. You don't talk about doing things.
 
-You are embedded directly in the site owner's website as a chat widget. Everything you do is focused on making their website better.\n\n`;
+`;
 
-    // Personality from soul.json (keep it light)
-    if (soul?.personality?.traits) {
-      prompt += `# YOUR STYLE\n`;
-      prompt += soul.personality.traits.slice(0, 5).map(t => `- ${t}`).join('\n') + '\n\n';
-    }
+    // ── Core Behavior ──
+    prompt += `# HOW YOU OPERATE
 
-    // ── Rules ──
-    prompt += `# RULES
-1. **TOOLS ARE MANDATORY** — To perform ANY action, you MUST call the corresponding tool. Never describe doing something without actually calling the tool.
-2. **NEVER FABRICATE DATA** — Do not invent URLs, emails, phone numbers, or search results. If you don't know, say so and offer to look it up.
-3. **NEVER CLAIM ACTIONS YOU DIDN'T TAKE** — Only report what tool results confirm.
-4. **TOOL RESULTS ARE TRUTH** — Base your responses on actual tool results, not assumptions.
-5. **NO FAKE URLS** — Only share URLs that came from tool results or the site context below.
-6. **BE PROACTIVE** — When the user asks about SEO, don't just talk about it — use analyze_seo to actually check. When they want a blog post, use generate_blog_post to actually write it.
+**ACTION FIRST, TALK SECOND.** When the user asks you to do something:
+1. Call the tools IMMEDIATELY. Do not ask clarifying questions unless truly ambiguous.
+2. Chain multiple tools together in one turn. If fixing SEO requires reading the page, analyzing it, then editing the source — do ALL of that before responding.
+3. Report RESULTS, not capabilities. Never say "I can analyze your SEO" — just analyze it.
+4. Never say "Would you like me to..." — just do it. The user asked, that's your permission.
+
+**COMPLETE WORKFLOWS, NOT HALF-JOBS.** Common patterns you should execute end-to-end:
+
+- "Fix my SEO on /about" → analyze_seo on the URL → read_source_file for that page → edit_source_file to fix title, meta, headings, add schema → report exactly what you changed
+- "Write a blog post about X" → web_search for keywords/angles → generate_blog_post → ${hasSourceDir ? 'edit_source_file to save it to the blog directory' : 'write_project_file to save it'} → report the file path and key SEO stats
+- "Make this page rank for [keyword]" → analyze_seo → optimize_page_seo → ${hasSourceDir ? 'read_source_file + edit_source_file to apply the fixes' : 'tell them exactly what to change'} → generate_structured_data if missing → done
+- "Update the content on /pricing" → read_site_page to see current content → ${hasSourceDir ? 'read_source_file + edit_source_file with improvements' : 'create a project with the improved content'} → done
+- "Add structured data to my site" → read_site_page → generate_structured_data → ${hasSourceDir ? 'edit_source_file to inject it' : 'give them the code to paste'} → done
+- "Research competitors for [topic]" → web_search multiple queries → read_webpage on top results → summarize findings with actionable recommendations
+
+**HARD RULES:**
+1. NEVER fabricate data — no fake URLs, emails, phone numbers, or stats
+2. NEVER claim actions you didn't take — only report what tool results confirm
+3. NEVER explain what you "could do" — either do it or say you can't
+4. When a tool returns an error, try a different approach. Don't give up on the first failure.
+5. Keep responses concise. Lead with what you DID, then the results.
 
 `;
 
@@ -483,92 +494,60 @@ You are embedded directly in the site owner's website as a chat widget. Everythi
     const now = new Date();
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-    prompt += `# TODAY\n${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}\n\n`;
+    prompt += `Today: ${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}\n\n`;
 
     // ── Website Context (the critical piece) ──
     if (siteCtx || siteUrl) {
-      prompt += `# YOUR WEBSITE\n`;
-      if (siteUrl) prompt += `**URL**: ${siteUrl}\n`;
+      prompt += `# THIS WEBSITE\n`;
+      if (siteUrl) prompt += `URL: ${siteUrl}\n`;
       if (siteCtx) {
-        if (siteCtx.title) prompt += `**Site Name**: ${siteCtx.title}\n`;
-        if (siteCtx.description) prompt += `**Description**: ${siteCtx.description}\n`;
+        if (siteCtx.title) prompt += `Name: ${siteCtx.title}\n`;
+        if (siteCtx.description) prompt += `Description: ${siteCtx.description}\n`;
         if (siteCtx.headings?.length > 0) {
-          prompt += `**Key Sections**: ${siteCtx.headings.slice(0, 8).join(' | ')}\n`;
+          prompt += `Sections: ${siteCtx.headings.slice(0, 8).join(' | ')}\n`;
         }
         if (siteCtx.navLinks?.length > 0) {
-          prompt += `**Pages**:\n`;
+          prompt += `Pages:\n`;
           for (const link of siteCtx.navLinks.slice(0, 15)) {
-            prompt += `  - [${link.text}](${siteUrl}${link.path})\n`;
+            prompt += `  - ${link.text}: ${link.path}\n`;
           }
         }
-        if (siteCtx.bodyText) {
-          prompt += `\n**Homepage Content**:\n${siteCtx.bodyText.substring(0, 1000)}\n`;
-        }
       }
-      prompt += `\nYou know this website inside and out. When the user asks about the site, reference this context. For deeper page analysis, use **read_site_page** to fetch fresh content.\n\n`;
+      prompt += `\nYou already know this site. When referring to pages, use the paths above. Use read_site_page to fetch fresh content when needed.\n\n`;
     }
 
     if (this.subsystems.businessContext) {
       prompt += `# BUSINESS CONTEXT\n${this.subsystems.businessContext}\n\n`;
     }
 
-    // ── Tool Guidance ──
-    prompt += `# WHAT YOU CAN DO
+    // ── Capabilities (brief — AI should discover tools from declarations) ──
+    prompt += `# YOUR TOOLS\n`;
 
-## SEO & Content (your specialty)
-- **analyze_seo** — Run a full SEO audit on any page. Checks title tags, meta descriptions, headings, structured data, images, and more. Returns a scored report with fixes.
-- **optimize_page_seo** — Get specific improvement suggestions for a page + target keywords.
-- **generate_blog_post** — Write a full SEO-optimized blog post with title, meta description, content, and JSON-LD schema.
-- **generate_structured_data** — Create JSON-LD markup (Article, FAQ, HowTo, LocalBusiness, etc.) for Google rich snippets.
-`;
+    prompt += `**SEO (your core strength):** analyze_seo, optimize_page_seo, generate_blog_post, generate_structured_data\n`;
 
-    if (this.subsystems.sourceDir) {
-      prompt += `
-## Direct Site Editing (POWERFUL — you can edit the actual codebase)
-- **list_source_files** — Browse the site's source code directory structure.
-- **read_source_file** — Read any source file (pages, components, styles, config, blog posts, etc.).
-- **edit_source_file** — Edit source files directly: update meta tags, fix content, add blog posts, modify code, change styles. Supports search-and-replace, line edits, insertions, and creating new files.
-
-When the user asks to "update the title on the about page" or "add a new blog post" or "fix the meta description", use these tools to directly modify their source files. This is your most powerful capability — you can make real changes to their site.
-`;
+    if (hasSourceDir) {
+      prompt += `**Direct file editing (POWERFUL):** list_source_files, read_source_file, edit_source_file — you can directly modify this site's source code. Use this to fix SEO issues, update content, add blog posts, inject schema markup. ALWAYS prefer editing source files over just giving advice.\n`;
     }
 
-    prompt += `
-## Site Analysis
-- **read_site_page** — Read any page on the live site to check content and structure.${siteUrl ? ` (${siteUrl})` : ''}
-- **web_search** — Research competitors, trends, keywords, or anything on the web.
-- **read_webpage** — Read any external URL.
-
-## Image Generation
-- **generate_image** — Create AI images using DALL-E 3. Blog headers, social media graphics, hero banners, product mockups, illustrations. Specify size, style, and optionally save to a project.
-
-## Content Calendar
-- **plan_content_calendar** — Plan a content calendar with AI-generated topics, keywords, outlines, and publish dates. Specify how many pieces and what timeframe. Saved to memory for later recall.
-
-## Lead Research
-- **find_leads** — Search for potential customers by industry and location. Returns business names, phones, emails, and websites directly in chat.
-
-## Code & Content Workspace
-- **create_project** / **write_project_file** / **edit_project_file** / **read_project_file** — Create and edit web projects. Use for building blog posts, landing pages, HTML/CSS/JS files, or any content.
-- **list_projects** / **list_project_files** — Browse existing projects and files.
-`;
+    prompt += `**Site reading:** read_site_page, web_search, read_webpage\n`;
+    prompt += `**Content:** generate_image (DALL-E 3), plan_content_calendar\n`;
+    prompt += `**Workspace:** create_project, write_project_file, edit_project_file, read_project_file, list_projects, list_project_files\n`;
+    prompt += `**Research:** find_leads, web_search\n`;
 
     if (this.subsystems.formManager) {
-      prompt += `
-## Forms
-- **create_form** — Create a form, survey, or quiz with a live URL. Perfect for contact forms, lead capture, feedback.
-- **list_forms** / **get_form_submissions** — View forms and their submissions.
-`;
+      prompt += `**Forms:** create_form, list_forms, get_form_submissions\n`;
     }
 
-    prompt += `
-## Memory
-- **save_note** / **recall_notes** — Save and recall notes (brand guidelines, SEO strategies, preferred keywords, etc.).
+    prompt += `**Memory:** save_note, recall_notes — remember brand guidelines, keyword strategies, preferences\n`;
 
-## Desktop-Only Features
-Some capabilities require the full OpenAce desktop app: browser automation, SOP recording, sending emails/SMS, making phone calls, social media posting. When the user asks for these, be helpful but let them know:
-"That's a desktop-level feature — the full OpenAce app can handle that. Check it out at openaceai.com."
+    prompt += `
+Browser automation, email, SMS, phone calls, and social posting are not available in this widget. If asked, say it's not available here and move on — do NOT suggest downloading anything.
 `;
+
+    // Light personality touch
+    if (soul?.personality?.traits) {
+      prompt += `\nPersonality: ${soul.personality.traits.slice(0, 3).join(', ')}. Keep it brief.\n`;
+    }
 
     return prompt;
   }
@@ -642,7 +621,9 @@ Some capabilities require the full OpenAce desktop app: browser automation, SOP 
     if (!siteUrl) return JSON.stringify({ error: 'Site URL not configured. Set siteUrl in createAceServer config.' });
 
     const pagePath = args.path || '/';
-    const fullUrl = new URL(pagePath, siteUrl).href;
+    // Build URL safely — ensure siteUrl origin + pagePath, no double paths
+    const base = new URL(siteUrl);
+    const fullUrl = `${base.origin}${pagePath.startsWith('/') ? pagePath : '/' + pagePath}`;
 
     ctx.onProgress(`Reading site page: ${pagePath}`);
     return await toolkit.toolReadWebpage({ url: fullUrl, extract: args.extract || 'text' }, ctx);
@@ -743,18 +724,8 @@ Some capabilities require the full OpenAce desktop app: browser automation, SOP 
         this.onProgress(`Using ${call.name.replace(/_/g, ' ')}`);
         toolsCalled.push(call.name);
 
-        // License check — deduct usage
+        // License check — deduct usage (trial is now unlimited for tool calls)
         if (this.license) {
-          const check = this.license.checkLimit('interactions');
-          if (!check.allowed) {
-            toolResults.push({
-              functionResponse: {
-                name: call.name,
-                response: { error: 'Usage limit reached. Upgrade to Pro at openaceai.com for unlimited access.' }
-              }
-            });
-            continue;
-          }
           await this.license.recordUsage('interactions');
         }
 
@@ -863,9 +834,7 @@ Some capabilities require the full OpenAce desktop app: browser automation, SOP 
     // Add current user message
     messages.push({ role: 'user', content: message });
 
-    // Check for desktop upsell
-    const lowerMsg = message.toLowerCase();
-    const isDesktopRequest = DESKTOP_KEYWORDS.some(kw => lowerMsg.includes(kw));
+    // Note: desktop keyword detection removed — widget should never upsell
 
     // Call AI with tools
     this.onProgress('Thinking');
@@ -904,11 +873,6 @@ Some capabilities require the full OpenAce desktop app: browser automation, SOP 
 
       // Parse ACE_QUESTION / ACE_ACTIONS
       const parsed = ResponseParser.parse(responseText);
-
-      // Add desktop upsell if needed
-      if (isDesktopRequest && !parsed.cleanText.includes('openaceai.com')) {
-        parsed.cleanText += '\n\n> **Want more power?** The full OpenAce desktop app can control your browser, record processes, and automate anything on your screen. [Get it at openaceai.com](https://openaceai.com)';
-      }
 
       return {
         text: parsed.cleanText,
