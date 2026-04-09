@@ -46,6 +46,7 @@ import { createSocialMediaSystem } from './social/index.js';
 import IntegrationManager from './integrations/IntegrationManager.js';
 import { TwilioService } from './integrations/TwilioService.js';
 import CreditManager from './billing/CreditManager.js';
+import FinanceManager from './finance/FinanceManager.js';
 import { StripeService } from './billing/StripeService.js';
 import { ApprovalQueue } from './approvals/ApprovalQueue.js';
 import { ContactManager } from './contacts/ContactManager.js';
@@ -266,6 +267,15 @@ export class OpenAce {
       console.log('🔄 Loading update system...');
       this.updateManager = new UpdateManager({ baseDir: this.baseDir });
       await this.updateManager.initialize();
+
+      // Initialize Finance Manager (Books / Tax Prep)
+      console.log('📒 Loading finance manager...');
+      this.financeManager = new FinanceManager({
+        dataPath: path.join(this.dataDir, 'finance/books.json'),
+        uploadsDir: path.join(this.dataDir, 'finance/uploads'),
+        aiManager: this.aiManager,
+      });
+      await this.financeManager.initialize();
 
       // Initialize Form Manager
       console.log('📝 Loading forms...');

@@ -42,9 +42,11 @@ import Forms from './components/Forms';
 import ContactsIcon from '@mui/icons-material/Contacts';
 import QuizIcon from '@mui/icons-material/Quiz';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
+import MenuBookIcon from '@mui/icons-material/MenuBook';
 import ExtensionIcon from '@mui/icons-material/Extension';
 
 import Workload from './components/Workload';
+import Books from './components/Books';
 import Integrations from './components/Integrations';
 import GuidedTour from './components/GuidedTour';
 
@@ -62,6 +64,7 @@ const menuItems = [
   { text: 'Forms', icon: <QuizIcon />, id: 'forms' },
   { text: 'Coder', icon: <CodeIcon />, id: 'studio' },
   { text: 'Media & Files', icon: <FolderOpenIcon />, id: 'workload' },
+  { text: 'Books', icon: <MenuBookIcon />, id: 'books' },
   { text: 'Organization', icon: <GroupsIcon />, id: 'organization' },
   { text: 'Integrations', icon: <ExtensionIcon />, id: 'integrations' },
   { text: 'Settings', icon: <SettingsIcon />, id: 'settings' },
@@ -315,6 +318,7 @@ function App() {
     forms: <Forms />,
     pipeline: <Pipeline />,
     workload: <Workload />,
+    books: <Books />,
     integrations: <Integrations />,
     sops: <SOPs />,
     automation: <Automation />,

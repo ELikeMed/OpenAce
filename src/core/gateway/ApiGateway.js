@@ -93,6 +93,7 @@ export class ApiGateway {
     this.registerTwilioRoutes();
     this.registerBillingRoutes();
     this.registerUpdateRoutes();
+    this.registerFinanceRoutes();
 
     // Global error handler (must be last)
     this.registerErrorHandler();
@@ -3889,6 +3890,153 @@ export class ApiGateway {
       const limit = parseInt(req.query.limit) || 50;
       const reports = await crashes().listCrashes(limit);
       res.json({ success: true, data: reports });
+    }));
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // FINANCE / BOOKKEEPING ROUTES
+  // ═══════════════════════════════════════════════════════════
+
+  registerFinanceRoutes() {
+    const fm = () => this.ace?.financeManager;
+
+    // GET /api/finance/summary — Stats + category totals
+    this.app.get('/api/finance/summary', this.wrap(async (req, res) => {
+      if (!fm()) return res.json({ success: false, error: 'FinanceManager not initialized' });
+      const year = req.query.year ? parseInt(req.query.year) : undefined;
+      res.json({ success: true, data: fm().getStats(year) });
+    }));
+
+    // GET /api/finance/transactions — Filtered transaction list
+    this.app.get('/api/finance/transactions', this.wrap(async (req, res) => {
+      if (!fm()) return res.json({ success: false, error: 'FinanceManager not initialized' });
+      const filters = {};
+      if (req.query.year) filters.year = parseInt(req.query.year);
+      if (req.query.month) filters.month = parseInt(req.query.month);
+      if (req.query.category) filters.category = req.query.category;
+      if (req.query.source) filters.source = req.query.source;
+      if (req.query.type) filters.type = req.query.type;
+      if (req.query.search) filters.search = req.query.search;
+      if (req.query.personal !== undefined) filters.personal = req.query.personal === 'true';
+      res.json({ success: true, data: fm().getTransactions(filters) });
+    }));
+
+    // POST /api/finance/upload — Upload bank statement (binary body)
+    this.app.post('/api/finance/upload', this.wrap(async (req, res) => {
+      if (!fm()) return res.json({ success: false, error: 'FinanceManager not initialized' });
+
+      const filename = decodeURIComponent(req.headers['x-filename'] || 'statement.csv');
+
+      const chunks = [];
+      req.on('data', chunk => chunks.push(chunk));
+      await new Promise((resolve, reject) => { req.on('end', resolve); req.on('error', reject); });
+      const buffer = Buffer.concat(chunks);
+
+      if (!buffer.length) return res.json({ success: false, error: 'Empty file' });
+
+      const result = await fm().ingestStatement(buffer, filename);
+      res.json({ success: true, data: result });
+    }));
+
+    // POST /api/finance/categorize — AI categorize uncategorized transactions
+    this.app.post('/api/finance/categorize', this.wrap(async (req, res) => {
+      if (!fm()) return res.json({ success: false, error: 'FinanceManager not initialized' });
+      const { txnIds } = req.body || {};
+      const result = await fm().categorizeTransactions(txnIds || null);
+      res.json({ success: true, data: result });
+    }));
+
+    // POST /api/finance/transaction — Add manual expense
+    this.app.post('/api/finance/transaction', this.wrap(async (req, res) => {
+      if (!fm()) return res.json({ success: false, error: 'FinanceManager not initialized' });
+      const txn = fm().addManualExpense(req.body);
+      res.json({ success: true, data: txn });
+    }));
+
+    // PUT /api/finance/transaction/:id — Update transaction
+    this.app.put('/api/finance/transaction/:id', this.wrap(async (req, res) => {
+      if (!fm()) return res.json({ success: false, error: 'FinanceManager not initialized' });
+      const txn = fm().updateTransaction(req.params.id, req.body);
+      res.json({ success: true, data: txn });
+    }));
+
+    // DELETE /api/finance/transaction/:id — Delete transaction
+    this.app.delete('/api/finance/transaction/:id', this.wrap(async (req, res) => {
+      if (!fm()) return res.json({ success: false, error: 'FinanceManager not initialized' });
+      fm().deleteTransaction(req.params.id);
+      res.json({ success: true });
+    }));
+
+    // GET /api/finance/mileage — Mileage entries
+    this.app.get('/api/finance/mileage', this.wrap(async (req, res) => {
+      if (!fm()) return res.json({ success: false, error: 'FinanceManager not initialized' });
+      const year = req.query.year ? parseInt(req.query.year) : undefined;
+      res.json({ success: true, data: fm().getMileage(year) });
+    }));
+
+    // POST /api/finance/mileage/bulk — Add monthly mileage in bulk
+    this.app.post('/api/finance/mileage/bulk', this.wrap(async (req, res) => {
+      if (!fm()) return res.json({ success: false, error: 'FinanceManager not initialized' });
+      const { entries, year } = req.body || {};
+      const result = fm().addBulkMileage(entries, year);
+      res.json({ success: true, data: result });
+    }));
+
+    // POST /api/finance/mileage — Add mileage entry
+    this.app.post('/api/finance/mileage', this.wrap(async (req, res) => {
+      if (!fm()) return res.json({ success: false, error: 'FinanceManager not initialized' });
+      const entry = fm().addMileage(req.body);
+      res.json({ success: true, data: entry });
+    }));
+
+    // PUT /api/finance/mileage/:id — Edit mileage
+    this.app.put('/api/finance/mileage/:id', this.wrap(async (req, res) => {
+      if (!fm()) return res.json({ success: false, error: 'FinanceManager not initialized' });
+      const entry = fm().updateMileage(req.params.id, req.body);
+      res.json({ success: true, data: entry });
+    }));
+
+    // DELETE /api/finance/mileage/:id — Delete mileage
+    this.app.delete('/api/finance/mileage/:id', this.wrap(async (req, res) => {
+      if (!fm()) return res.json({ success: false, error: 'FinanceManager not initialized' });
+      fm().deleteMileage(req.params.id);
+      res.json({ success: true });
+    }));
+
+    // GET /api/finance/report — Generate CPA report JSON
+    this.app.get('/api/finance/report', this.wrap(async (req, res) => {
+      if (!fm()) return res.json({ success: false, error: 'FinanceManager not initialized' });
+      const year = req.query.year ? parseInt(req.query.year) : undefined;
+      res.json({ success: true, data: fm().generateReport(year) });
+    }));
+
+    // GET /api/finance/export — Download CSV
+    this.app.get('/api/finance/export', this.wrap(async (req, res) => {
+      if (!fm()) return res.json({ success: false, error: 'FinanceManager not initialized' });
+      const year = req.query.year ? parseInt(req.query.year) : undefined;
+      const csv = fm().exportCSV(year);
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="tax-report-${year || new Date().getFullYear()}.csv"`);
+      res.send(csv);
+    }));
+
+    // GET /api/finance/statements — List uploaded statements
+    this.app.get('/api/finance/statements', this.wrap(async (req, res) => {
+      if (!fm()) return res.json({ success: false, error: 'FinanceManager not initialized' });
+      res.json({ success: true, data: fm().getStatements() });
+    }));
+
+    // DELETE /api/finance/statements/:id — Delete statement + its transactions
+    this.app.delete('/api/finance/statements/:id', this.wrap(async (req, res) => {
+      if (!fm()) return res.json({ success: false, error: 'FinanceManager not initialized' });
+      fm().deleteStatement(req.params.id);
+      res.json({ success: true });
+    }));
+
+    // GET /api/finance/categories — List all IRS categories
+    this.app.get('/api/finance/categories', this.wrap(async (req, res) => {
+      if (!fm()) return res.json({ success: false, error: 'FinanceManager not initialized' });
+      res.json({ success: true, data: fm().getCategories() });
     }));
   }
 }
