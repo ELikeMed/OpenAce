@@ -36,7 +36,7 @@ const CHAT_TOOLS = new Set(['research', 'social']);
 
 function App() {
   const [selectedTool, setSelectedTool] = useState(null); // null = chat view
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
   const [needsOnboarding, setNeedsOnboarding] = useState(null);
   const [themeMode, setThemeMode] = useState(() => localStorage.getItem('ace_theme') || 'dark');
   const [isCloudMode, setIsCloudMode] = useState(false);

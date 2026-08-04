@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box, List, ListItem, ListItemButton, ListItemIcon, Typography,
   IconButton, Tooltip, alpha, Divider, Avatar,
 } from '@mui/material';
+import MenuIcon from '@mui/icons-material/Menu';
 import AddIcon from '@mui/icons-material/Add';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import TravelExploreIcon from '@mui/icons-material/TravelExplore';
@@ -57,25 +58,55 @@ export default function Sidebar({
   onToggleTheme,
 }) {
   const [hoveredChat, setHoveredChat] = useState(null);
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   const width = isMobile ? (collapsed ? 0 : SIDEBAR_WIDTH) : (collapsed ? COLLAPSED_WIDTH : SIDEBAR_WIDTH);
 
   return (
-    <Box sx={{
-      width, minWidth: width, maxWidth: width,
-      height: '100vh',
-      display: 'flex',
-      flexDirection: 'column',
-      background: BRAND.bgSidebar,
-      borderRight: `1px solid ${BRAND.border}`,
-      transition: 'width 0.25s ease, min-width 0.25s ease, max-width 0.25s ease',
-      overflow: 'hidden',
-      // Mobile: overlay on top of content
-      ...(isMobile && !collapsed && {
-        position: 'fixed', left: 0, top: 0, zIndex: 1200,
-        boxShadow: '4px 0 20px rgba(0,0,0,0.3)',
-      }),
-    }}>
+    <>
+      {/* Mobile backdrop — tap to close sidebar */}
+      {isMobile && !collapsed && (
+        <Box onClick={onToggleCollapse} sx={{
+          position: 'fixed', inset: 0, zIndex: 1199,
+          background: 'rgba(0,0,0,0.5)',
+          backdropFilter: 'blur(2px)',
+        }} />
+      )}
+
+      {/* Mobile hamburger button — visible when sidebar is collapsed on mobile */}
+      {isMobile && collapsed && (
+        <IconButton onClick={onToggleCollapse} sx={{
+          position: 'fixed', top: 12, left: 12, zIndex: 1200,
+          width: 40, height: 40,
+          background: BRAND.bgCard,
+          border: `1px solid ${BRAND.border}`,
+          color: BRAND.textSecondary,
+          '&:hover': { background: BRAND.bgSurface },
+        }}>
+          <MenuIcon sx={{ fontSize: 20 }} />
+        </IconButton>
+      )}
+
+      <Box sx={{
+        width, minWidth: width, maxWidth: width,
+        height: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        background: BRAND.bgSidebar,
+        borderRight: `1px solid ${BRAND.border}`,
+        transition: 'width 0.25s ease, min-width 0.25s ease, max-width 0.25s ease',
+        overflow: 'hidden',
+        ...(isMobile && !collapsed && {
+          position: 'fixed', left: 0, top: 0, zIndex: 1200,
+          boxShadow: '4px 0 20px rgba(0,0,0,0.5)',
+        }),
+      }}>
       {/* Logo + New Chat */}
       <Box sx={{ p: collapsed ? '12px 8px' : '16px 14px 8px', display: 'flex', flexDirection: 'column', gap: 1 }}>
         {/* Logo row */}
@@ -302,5 +333,6 @@ export default function Sidebar({
         )}
       </Box>
     </Box>
+    </>
   );
 }

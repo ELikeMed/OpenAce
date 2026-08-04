@@ -48,7 +48,7 @@ export default function WelcomeScreen({ businessName, industry, onSuggestionClic
       pb: 12,
     }}>
       {/* ACE Title */}
-      <Box sx={{ textAlign: 'center', mb: 5 }}>
+      <Box sx={{ textAlign: 'center', mb: { xs: 3, md: 5 } }}>
         <Box sx={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -56,13 +56,13 @@ export default function WelcomeScreen({ businessName, industry, onSuggestionClic
           mb: 1.5,
         }}>
           <AceSpadeIcon sx={{
-            fontSize: 48,
+            fontSize: { xs: 36, md: 48 },
             color: BRAND.primary,
             filter: `drop-shadow(0 4px 20px ${alpha(BRAND.primary, 0.4)})`,
           }} />
         </Box>
         <Typography sx={{
-          fontSize: '3.5rem',
+          fontSize: { xs: '2.5rem', md: '3.5rem' },
           fontWeight: 800,
           letterSpacing: '-0.04em',
           lineHeight: 1,
@@ -93,13 +93,14 @@ export default function WelcomeScreen({ businessName, industry, onSuggestionClic
         flexWrap: 'wrap',
         justifyContent: 'center',
         maxWidth: 700,
+        px: { xs: 1, md: 0 },
       }}>
         {quickStarts.map((card) => (
           <Box
             key={card.id}
             onClick={() => onSuggestionClick?.(card.prompt + (industry || ''))}
             sx={{
-              width: 200,
+              width: { xs: '100%', sm: 200 },
               p: 2,
               borderRadius: 2.5,
               background: card.gradient,

@@ -3637,7 +3637,7 @@ function Chat({ hideSidebar = false }) {
 
           {/* Input Area */}
           <Box sx={{
-            p: 2,
+            p: { xs: 1, md: 2 },
             borderTop: `1px solid ${BRAND.border}`,
             background: alpha(BRAND.bgCard, 0.8),
             backdropFilter: 'blur(20px)',
@@ -3700,7 +3700,7 @@ function Chat({ hideSidebar = false }) {
 
             {/* Action shortcuts */}
             {!activeAction && (
-              <Box sx={{ display: 'flex', gap: 0.75, mb: 1, flexWrap: 'wrap' }}>
+              <Box sx={{ display: 'flex', gap: 0.75, mb: 1, flexWrap: { xs: 'nowrap', md: 'wrap' }, overflowX: { xs: 'auto', md: 'visible' }, pb: { xs: 0.5, md: 0 }, '&::-webkit-scrollbar': { height: 0 } }}>
                 {actionChips.map((chip) => (
                   <Chip
                     key={chip.id}
