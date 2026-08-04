@@ -11,6 +11,8 @@ import QuizIcon from '@mui/icons-material/Quiz';
 import CodeIcon from '@mui/icons-material/Code';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 import SettingsIcon from '@mui/icons-material/Settings';
+import DarkModeIcon from '@mui/icons-material/DarkMode';
+import LightModeIcon from '@mui/icons-material/LightMode';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';
 import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
@@ -51,19 +53,12 @@ export default function Sidebar({
   credits,
   onOpenSettings,
   onOpenCredits,
+  themeMode,
+  onToggleTheme,
 }) {
   const [hoveredChat, setHoveredChat] = useState(null);
-  const width = collapsed ? COLLAPSED_WIDTH : SIDEBAR_WIDTH;
-
-  const formatTime = (ts) => {
-    if (!ts) return '';
-    const d = new Date(ts);
-    const now = new Date();
-    const diff = now - d;
-    if (diff < 86400000) return 'Today';
-    if (diff < 172800000) return 'Yesterday';
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+  const width = isMobile ? (collapsed ? 0 : SIDEBAR_WIDTH) : (collapsed ? COLLAPSED_WIDTH : SIDEBAR_WIDTH);
 
   return (
     <Box sx={{
@@ -75,6 +70,11 @@ export default function Sidebar({
       borderRight: `1px solid ${BRAND.border}`,
       transition: 'width 0.25s ease, min-width 0.25s ease, max-width 0.25s ease',
       overflow: 'hidden',
+      // Mobile: overlay on top of content
+      ...(isMobile && !collapsed && {
+        position: 'fixed', left: 0, top: 0, zIndex: 1200,
+        boxShadow: '4px 0 20px rgba(0,0,0,0.3)',
+      }),
     }}>
       {/* Logo + New Chat */}
       <Box sx={{ p: collapsed ? '12px 8px' : '16px 14px 8px', display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -245,6 +245,30 @@ export default function Sidebar({
             </Box>
           </Tooltip>
         )}
+
+        {/* Theme toggle */}
+        <Tooltip title={collapsed ? (themeMode === 'dark' ? 'Light mode' : 'Dark mode') : ''} placement="right">
+          <Box
+            onClick={onToggleTheme}
+            sx={{
+              display: 'flex', alignItems: 'center', gap: 1,
+              px: collapsed ? 0 : 1, py: 0.5,
+              borderRadius: 1.5, cursor: 'pointer',
+              justifyContent: collapsed ? 'center' : 'flex-start',
+              '&:hover': { background: alpha(BRAND.primary, 0.08) },
+            }}
+          >
+            {themeMode === 'dark'
+              ? <LightModeIcon sx={{ fontSize: 18, color: BRAND.textMuted }} />
+              : <DarkModeIcon sx={{ fontSize: 18, color: BRAND.textMuted }} />
+            }
+            {!collapsed && (
+              <Typography sx={{ fontSize: '0.75rem', color: BRAND.textSecondary }}>
+                {themeMode === 'dark' ? 'Light mode' : 'Dark mode'}
+              </Typography>
+            )}
+          </Box>
+        </Tooltip>
 
         {/* Settings */}
         <Tooltip title={collapsed ? 'Settings' : ''} placement="right">

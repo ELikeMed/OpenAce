@@ -123,20 +123,77 @@ export class AIProviderManager {
       /research .{20,}/,  // Long research requests
     ];
     if (!heavyPatterns.some(p => p.test(text))) return null;
-    // Route to the best available non-Ollama provider
     for (const p of ['gemini', 'claude', 'openai', 'kimi']) {
       if (this.providers[p]) return p;
     }
     return null;
   }
 
+  /**
+   * Smart task routing — classify messages into tiers and pick the best provider.
+   * Tier 1 (Simple): greetings, notes, lookups → Ollama/Gemini (free)
+   * Tier 2 (Medium): research, email, social → Gemini/Kimi (free/cheap)
+   * Tier 3 (Heavy): browser, code, multi-step → Claude/Kimi/OpenAI (best quality)
+   * Returns { provider, reason } or null (use active provider).
+   */
+  _getSmartRouteProvider(messages, options) {
+    if (options?.provider) return null; // User explicitly chose
+    const providerCount = Object.keys(this.providers).length;
+    if (providerCount <= 1) return null; // Only one option
+
+    const lastMsg = [...messages].reverse().find(m => m.role === 'user');
+    if (!lastMsg) return null;
+    const text = (lastMsg.content || '').toLowerCase().trim();
+
+    // Tier patterns
+    const SIMPLE = [
+      /^(hi|hey|hello|thanks|thank you|ok|okay|sure|yes|no|bye|good morning|good night)/,
+      /^what can you do/, /^who are you/, /^help$/,
+      /save (a )?note/, /remind me/, /remember that/,
+      /what'?s in my (pipeline|calendar|contacts)/, /list my/, /show my/,
+      /how many (leads|contacts|tasks|forms)/, /what('s| is) scheduled/,
+    ];
+    const HEAVY = [
+      /open (up )?(chrome|browser|a website)/, /browse to|navigate to/,
+      /take (full )?control/, /screenshot/, /click on/, /scroll (down|up)/,
+      /build (me |a )?(landing page|website|app|form)/, /create (a |an )?(app|project|site)/,
+      /find \d{2,} leads/, /email (all|every|the top \d+)/, /and (then |also )?(email|call|text|send)/,
+      /deep (research|analysis|dive)/, /comprehensive (report|analysis)/,
+      /generate (code|a script|an api)/, /write (a |the )?(function|class|module|component)/,
+    ];
+
+    const isSimple = SIMPLE.some(p => p.test(text)) || (text.length < 30 && !HEAVY.some(p => p.test(text)));
+    const isHeavy = HEAVY.some(p => p.test(text));
+
+    const pick = (order) => {
+      for (const p of order) {
+        if (this.providers[p] && p !== this.activeProvider) return p;
+      }
+      return null;
+    };
+
+    if (isSimple) {
+      const p = pick(['ollama', 'gemini', 'kimi', 'openai', 'claude']);
+      if (p) return { provider: p, reason: 'simple task → free/local' };
+    } else if (isHeavy) {
+      const p = pick(['claude', 'kimi', 'openai', 'gemini']);
+      if (p) return { provider: p, reason: 'heavy task → best quality' };
+    }
+    // Tier 2 (medium) or unclassified — stick with active provider
+    return null;
+  }
+
   async chat(messages, options = {}) {
-    // Auto-route heavy tasks away from Ollama to a capable provider
     let provider = options.provider || this.activeProvider;
-    if (provider === 'ollama' && !options.provider) {
-      const heavyProvider = this._getHeavyTaskProvider(messages);
-      if (heavyProvider) {
-        provider = heavyProvider;
+
+    // Smart routing — try tiered routing first, then heavy-task fallback for Ollama
+    if (!options.provider) {
+      const smart = this._getSmartRouteProvider(messages, options);
+      if (smart) {
+        provider = smart.provider;
+      } else if (provider === 'ollama') {
+        const heavy = this._getHeavyTaskProvider(messages);
+        if (heavy) provider = heavy;
       }
     }
 
@@ -593,8 +650,9 @@ export class AIProviderManager {
    * Routes to the active provider's tool-calling adapter.
    */
   async chatWithTools(messages, options) {
-    // Route to the active provider's tool-calling adapter
-    const provider = this.activeProvider;
+    // Smart route, then fall back to active provider
+    const smart = this._getSmartRouteProvider(messages, options);
+    const provider = smart?.provider || this.activeProvider;
     if (provider === 'claude' && this.providers.claude) return this.chatClaudeWithTools(messages, options);
     if (provider === 'openai' && this.providers.openai) return this.chatOpenAIWithTools(messages, options);
     if (provider === 'gemini' && this.providers.gemini) return this.chatGeminiWithTools(messages, options);

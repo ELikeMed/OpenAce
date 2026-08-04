@@ -9,7 +9,7 @@ import SystemUpdateIcon from '@mui/icons-material/SystemUpdate';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 import Snackbar from '@mui/material/Snackbar';
 
-import theme, { BRAND } from './theme';
+import { darkTheme, lightTheme, BRAND } from './theme';
 import Chat from './Chat';
 import Sidebar from './components/Sidebar';
 import OnboardingWizard from './components/OnboardingWizard';
@@ -36,6 +36,7 @@ function App() {
   const [selectedTool, setSelectedTool] = useState(null); // null = chat view
   const [collapsed, setCollapsed] = useState(false);
   const [needsOnboarding, setNeedsOnboarding] = useState(null);
+  const [themeMode, setThemeMode] = useState(() => localStorage.getItem('ace_theme') || 'dark');
 
   // Conversations for sidebar
   const [conversations, setConversations] = useState([]);
@@ -233,6 +234,16 @@ function App() {
     }
   };
 
+  const handleToggleTheme = useCallback(() => {
+    setThemeMode(prev => {
+      const next = prev === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('ace_theme', next);
+      return next;
+    });
+  }, []);
+
+  const activeTheme = themeMode === 'light' ? lightTheme : darkTheme;
+
   const handleNewChat = () => {
     setSelectedTool(null);
     setActiveConversationId(null);
@@ -263,7 +274,7 @@ function App() {
   // Loading
   if (needsOnboarding === null) {
     return (
-      <ThemeProvider theme={theme}>
+      <ThemeProvider theme={activeTheme}>
         <CssBaseline />
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
           <CircularProgress sx={{ color: BRAND.primary }} />
@@ -275,7 +286,7 @@ function App() {
   // Onboarding
   if (needsOnboarding) {
     return (
-      <ThemeProvider theme={theme}>
+      <ThemeProvider theme={activeTheme}>
         <CssBaseline />
         <OnboardingWizard onComplete={() => {
           setNeedsOnboarding(false);
@@ -305,7 +316,7 @@ function App() {
   const showChat = selectedTool === null;
 
   return (
-    <ThemeProvider theme={theme}>
+    <ThemeProvider theme={activeTheme}>
       <CssBaseline />
       <Box sx={{ display: 'flex', minHeight: '100vh' }}>
         {/* Sidebar */}
@@ -322,6 +333,8 @@ function App() {
           credits={creditCount}
           onOpenSettings={() => setSelectedTool('settings')}
           onOpenCredits={() => setCreditModalOpen(true)}
+          themeMode={themeMode}
+          onToggleTheme={handleToggleTheme}
         />
 
         {/* Main Content */}
