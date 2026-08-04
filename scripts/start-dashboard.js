@@ -31,6 +31,15 @@ app.use('/api/billing/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '50mb' }));
 app.use('/api/projects/import/zip', express.raw({ limit: '100mb', type: ['application/zip', 'application/octet-stream'] }));
 
+// Cloud mode — auth middleware (passes through in local mode)
+import { authMiddleware, authRoutes } from '../src/core/cloud/authMiddleware.js';
+import { isCloudMode } from '../src/core/cloud/SupabaseClient.js';
+app.use('/api/', authMiddleware);
+if (isCloudMode()) {
+  authRoutes(app);
+  console.log('☁️  Cloud mode enabled — Supabase auth active');
+}
+
 app.use(express.static(path.join(baseDir, 'src/desktop/dashboard-ui/dist')));
 
 // Serve generated projects (landing pages, etc.) at /projects/
