@@ -49,27 +49,9 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import ConversationSidebar from './components/ConversationSidebar';
 import NewProcessDialog from './components/NewProcessDialog';
 import WelcomeScreen from './components/WelcomeScreen';
+import TypingIndicator from './components/TypingIndicator';
+import ActivityLog from './components/ActivityLog';
 import { BRAND } from './theme';
-
-function TypingIndicator() {
-  return (
-    <Box sx={{ display: 'flex', gap: 0.5, py: 1, px: 0.5 }}>
-      {[0, 1, 2].map(i => (
-        <Box key={i} sx={{
-          width: 7, height: 7, borderRadius: '50%',
-          background: BRAND.primary,
-          opacity: 0.4,
-          animation: 'typing 1.4s infinite',
-          animationDelay: `${i * 0.2}s`,
-          '@keyframes typing': {
-            '0%, 60%, 100%': { opacity: 0.4, transform: 'translateY(0)' },
-            '30%': { opacity: 1, transform: 'translateY(-4px)' },
-          },
-        }} />
-      ))}
-    </Box>
-  );
-}
 
 const PRIORITY_COLORS = {
   high:   { bg: 'rgba(239,68,68,0.15)',   text: '#f87171' },
@@ -2249,64 +2231,6 @@ function MessageBubble({ msg, msgIndex, onConfirmActions, onCancelActions, onQue
 // ACTIVITY LOG — persistent tool execution timeline
 // ═══════════════════════════════════════════════════════
 
-function ActivityLog({ steps, complete }) {
-  return (
-    <Box sx={{
-      display: 'flex',
-      gap: 1.5,
-      mb: 2,
-      px: 1,
-      animation: 'fadeInUp 0.3s ease',
-      '@keyframes fadeInUp': {
-        from: { opacity: 0, transform: 'translateY(8px)' },
-        to: { opacity: 1, transform: 'translateY(0)' },
-      },
-    }}>
-      <Avatar sx={{
-        width: 40, height: 40,
-        background: `linear-gradient(135deg, ${BRAND.secondary}, ${BRAND.secondaryLight})`,
-      }}>
-        <AceSpadeIcon sx={{ fontSize: 22 }} />
-      </Avatar>
-      <Box sx={{ flex: 1 }}>
-        <Typography variant="caption" sx={{
-          display: 'block',
-          fontSize: '0.8rem',
-          color: BRAND.textMuted,
-          mb: 0.5,
-          px: 0.5,
-        }}>
-          Ace
-        </Typography>
-        <Box sx={{
-          borderLeft: `2px solid ${complete ? alpha(BRAND.success, 0.4) : alpha(BRAND.primary, 0.4)}`,
-          pl: 2,
-          py: 0.5,
-        }}>
-          {steps.map((step, i) => {
-            const isLast = i === steps.length - 1;
-            return (
-              <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75 }}>
-                {complete || !isLast ? (
-                  <CheckCircleIcon sx={{ fontSize: 16, color: BRAND.success }} />
-                ) : (
-                  <CircularProgress size={14} sx={{ color: BRAND.primary }} />
-                )}
-                <Typography sx={{
-                  fontSize: '0.9rem',
-                  color: complete || !isLast ? BRAND.textSecondary : BRAND.textPrimary,
-                  fontWeight: isLast && !complete ? 500 : 400,
-                }}>
-                  {step}
-                </Typography>
-              </Box>
-            );
-          })}
-        </Box>
-      </Box>
-    </Box>
-  );
-}
 
 // ═══════════════════════════════════════════════════════
 // CONVERSATION HELPERS
