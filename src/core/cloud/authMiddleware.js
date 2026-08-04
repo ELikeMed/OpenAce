@@ -22,8 +22,8 @@ export function authMiddleware(req, res, next) {
     return next();
   }
 
-  // Public routes — no auth required
-  if (isPublicRoute(req.path)) {
+  // Public routes — no auth required (use originalUrl, not path, since middleware is mounted at /api/)
+  if (isPublicRoute(req.originalUrl || req.path)) {
     req.userId = null;
     return next();
   }
