@@ -1,0 +1,7 @@
+node_modules
+.git
+data
+config/openace.config.json
+*.log
+.env
+.DS_Store
