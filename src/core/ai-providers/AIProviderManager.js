@@ -72,6 +72,13 @@ export class AIProviderManager {
       });
     }
 
+    if (providerConfigs.kimi?.enabled && providerConfigs.kimi.api_key) {
+      this.providers.kimi = new OpenAI({
+        baseURL: 'https://api.moonshot.cn/v1',
+        apiKey: providerConfigs.kimi.api_key,
+      });
+    }
+
     // Set active provider
     this.activeProvider = this.config.ai_providers.active_provider;
 
@@ -117,7 +124,7 @@ export class AIProviderManager {
     ];
     if (!heavyPatterns.some(p => p.test(text))) return null;
     // Route to the best available non-Ollama provider
-    for (const p of ['gemini', 'claude', 'openai']) {
+    for (const p of ['gemini', 'claude', 'openai', 'kimi']) {
       if (this.providers[p]) return p;
     }
     return null;
@@ -151,6 +158,8 @@ export class AIProviderManager {
           return await this.chatGemini(messages, { ...options, liveContext });
         case 'ollama':
           return await this.chatOllama(messages, { ...options, liveContext });
+        case 'kimi':
+          return await this.chatKimi(messages, { ...options, liveContext });
         default:
           throw new Error(`Unknown provider: ${provider}`);
       }
@@ -589,10 +598,14 @@ export class AIProviderManager {
     if (provider === 'claude' && this.providers.claude) return this.chatClaudeWithTools(messages, options);
     if (provider === 'openai' && this.providers.openai) return this.chatOpenAIWithTools(messages, options);
     if (provider === 'gemini' && this.providers.gemini) return this.chatGeminiWithTools(messages, options);
-    // Active provider doesn't support tool calling (e.g. Ollama) — try best available
+    if (provider === 'ollama' && this.providers.ollama) return this.chatOllamaWithTools(messages, options);
+    if (provider === 'kimi' && this.providers.kimi) return this.chatKimiWithTools(messages, options);
+    // Fallback — try best available
     if (this.providers.gemini) return this.chatGeminiWithTools(messages, options);
     if (this.providers.claude) return this.chatClaudeWithTools(messages, options);
     if (this.providers.openai) return this.chatOpenAIWithTools(messages, options);
+    if (this.providers.kimi) return this.chatKimiWithTools(messages, options);
+    if (this.providers.ollama) return this.chatOllamaWithTools(messages, options);
     throw new Error('No AI provider configured. Add a Gemini, Claude, or OpenAI API key in Settings.');
   }
 
@@ -880,6 +893,98 @@ export class AIProviderManager {
     return { text, functionCalls, toolCallBlocks };
   }
 
+  /**
+   * Ollama with function calling (tool use).
+   * Ollama exposes an OpenAI-compatible API, so this mirrors chatOpenAIWithTools
+   * but uses the Ollama client. Requires a tool-calling-capable model
+   * (e.g., qwen2.5, llama3.1, mistral, hermes3).
+   */
+  async chatOllamaWithTools(messages, options) {
+    const config = this.config.ai_providers.providers.ollama;
+    const systemPrompt = options.systemPrompt || '';
+    const openaiTools = this._convertToolsForOpenAI(options.tools);
+    const model = config.model || 'qwen2.5';
+
+    const ollamaMessages = [];
+    if (systemPrompt) ollamaMessages.push({ role: 'system', content: systemPrompt });
+    for (const m of messages) {
+      if (m.role === 'system') continue;
+      ollamaMessages.push({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: String(m.content || ''),
+      });
+    }
+
+    const response = await this.providers.ollama.chat.completions.create({
+      model,
+      messages: ollamaMessages,
+      tools: openaiTools,
+      ...(options.maxTokens && { max_tokens: options.maxTokens }),
+    });
+
+    const choice = response.choices[0];
+    const { text, functionCalls, toolCallBlocks } = this._parseOpenAIToolResponse(choice);
+
+    const conversationHistory = [...ollamaMessages];
+    conversationHistory.push(choice.message);
+
+    const self = this;
+    const chat = {
+      sendMessage: async (input) => {
+        if (typeof input === 'string') {
+          conversationHistory.push({ role: 'user', content: input });
+        } else if (Array.isArray(input) && input[0]?.functionResponse) {
+          for (const tr of input) {
+            const fr = tr.functionResponse;
+            const toolCall = toolCallBlocks.find(b => b.function.name === fr.name) || {};
+            const resultText = fr.response.error
+              ? `Error: ${fr.response.error}`
+              : (typeof fr.response.result === 'string' ? fr.response.result : JSON.stringify(fr.response.result));
+            conversationHistory.push({
+              role: 'tool',
+              tool_call_id: toolCall.id || fr.name,
+              content: resultText,
+            });
+          }
+        } else {
+          conversationHistory.push({ role: 'user', content: String(input) });
+        }
+
+        const followUp = await self.providers.ollama.chat.completions.create({
+          model,
+          messages: conversationHistory,
+          tools: openaiTools,
+          ...(options.maxTokens && { max_tokens: options.maxTokens }),
+        });
+
+        const fChoice = followUp.choices[0];
+        const parsed = self._parseOpenAIToolResponse(fChoice);
+        toolCallBlocks.length = 0;
+        toolCallBlocks.push(...parsed.toolCallBlocks);
+        conversationHistory.push(fChoice.message);
+
+        return {
+          response: {
+            text: () => parsed.text,
+            functionCalls: () => parsed.functionCalls,
+          },
+        };
+      },
+    };
+
+    return {
+      response: {
+        text: () => text,
+        functionCalls: () => functionCalls,
+      },
+      text,
+      functionCalls,
+      provider: 'ollama',
+      model,
+      chat,
+    };
+  }
+
   async chatOllama(messages, options) {
     const config = this.config.ai_providers.providers.ollama;
     // Support empty systemPrompt (e.g., IntentRouter classification calls)
@@ -905,6 +1010,127 @@ export class AIProviderManager {
         input_tokens: 0,
         output_tokens: 0,
       }
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // KIMI K3 (Moonshot AI) — OpenAI-compatible API
+  // $3/M input, $15/M output — cheapest frontier model
+  // ═══════════════════════════════════════════════════════
+
+  async chatKimi(messages, options) {
+    const config = this.config.ai_providers.providers.kimi;
+    const systemPrompt = 'systemPrompt' in options ? options.systemPrompt : this.getSystemPrompt(options.liveContext || '');
+    const model = config.model || 'kimi-k3';
+
+    const kimiMessages = [
+      ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
+      ...messages.filter(m => m.role !== 'system').map(m => ({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: String(m.content || ''),
+      })),
+    ];
+
+    const response = await this.providers.kimi.chat.completions.create({
+      model,
+      messages: kimiMessages,
+      ...(options.maxTokens && { max_tokens: options.maxTokens }),
+    });
+
+    return {
+      content: response.choices[0].message.content,
+      provider: 'kimi',
+      model,
+      usage: {
+        input_tokens: response.usage?.prompt_tokens || 0,
+        output_tokens: response.usage?.completion_tokens || 0,
+      },
+    };
+  }
+
+  async chatKimiWithTools(messages, options) {
+    const config = this.config.ai_providers.providers.kimi;
+    const systemPrompt = options.systemPrompt || '';
+    const openaiTools = this._convertToolsForOpenAI(options.tools);
+    const model = config.model || 'kimi-k3';
+
+    const kimiMessages = [];
+    if (systemPrompt) kimiMessages.push({ role: 'system', content: systemPrompt });
+    for (const m of messages) {
+      if (m.role === 'system') continue;
+      kimiMessages.push({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: String(m.content || ''),
+      });
+    }
+
+    const response = await this.providers.kimi.chat.completions.create({
+      model,
+      messages: kimiMessages,
+      tools: openaiTools,
+      max_tokens: 8192,
+    });
+
+    const choice = response.choices[0];
+    const { text, functionCalls, toolCallBlocks } = this._parseOpenAIToolResponse(choice);
+
+    const conversationHistory = [...kimiMessages];
+    conversationHistory.push(choice.message);
+
+    const self = this;
+    const chat = {
+      sendMessage: async (input) => {
+        if (typeof input === 'string') {
+          conversationHistory.push({ role: 'user', content: input });
+        } else if (Array.isArray(input) && input[0]?.functionResponse) {
+          for (const tr of input) {
+            const fr = tr.functionResponse;
+            const toolCall = toolCallBlocks.find(b => b.function.name === fr.name) || {};
+            const resultText = fr.response.error
+              ? `Error: ${fr.response.error}`
+              : (typeof fr.response.result === 'string' ? fr.response.result : JSON.stringify(fr.response.result));
+            conversationHistory.push({
+              role: 'tool',
+              tool_call_id: toolCall.id || fr.name,
+              content: resultText,
+            });
+          }
+        } else {
+          conversationHistory.push({ role: 'user', content: String(input) });
+        }
+
+        const followUp = await self.providers.kimi.chat.completions.create({
+          model,
+          messages: conversationHistory,
+          tools: openaiTools,
+          max_tokens: 8192,
+        });
+
+        const fChoice = followUp.choices[0];
+        const parsed = self._parseOpenAIToolResponse(fChoice);
+        toolCallBlocks.length = 0;
+        toolCallBlocks.push(...parsed.toolCallBlocks);
+        conversationHistory.push(fChoice.message);
+
+        return {
+          response: {
+            text: () => parsed.text,
+            functionCalls: () => parsed.functionCalls,
+          },
+        };
+      },
+    };
+
+    return {
+      response: {
+        text: () => text,
+        functionCalls: () => functionCalls,
+      },
+      text,
+      functionCalls,
+      provider: 'kimi',
+      model,
+      chat,
     };
   }
 
