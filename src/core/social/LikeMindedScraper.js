@@ -214,13 +214,11 @@ export class LikeMindedScraper {
   async scrapeAllCities() {
     await this.initialize();
 
-    console.log('🌐 Scraping LikeMinded events from all cities (fetch)...');
 
     const allEvents = [];
 
     for (const [city, url] of Object.entries(this.cities)) {
       try {
-        console.log(`📍 Fetching ${city}...`);
         const html = await this._fetchHtml(url);
         const cityEvents = this._parseEventsFromHtml(html, city);
 
@@ -236,10 +234,8 @@ export class LikeMindedScraper {
 
         allEvents.push(...enriched);
         if (cityEvents.length > 0) {
-          console.log(`  ✓ ${cityEvents.length} events found`);
         }
       } catch (error) {
-        console.log(`  ⚠️ ${city} failed: ${error.message}`);
       }
     }
 
@@ -248,7 +244,6 @@ export class LikeMindedScraper {
       const mainEvents = await this._scrapeMainEventsPage();
       allEvents.push(...mainEvents);
     } catch (e) {
-      console.log(`  ⚠️ Main events page failed: ${e.message}`);
     }
 
     // Deduplicate by URL
@@ -262,7 +257,6 @@ export class LikeMindedScraper {
 
     await this.saveEvents();
 
-    console.log(`✅ Found ${this.events.length} unique events`);
     return this.events;
   }
 

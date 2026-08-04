@@ -3540,7 +3540,6 @@ CRITICAL: Include the COMPLETE file content. No placeholders, no "...", no short
           };
         }
       } catch (aiError) {
-        console.log(`[CodeAgent] AI project creation failed: ${aiError.message}, falling back to template`);
       }
 
       // Fallback: use hardcoded templates if AI fails

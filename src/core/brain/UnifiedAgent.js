@@ -58,14 +58,12 @@ export class UnifiedAgent {
    */
   refreshTools() {
     this.toolDeclarations = this._buildToolDeclarations();
-    console.log(`[UnifiedAgent] Tools refreshed — ${this.toolDeclarations[0].functionDeclarations.length} tools available`);
   }
 
   /** Signal the tool loop to stop after the current tool finishes. */
   abort() {
     if (!this._abortRequested) {
       this._abortRequested = true;
-      console.log('[UnifiedAgent] ⛔ Abort requested');
     }
   }
 
@@ -90,7 +88,6 @@ export class UnifiedAgent {
       const data = await fs.readFile(prefsPath, 'utf8');
       const prefs = JSON.parse(data);
       this._disabledTools = new Set(prefs.disabledTools || []);
-      console.log(`[UnifiedAgent] Tool preferences loaded: ${this._disabledTools.size} tools disabled`);
     } catch { /* no prefs file yet — all tools enabled */ }
   }
 
@@ -1147,7 +1144,6 @@ export class UnifiedAgent {
     // Filter declarations to only selected tools (respecting user-disabled preferences)
     const filtered = allTools.filter(t => selectedToolNames.has(t.name) && !this._disabledTools.has(t.name));
 
-    console.log(`[UnifiedAgent] Selected tool groups: ${[...selectedGroups].join(', ')} (${filtered.length} tools of ${allTools.length})`);
 
     return [{ functionDeclarations: filtered }];
   }
@@ -2100,7 +2096,6 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
     while (result.functionCalls && result.functionCalls.length > 0 && iterations < maxIterations) {
       // Check abort flag before each iteration
       if (this._abortRequested) {
-        console.log(`[UnifiedAgent] ⛔ Abort detected in tool loop (iteration ${iterations}) — stopping`);
         this.onProgress('Stopped by user');
         result.functionCalls = []; // Clear remaining calls
         break;
@@ -2111,17 +2106,14 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
       for (const call of result.functionCalls) {
         // Check abort before each individual tool call
         if (this._abortRequested) {
-          console.log(`[UnifiedAgent] ⛔ Abort — skipping remaining tools`);
           break;
         }
         thinking.push(`Tool: ${call.name}`);
         this.onProgress(`Using ${call.name.replace(/_/g, ' ')}`);
         toolsCalled.push(call.name);
-        console.log(`[UnifiedAgent] 🔧 ${phase > 1 ? `[Phase ${phase}] ` : ''}Executing tool: ${call.name}`, JSON.stringify(call.args || {}).substring(0, 500));
 
         try {
           const toolResult = await this._executeTool(call.name, call.args || {});
-          console.log(`[UnifiedAgent] ✅ Tool ${call.name} succeeded:`, typeof toolResult === 'string' ? toolResult.substring(0, 200) : '(non-string result)');
 
           // Track soft failures (tool returned but with success: false or error)
           if (failedToolCounts) {
@@ -2129,7 +2121,6 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
             if (resultStr.includes('"success":false') || resultStr.includes('"error":')) {
               const cat = this._getToolCategory(call.name);
               failedToolCounts.set(cat, (failedToolCounts.get(cat) || 0) + 1);
-              console.log(`[UnifiedAgent] ⚠️ Soft failure in ${call.name} (${cat}): count=${failedToolCounts.get(cat)}`);
             }
           }
 
@@ -2147,7 +2138,6 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
             this.subsystems.creditManager.deductCredit(call.name);
             // Check if out of credits after deduction — stop loop gracefully
             if (!this.subsystems.creditManager.canUseTool()) {
-              console.log(`[UnifiedAgent] ⛔ Out of credits — pausing tool execution`);
               result.functionCalls = [];
               break;
             }
@@ -2159,7 +2149,6 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
           if (failedToolCounts) {
             const cat = this._getToolCategory(call.name);
             failedToolCounts.set(cat, (failedToolCounts.get(cat) || 0) + 1);
-            console.log(`[UnifiedAgent] ❌ Hard failure in ${call.name} (${cat}): count=${failedToolCounts.get(cat)}`);
           }
 
           toolResults.push({
@@ -2310,7 +2299,6 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
 
       // Log tool call diagnostics
       let callCount = result.functionCalls?.length || 0;
-      console.log(`[UnifiedAgent] ${result.provider || 'AI'} returned: ${callCount} function calls, text: ${result.text ? result.text.substring(0, 100) + '...' : '(none)'}${isStudioProject ? ' [Studio project]' : ''}`);
 
       // ═══ DIRECT PREFIX HANDLING — guaranteed tool execution ═══
       // When the user clicks an action button (Search, Browse, etc.), the prefix IS the command.
@@ -2320,7 +2308,6 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
         if (prefixMatch) {
           const prefix = prefixMatch[1].toUpperCase();
           const query = prefixMatch[2].replace(/^(for|about|of)\s+/i, '').trim(); // Strip leading prepositions
-          console.log(`[UnifiedAgent] ⚡ Direct prefix handler: [${prefix}] → "${query}"`);
 
           if (prefix === 'WEB SEARCH' && query) {
             this.onProgress(`Searching: ${query}`);
@@ -2454,7 +2441,6 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
             const nudgeCalls = nudgeResponse.functionCalls?.() || [];
             if (nudgeCalls.length > 0) {
               result = { ...result, response: nudgeResponse, text: nudgeText, functionCalls: nudgeCalls };
-              console.log(`[UnifiedAgent] ✅ Action nudge worked — ${nudgeCalls.length} tool calls now`);
             } else {
               console.warn(`[UnifiedAgent] ⚠️ Action nudge failed — Gemini still returned 0 tool calls`);
             }
@@ -2525,7 +2511,6 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
         }));
 
         this.onProgress(`Auto-continuing phase ${phasesCompleted}/${MAX_PHASES} — ${remaining.map(r => `${r.needed} ${r.unit}`).join(', ')} remaining`);
-        console.log(`[UnifiedAgent] 🔄 Auto-continuation phase ${phasesCompleted}: ${remaining.map(r => `"${r.desc}": ${r.needed} ${r.unit} remaining`).join('; ')}`);
         thinking.push(`Auto-continuation phase ${phasesCompleted} — ${remaining.map(r => `${r.needed} ${r.unit} remaining`).join(', ')}`);
 
         // Send continuation prompt to Gemini — tell it to keep working
@@ -2548,7 +2533,6 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
 
           // If Gemini didn't return tool calls, it's done (nothing more it can do)
           if (!result.functionCalls?.length) {
-            console.log(`[UnifiedAgent] Phase ${phasesCompleted}: Gemini returned no tool calls — stopping auto-continuation`);
             break;
           }
 
@@ -2612,7 +2596,6 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
         const struggling = [...failedToolCounts.entries()].some(([, count]) => count >= 2);
         if (struggling) {
           const failSummary = [...failedToolCounts.entries()].map(([cat, count]) => `${cat}: ${count}`).join(', ');
-          console.log(`[UnifiedAgent] 🆘 Struggle detected — failures: ${failSummary}`);
           question = {
             options: [
               { id: 1, label: 'Try a different approach', description: 'Let Ace attempt an alternative strategy' },
@@ -2690,7 +2673,6 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
     const projectTools = ['write_project_file', 'read_project_file', 'edit_project_file', 'list_project_files'];
     if (projectTools.includes(name) && !args.project_name && this._activeProjectName) {
       args.project_name = this._activeProjectName;
-      console.log(`[UnifiedAgent] Auto-filled project_name="${this._activeProjectName}" for ${name}`);
     }
 
     switch (name) {
@@ -2731,7 +2713,6 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
       case 'recall_notes': return await this._toolRecallNotes(args);
       case 'create_project': {
         const filesType = args.files ? (Array.isArray(args.files) ? `array[${args.files.length}]` : typeof args.files) : 'none';
-        console.log(`[UnifiedAgent] create_project: name="${args.name}", files=${filesType}`);
         return await this._toolCreateProject(args);
       }
       case 'write_project_file': return await this._toolWriteProjectFile(args);
@@ -4504,7 +4485,6 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
 
     // Fuzzy matches require confirmation — don't auto-execute
     if (matchType === 'fuzzy') {
-      console.log(`[UnifiedAgent] ⚠️ run_sop fuzzy match: "${sop_id}" → "${sop.name}" — requesting confirmation`);
       return JSON.stringify({
         needs_confirmation: true,
         sopName: sop.name,
@@ -4767,7 +4747,6 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
   // ── Write Project File ──
   async _toolWriteProjectFile(args) {
     const { project_name, file_path: filePath, content } = args;
-    console.log(`[UnifiedAgent] 📝 write_project_file called: project="${project_name}", file="${filePath}", content length=${content?.length || 0}`);
     if (!project_name || !filePath || !content) {
       return JSON.stringify({ error: 'project_name, file_path, and content are required' });
     }
@@ -4775,7 +4754,6 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
     const codeAgent = this.subsystems.codeAgent;
     const sanitized = codeAgent ? codeAgent.sanitizeProjectName(project_name) : project_name;
     const projectDir = path.join(PROJECT_ROOT, 'projects', sanitized);
-    console.log(`[UnifiedAgent] 📝 Resolved path: ${path.join(projectDir, filePath)}`);
 
     try {
       // Ensure project directory exists
@@ -4789,7 +4767,6 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
       const fullPath = path.join(projectDir, filePath);
       await fs.mkdir(path.dirname(fullPath), { recursive: true });
       await fs.writeFile(fullPath, content, 'utf-8');
-      console.log(`[UnifiedAgent] ✅ File written: ${fullPath} (${content.length} bytes)`);
 
       // Update project.json timestamp
       const metaPath = path.join(projectDir, 'project.json');
@@ -5018,7 +4995,6 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
   // ── Edit Project File (surgical edits) ──
   async _toolEditProjectFile(args) {
     const { project_name, file_path: filePath } = args;
-    console.log(`[UnifiedAgent] ✏️ edit_project_file called: project="${project_name}", file="${filePath}"`);
     if (!project_name || !filePath || !args.edits) {
       return JSON.stringify({ error: 'project_name, file_path, and edits are required' });
     }
@@ -5122,7 +5098,6 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
       }
 
       await fs.writeFile(fullPath, content, 'utf-8');
-      console.log(`[UnifiedAgent] ✅ File edited: ${fullPath} — ${applied}/${edits.length} changes applied`);
 
       // Update project.json timestamp
       try {
@@ -5543,7 +5518,6 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
 
       const doc = response.data;
       this.onProgress(`Created Google Doc: ${doc.name}`);
-      console.log(`[UnifiedAgent] ✅ Google Doc created: ${doc.name} (${doc.webViewLink})`);
 
       return JSON.stringify({
         success: true,

@@ -132,11 +132,10 @@ export class TelegramBot extends EventEmitter {
     const username = msg.from.username;
     const text = msg.text || '';
     
-    console.log(`\n📥 Telegram from @${username || userId}: "${text}"`);
 
     // Security: Check if user is authorized
     if (!this.isAuthorized(userId, username)) {
-      console.log(`⚠️ Unauthorized user: @${username} (${userId})`);
+      console.warn(`[Telegram] Unauthorized user: @${username} (${userId})`);
       await this.sendMessage(chatId, 
         '🔒 Sorry, you are not authorized to use this bot.\n\n' +
         'Ask the admin to add your Telegram ID to the authorized users list.\n' +
@@ -401,7 +400,6 @@ export class TelegramBot extends EventEmitter {
     const chatId = query.message.chat.id;
     const data = query.data;
     
-    console.log(`📲 Callback: ${data} from ${query.from.username}`);
     
     // Acknowledge the callback
     await this.bot.answerCallbackQuery(query.id);
@@ -415,7 +413,6 @@ export class TelegramBot extends EventEmitter {
         await this.sendMessage(chatId, '➕ To add a lead, use:\n/addlead [Lead Name]');
         break;
       default:
-        console.log(`Unknown callback: ${data}`);
     }
     
     // Emit event for external handlers
@@ -434,7 +431,6 @@ export class TelegramBot extends EventEmitter {
     const MAX_LENGTH = 4000; // Leave margin for safety
     
     if (text.length > MAX_LENGTH) {
-      console.log(`📦 Message too long (${text.length} chars), splitting into chunks...`);
       return await this._sendChunkedMessage(chatId, text, options);
     }
 
@@ -446,7 +442,6 @@ export class TelegramBot extends EventEmitter {
 
     try {
       const message = await this.bot.sendMessage(chatId, safeText, options);
-      console.log(`📤 Sent to ${chatId}: "${safeText.substring(0, 50)}..."`);
       return message;
     } catch (error) {
       // If Markdown parsing failed, retry without parse_mode
@@ -464,7 +459,6 @@ export class TelegramBot extends EventEmitter {
           }
           
           const message = await this.bot.sendMessage(chatId, plainText, plainOptions);
-          console.log(`📤 Sent to ${chatId} (plain): "${plainText.substring(0, 50)}..."`);
           return message;
         } catch (retryError) {
           console.error('Failed to send even as plain text:', retryError.message);
@@ -510,7 +504,6 @@ export class TelegramBot extends EventEmitter {
       remaining = remaining.substring(splitAt).trimStart();
     }
 
-    console.log(`📦 Sending ${chunks.length} message chunks to ${chatId}`);
     
     let lastMessage = null;
     const chunkOptions = { ...options };
@@ -521,7 +514,6 @@ export class TelegramBot extends EventEmitter {
       const chunkHeader = chunks.length > 1 ? `[${i + 1}/${chunks.length}]\n` : '';
       try {
         lastMessage = await this.bot.sendMessage(chatId, chunkHeader + chunks[i], chunkOptions);
-        console.log(`📤 Sent chunk ${i + 1}/${chunks.length} to ${chatId} (${chunks[i].length} chars)`);
         // Small delay between chunks to avoid rate limiting
         if (i < chunks.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 300));

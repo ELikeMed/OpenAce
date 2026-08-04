@@ -28,7 +28,6 @@ export class ContactManager {
         this.contacts = data.contacts;
       } else if (typeof data === 'object' && !Array.isArray(data)) {
         // Old flat format: { "Name": "email" } — migrate
-        console.log('[ContactManager] Migrating from flat format...');
         this.contacts = Object.entries(data).map(([name, email]) => ({
           id: `contact_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
           name,
@@ -43,7 +42,6 @@ export class ContactManager {
           emailHistory: [],
         }));
         await this.save();
-        console.log(`[ContactManager] Migrated ${this.contacts.length} contacts`);
       }
     } catch (e) {
       if (e.code !== 'ENOENT') {

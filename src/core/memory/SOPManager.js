@@ -122,7 +122,6 @@ export class SOPManager {
     // Save to disk
     await this.saveSOP(sop);
     
-    console.log(`📋 Created SOP: ${sop.name}`);
     return sop;
   }
 
@@ -162,7 +161,6 @@ export class SOPManager {
           normalized[key] = value.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
             const fixed = normalizeVar(varName);
             if (fixed !== varName) {
-              console.log(`📋 SOP variable normalized: {{${varName}}} → {{${fixed}}}`);
             }
             return `{{${fixed}}}`;
           });

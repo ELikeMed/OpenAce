@@ -1026,7 +1026,6 @@ export class BrowserAgent {
 
       return { analysis: parsed };
     } catch (e) {
-      console.log(`[BrowserAgent] Deep explore failed: ${e.message}`);
       return { analysis: { title: '', url: '', navigation: [], buttons: [], forms: [], sections: [], tables: [], cards: [] } };
     }
   }

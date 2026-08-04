@@ -60,14 +60,8 @@ export class ActivityLogger extends EventEmitter {
       
       this.workProducts = parsed.workProducts || [];
       
-      console.log('📊 Activity Logger loaded:', {
-        activities: this.activities.length,
-        conversations: this.conversations.size,
-        workProducts: this.workProducts.length
-      });
     } catch (error) {
       // Start fresh if no file exists
-      console.log('📊 Activity Logger: Starting fresh activity log');
     }
     
     // Scan for existing work products

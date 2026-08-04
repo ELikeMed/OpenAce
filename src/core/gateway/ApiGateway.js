@@ -684,12 +684,6 @@ export class ApiGateway {
           this.activityLogger.logMessage(streamConvId, 'assistant', assistantMessage);
         }
         
-        if (response?.question) {
-          console.log(`[ApiGateway] ✅ SSE response includes question with ${response.question.options?.length || 0} options`);
-        }
-        if (response?.pendingActions) {
-          console.log(`[ApiGateway] ✅ SSE response includes ${response.pendingActions.length} pendingActions`);
-        }
         const thinkingSteps = response?.thinking || progressMessages;
         res.write(`data: ${JSON.stringify({ type: 'response', content: response, thinking: thinkingSteps })}\n\n`);
         res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
@@ -1840,7 +1834,6 @@ export class ApiGateway {
         // Save config
         await fs.writeFile(autonomyPath, JSON.stringify(config, null, 2));
 
-        console.log(`🖥️ Desktop autonomy updated: enabled=${config.desktopControlEnabled}, consent=${config.consentGiven}`);
         res.json({ success: true, data: config });
       } catch (err) {
         res.json({ success: false, error: err.message });
@@ -1875,7 +1868,6 @@ export class ApiGateway {
       const { target } = req.body;
       if (!target) return res.json({ success: false, error: 'Missing "target" — describe what to click (e.g., "the Google search button")' });
 
-      console.log(`🖱️ [Desktop API] Click: "${target}"`);
       const result = await agent.findAndClick(target);
       res.json({ success: result.success, data: result });
     }));
@@ -2021,7 +2013,6 @@ export class ApiGateway {
       });
     });
 
-    console.log('🖱️ Desktop Control API routes registered (/api/desktop/*)');
   }
 
   // ═══════════════════════════════════════════════════════
@@ -2066,7 +2057,6 @@ export class ApiGateway {
       res.json({ success: true, data: { ...status, available: true } });
     });
 
-    console.log('🎓 Desktop Training API routes registered (/api/desktop-train/*)');
   }
 
   // ═══════════════════════════════════════════════════════
@@ -2191,7 +2181,6 @@ export class ApiGateway {
           await this.ace.aiManager.initialize();
         }
 
-        console.log(`🤖 AI provider configured: ${provider}`);
         res.json({ success: true, data: { provider, configured: true } });
       } catch (err) {
         res.json({ success: false, error: err.message });
@@ -2259,7 +2248,6 @@ export class ApiGateway {
 
         await fs.writeFile(configPath, JSON.stringify(config, null, 4));
 
-        console.log('📱 Telegram bot token saved');
         res.json({ success: true, data: { configured: true } });
       } catch (err) {
         res.json({ success: false, error: err.message });
@@ -2442,7 +2430,6 @@ export class ApiGateway {
           googleIntegration: this.ace?.google,
           telegramBot: null
         });
-        console.log('📱 Social Media System initialized');
       } catch (error) {
         console.error('Failed to initialize Social Media System:', error.message);
       }
@@ -2529,7 +2516,6 @@ export class ApiGateway {
       library.lastUpdated = new Date().toISOString();
       await fs.writeFile(libraryPath, JSON.stringify(library, null, 2));
 
-      console.log(`📷 Uploaded: ${filename} -> ${assetId}`);
       res.json({ success: true, data: asset });
     }));
 
@@ -3596,9 +3582,6 @@ export class ApiGateway {
 
     // POST /api/webhooks/twilio/sms — Inbound SMS webhook (optional, needs public URL)
     this.app.post('/api/webhooks/twilio/sms', this.wrap(async (req, res) => {
-      const { From, Body, MessageSid } = req.body;
-      console.log(`[Twilio] Inbound SMS from ${From}: ${Body}`);
-
       // Respond with empty TwiML (acknowledge receipt)
       res.type('text/xml');
       res.send('<Response></Response>');
@@ -3606,9 +3589,6 @@ export class ApiGateway {
 
     // POST /api/webhooks/twilio/voice — Call status webhook (optional)
     this.app.post('/api/webhooks/twilio/voice', this.wrap(async (req, res) => {
-      const { CallSid, CallStatus, From, To, Duration } = req.body;
-      console.log(`[Twilio] Call ${CallSid}: ${CallStatus}`);
-
       res.type('text/xml');
       res.send('<Response></Response>');
     }));
@@ -3669,7 +3649,6 @@ export class ApiGateway {
         return res.status(400).json({ success: false, error: 'Webhook signature verification failed' });
       }
 
-      console.log(`[Billing] Webhook event: ${event.type}`);
 
       switch (event.type) {
         case 'checkout.session.completed': {
@@ -3679,13 +3658,11 @@ export class ApiGateway {
             await credits().setPlan('credits');
             await credits().setStripeIds(session.customer, session.subscription);
             await credits().resetSubscriptionCredits();
-            console.log('[Billing] Subscription activated');
           } else if (session.metadata?.type === 'top_up') {
             // Credit top-up
             const creditAmount = Number(session.metadata.credits) || 500;
             await credits().addCredits(creditAmount, 'stripe_top_up');
             if (session.customer) await credits().setStripeIds(session.customer, credits().getBalance().stripeSubscriptionId);
-            console.log(`[Billing] Top-up: +${creditAmount} credits`);
           }
           break;
         }
@@ -3697,14 +3674,12 @@ export class ApiGateway {
           if (sub.lines?.data?.[0]?.period?.end) {
             await credits().setCurrentPeriodEnd(new Date(sub.lines.data[0].period.end * 1000).toISOString());
           }
-          console.log('[Billing] Invoice paid — monthly credits reset');
           break;
         }
 
         case 'customer.subscription.deleted': {
           // Subscription cancelled
           await credits().setPlan('trial');
-          console.log('[Billing] Subscription cancelled');
           break;
         }
 

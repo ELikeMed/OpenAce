@@ -1,18 +1,22 @@
 <p align="center">
   <img src="https://img.shields.io/github/stars/ELikeMed/OpenAce?style=social" alt="GitHub Stars">
   <img src="https://img.shields.io/github/v/release/ELikeMed/OpenAce" alt="Release">
+  <img src="https://github.com/ELikeMed/OpenAce/actions/workflows/ci.yml/badge.svg" alt="CI">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="License">
   <img src="https://img.shields.io/badge/node-%3E%3D18-green" alt="Node 18+">
   <img src="https://img.shields.io/badge/AI-Gemini%20%7C%20OpenAI%20%7C%20Claude%20%7C%20Ollama-purple" alt="AI Providers">
+  <img src="https://img.shields.io/badge/tools-50%2B-orange" alt="50+ Tools">
 </p>
 
 # OpenAce
 
 **Your AI executive team — one mind, many hats.**
 
-OpenAce is an open-source AI Chief of Staff that runs locally on your machine. It handles research, email, lead management, web browsing, social media, scheduling, code generation, and more — powered by Google Gemini (free tier) or your preferred AI provider.
+OpenAce is an open-source AI Chief of Staff that runs locally on your machine. It handles research, email, lead generation, web browsing, social media, scheduling, code generation, bookkeeping, and more — powered by Google Gemini (free tier) or your preferred AI provider.
 
 All your data stays on your machine. No cloud. No subscriptions. No vendor lock-in.
+
+> **50+ tools** across 17 groups. One AI agent. Zero routing layers. Tell it what you need — it figures out the rest.
 
 ---
 
@@ -65,17 +69,21 @@ Open **http://localhost:3333** in your browser.
 | Feature | Description |
 |---------|-------------|
 | **Chat & AI** | Natural conversation — ask anything, Ace figures out which tools to use |
-| **Research** | Web search via Chrome, site scraping, competitive analysis with memory |
+| **Research** | Web search, site scraping, competitive analysis with memory |
 | **Email** | Draft and send emails, auto follow-up on leads |
-| **Pipeline & CRM** | Lead tracking with stages (new, contacted, qualified, closed) |
+| **Pipeline & CRM** | Lead generation, tracking with stages (new → contacted → qualified → closed) |
+| **Phone & SMS** | Send texts, make calls (TTS via Twilio), dispatch AI phone agents (Vapi/Bland/Retell) |
 | **Browser Automation** | Controls your real Chrome browser (macOS) — no headless, no bot detection |
-| **Social Media** | Post to Twitter, LinkedIn, Facebook, Instagram, TikTok with media |
+| **Social Media** | Post to Twitter, LinkedIn, Facebook, Instagram, TikTok with media & content plans |
 | **Calendar** | Google Calendar integration — list, create, delete events |
+| **Google Drive** | Create docs, list files, upload to Drive |
 | **Forms & Quizzes** | Create forms with live public URLs, collect submissions |
+| **Books & Tax Prep** | PDF/CSV statement upload, AI categorization, mileage tracking, CPA-ready reports |
 | **Code Studio** | Build and edit web projects with a built-in Monaco editor |
 | **Deploy** | One-click deploy to Netlify, Firebase, SFTP, or local |
-| **SOPs / Playbooks** | Record workflows by demonstration, then replay them on command |
+| **SOPs / Playbooks** | Record workflows by demonstration, then replay them — 16 unified action types |
 | **Knowledge Base** | Ingest PDFs, docs, CSVs, codebases — Ace references them in answers |
+| **Goal Tracking** | Set goals, track progress — Ace auto-continues until work is done |
 | **Desktop Control** | Full mouse/keyboard automation for any app (macOS) |
 
 ---
@@ -84,10 +92,10 @@ Open **http://localhost:3333** in your browser.
 
 OpenAce runs a local Express server with a React dashboard. One AI agent handles everything.
 
-- **UnifiedAgent** — A single Gemini-powered agent with 37+ tools exposed as function calls
-- **Smart tool selection** — Only 8-18 relevant tools sent per request (Gemini picks which to use)
+- **UnifiedAgent** — A single AI-powered agent with 50+ tools across 17 groups, exposed as function calls
+- **Smart tool selection** — Only 8-18 relevant tools sent per request based on message context
 - **No routing layers** — No departments, no intent classification — one agent, one call
-- **Auto-continuation** — For multi-step tasks, Ace keeps working until the goal is complete
+- **Auto-continuation** — For multi-step tasks, Ace keeps working across up to 3 phases (75 tool calls max)
 - **Your data, your machine** — Everything stored locally in `data/`
 
 ### AI Providers
@@ -96,7 +104,7 @@ OpenAce runs a local Express server with a React dashboard. One AI agent handles
 |----------|------|----------|
 | **Google Gemini** (default) | Free tier available | General use, great tool calling |
 | **OpenAI** | Pay-per-use API | GPT-4.1, strong reasoning |
-| **Anthropic Claude** | Pay-per-use API | Claude Sonnet, detailed analysis |
+| **Anthropic Claude** | Pay-per-use API | Claude Sonnet 4.6, detailed analysis |
 | **Ollama** | Free (local) | Privacy, offline use |
 
 Switch providers anytime in Settings. Use **Task Routing** to assign different AIs to different tasks (e.g., Gemini for chat, OpenAI for code).
@@ -152,12 +160,14 @@ OpenAce/
 │   └── sops/                        # Trained workflows
 ├── src/
 │   ├── core/                        # Backend engine
-│   │   ├── brain/UnifiedAgent.js    # Single AI agent with 37+ tools
+│   │   ├── brain/UnifiedAgent.js    # Single AI agent with 50+ tools
 │   │   ├── brain/AceBrain.js        # Brain: SOP matching + agent
 │   │   ├── ai-providers/            # Gemini, OpenAI, Claude, Ollama
-│   │   ├── automation/              # Desktop/browser control
+│   │   ├── automation/              # Desktop/browser control, SOP execution
+│   │   ├── billing/                 # Credits, Stripe integration
 │   │   ├── gateway/ApiGateway.js    # Express API routes
-│   │   └── ...                      # Pipeline, forms, social, etc.
+│   │   ├── integrations/            # Twilio, Google Calendar, social media
+│   │   └── ...                      # Pipeline, forms, knowledge, deploy
 │   ├── desktop/dashboard-ui/        # React dashboard (MUI)
 │   └── studio/                      # Code studio (Monaco editor)
 ├── scripts/start-dashboard.js       # Server entry point
@@ -239,6 +249,39 @@ The Gemini free tier has usage limits. If you hit them:
 
 ---
 
+## Embed SDK
+
+Drop Ace into any website as an AI assistant widget:
+
+```bash
+# Install from a release
+npm install https://github.com/ELikeMed/OpenAce/releases/latest/download/openace-embed-1.0.5.tgz
+```
+
+```html
+<script src="node_modules/@openace/embed/dist/openace-embed.js"></script>
+<script>
+  OpenAceEmbed.init({ serverUrl: 'http://localhost:3333' });
+</script>
+```
+
+The embed SDK provides action-first AI with site awareness — content editing, image generation, and content calendars built in.
+
+---
+
+## Contributing
+
+OpenAce is a solo project looking for contributors. If you're interested:
+
+1. Fork the repo
+2. Create a feature branch (`git checkout -b feature/my-feature`)
+3. Commit your changes
+4. Push and open a PR
+
+Areas that could use help: tests, Windows browser automation, Linux desktop support, documentation, and new tool integrations.
+
+---
+
 ## Like OpenAce?
 
 If OpenAce is useful to you, consider giving it a star — it helps others discover the project and keeps development going.
@@ -249,8 +292,8 @@ If OpenAce is useful to you, consider giving it a star — it helps others disco
 
 ## License
 
-MIT
+[MIT](LICENSE)
 
 ---
 
-**Built by [LikemindedPro](https://likemindedpro.com)**
+**Built by [Eric Greenstein / LikemindedPro](https://likemindedpro.com)** | **[openaceai.com](https://openaceai.com)**

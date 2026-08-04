@@ -82,7 +82,6 @@ export class PipelineManager {
     this.pipeline.items.push(task);
     await this.savePipeline();
 
-    console.log(`📋 Task added: ${task.title}`);
     eventBus.emit(EVENTS.TASK_ADDED, { task });
     return task;
   }
@@ -121,7 +120,6 @@ export class PipelineManager {
     }
 
     const task = await this.updateTask(taskId, { stage: newStage });
-    console.log(`📋 Task moved to ${newStage}: ${task.title}`);
     return task;
   }
 
@@ -142,7 +140,6 @@ export class PipelineManager {
     const task = this.pipeline.items.splice(index, 1)[0];
     await this.savePipeline();
     
-    console.log(`🗑️ Task deleted: ${task.title}`);
     return task;
   }
 
@@ -204,7 +201,6 @@ export class PipelineManager {
     this.pipeline.leads.push(lead);
     await this.savePipeline();
 
-    console.log(`👤 Lead added: ${lead.company}`);
     eventBus.emit(EVENTS.LEAD_ADDED, { lead });
     return lead;
   }
@@ -255,7 +251,6 @@ export class PipelineManager {
     }
 
     const lead = await this.updateLead(leadId, { stage: newStage });
-    console.log(`👤 Lead moved to ${newStage}: ${lead.company}`);
     return lead;
   }
 
@@ -276,7 +271,6 @@ export class PipelineManager {
     const lead = this.pipeline.leads.splice(index, 1)[0];
     await this.savePipeline();
     
-    console.log(`🗑️ Lead deleted: ${lead.company}`);
     return lead;
   }
 

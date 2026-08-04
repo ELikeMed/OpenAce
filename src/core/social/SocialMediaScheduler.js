@@ -102,7 +102,6 @@ export class SocialMediaScheduler {
   async start() {
     await this.initialize();
     this.isRunning = true;
-    console.log('⏰ Social Media Scheduler started');
     
     // Initial check
     await this.checkAndPost();
@@ -113,7 +112,6 @@ export class SocialMediaScheduler {
    */
   stop() {
     this.isRunning = false;
-    console.log('⏰ Social Media Scheduler stopped');
   }
 
   /**
@@ -150,14 +148,12 @@ export class SocialMediaScheduler {
       };
     }
 
-    console.log(`📬 ${duePosts.length} posts due for execution`);
 
     const results = [];
     
     for (const post of duePosts) {
       // Check daily limit
       if (this.todaysCounts[post.platform] >= this.settings.dailyLimits[post.platform]) {
-        console.log(`⚠️ Daily limit reached for ${post.platform}`);
         continue;
       }
 
@@ -200,7 +196,6 @@ export class SocialMediaScheduler {
    * Execute a single post
    */
   async executePost(post) {
-    console.log(`📤 Executing post ${post.id} to ${post.platform}`);
 
     // Select media if needed
     let mediaPath = post.mediaPath;
@@ -390,7 +385,6 @@ Reply with:
    */
   async updateSettings(newSettings) {
     this.settings = { ...this.settings, ...newSettings };
-    console.log('⚙️ Scheduler settings updated');
   }
 
   /**

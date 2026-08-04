@@ -46,8 +46,7 @@ export class SkillsManager {
       const skill = JSON.parse(skillData);
       if (skill && skill.id) {
         this.skills.set(skill.id, skill);
-        console.log(`✅ Dynamically loaded new skill: ${skill.name}`);
-        return skill;
+          return skill;
       }
     } catch (error) {
       console.error(`❌ Failed to dynamically load skill from ${skillPath}:`, error.message);
@@ -78,7 +77,6 @@ export class SkillsManager {
     // Add to memory
     this.skills.set(skill.id, skill);
 
-    console.log(`✅ Added skill: ${skill.name}`);
     return skill;
   }
 
@@ -255,7 +253,6 @@ export class SkillsManager {
     await fs.writeFile(skillPath, JSON.stringify(updatedSkill, null, 2));
 
     this.skills.set(skillId, updatedSkill);
-    console.log(`✅ Updated skill: ${updatedSkill.name}`);
     return updatedSkill;
   }
 
@@ -272,7 +269,6 @@ export class SkillsManager {
     await fs.unlink(skillPath);
 
     this.skills.delete(skillId);
-    console.log(`✅ Deleted skill: ${skill.name}`);
     return true;
   }
 

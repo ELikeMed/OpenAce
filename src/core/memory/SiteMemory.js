@@ -161,7 +161,6 @@ export class SiteMemory {
       JSON.stringify(siteKnowledge, null, 2)
     );
 
-    console.log(`🧠 Remembered site: ${domain}`);
     return siteKnowledge;
   }
 
@@ -185,7 +184,6 @@ export class SiteMemory {
       JSON.stringify(existing, null, 2)
     );
 
-    console.log(`🧠 Remembered login flow for: ${domain}`);
     return existing;
   }
 
@@ -199,7 +197,6 @@ export class SiteMemory {
     });
     
     await this.saveCredentials();
-    console.log(`🔐 Stored credentials: ${id}`);
   }
 
   /**

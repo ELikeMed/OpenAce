@@ -48,6 +48,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import ConversationSidebar from './components/ConversationSidebar';
 import NewProcessDialog from './components/NewProcessDialog';
+import WelcomeScreen from './components/WelcomeScreen';
 import { BRAND } from './theme';
 
 function TypingIndicator() {
@@ -2327,7 +2328,7 @@ const messageCache = new Map(); // conversationId → messages[]
 // MAIN CHAT COMPONENT
 // ═══════════════════════════════════════════════════════
 
-function Chat() {
+function Chat({ hideSidebar = false }) {
   const [conversations, setConversations] = useState([]);
   const [activeConversationId, setActiveConversationId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -2399,15 +2400,16 @@ function Chat() {
     return () => window.removeEventListener('ace:debug-error', handle);
   }, []);
 
-  // Prefill chat input from other pages (e.g., Integrations "Train Ace" button)
+  // Prefill chat input from other pages (e.g., Integrations "Train Ace" button, Sidebar tools)
   useEffect(() => {
     const handle = (e) => {
-      const msg = e.detail?.message;
+      const msg = e.detail?.message || e.detail?.text;
       if (msg) setInputText(msg);
     };
     window.addEventListener('ace:prefill-chat', handle);
     return () => window.removeEventListener('ace:prefill-chat', handle);
   }, []);
+
 
   // Auto-send when pending debug message is set
   useEffect(() => {
@@ -2543,7 +2545,6 @@ function Chat() {
     }
     if (preferred) {
       utterance.voice = preferred;
-      console.log('[TTS] Using voice:', preferred.name);
     }
 
     utterance.onstart = () => { setIsSpeaking(true); setSpeakingMsgIdx(messageIndex); };
@@ -2865,6 +2866,28 @@ function Chat() {
       console.error('Failed to delete conversation', e);
     }
   }, [activeConversationId, handleNewConversation]);
+
+  // ═══ Sidebar integration — App-level Sidebar drives conversation selection ═══
+  useEffect(() => {
+    const onNewChat = () => handleNewConversation();
+    const onSelectConv = (e) => {
+      const id = e.detail?.id;
+      if (id) handleSelectConversation(id);
+    };
+    window.addEventListener('ace:new-chat', onNewChat);
+    window.addEventListener('ace:select-conversation', onSelectConv);
+    return () => {
+      window.removeEventListener('ace:new-chat', onNewChat);
+      window.removeEventListener('ace:select-conversation', onSelectConv);
+    };
+  }, [handleNewConversation, handleSelectConversation]);
+
+  // Notify App.jsx of conversation list changes so the Sidebar stays in sync
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('ace:conversations-updated', {
+      detail: { conversations, activeId: activeConversationId },
+    }));
+  }, [conversations, activeConversationId]);
 
   // ═══ Action/question handlers ═══
   const handleConfirmActions = useCallback(async (msgIndex, confirmedActions) => {
@@ -3367,8 +3390,6 @@ function Chat() {
               const pendingActions = Array.isArray(data.pendingActions) && data.pendingActions.length > 0
                 ? data.pendingActions : null;
               const question = data.question || null;
-              if (question) console.log('[Chat] Received question with', question.options?.length, 'options');
-              if (pendingActions) console.log('[Chat] Received', pendingActions.length, 'pendingActions');
 
               // Mark activity as complete (keep it visible), add final response
               const toolsUsed = data.toolsUsed || [];
@@ -3556,17 +3577,19 @@ function Chat() {
   ];
 
   return (
-    <Box ref={chatContainerRef} sx={{ height: 'calc(100vh - 140px)', display: 'flex', flexDirection: 'row' }}>
-      {/* Conversation Sidebar */}
-      <ConversationSidebar
-        conversations={conversations}
-        activeConversationId={activeConversationId}
-        onSelectConversation={handleSelectConversation}
-        onNewConversation={handleNewConversation}
-        onDeleteConversation={handleDeleteConversation}
-        collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
-      />
+    <Box ref={chatContainerRef} sx={{ height: hideSidebar ? '100vh' : 'calc(100vh - 140px)', display: 'flex', flexDirection: 'row' }}>
+      {/* Conversation Sidebar — hidden when App-level Sidebar handles navigation */}
+      {!hideSidebar && (
+        <ConversationSidebar
+          conversations={conversations}
+          activeConversationId={activeConversationId}
+          onSelectConversation={handleSelectConversation}
+          onNewConversation={handleNewConversation}
+          onDeleteConversation={handleDeleteConversation}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
+        />
+      )}
 
       {/* Main Chat Area */}
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
@@ -3623,178 +3646,11 @@ function Chat() {
             }}
           >
             {messages.length === 0 && (
-              <Box sx={{ textAlign: 'center', py: 3, px: 2 }}>
-                <Avatar sx={{
-                  width: 72, height: 72, mx: 'auto', mb: 1.5,
-                  background: `linear-gradient(135deg, ${BRAND.primary}, ${BRAND.secondary})`,
-                  boxShadow: `0 8px 30px ${alpha(BRAND.primary, 0.3)}`,
-                }}>
-                  <AceSpadeIcon sx={{ fontSize: 36 }} />
-                </Avatar>
-                <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
-                  Ace Is Ready to Close Deals
-                </Typography>
-                <Typography variant="body2" sx={{ color: BRAND.textMuted, mb: 2, fontSize: '0.95rem', maxWidth: 500, mx: 'auto' }}>
-                  Tell Ace who your ideal customer is and watch it find leads, reach out, follow up, and move deals through your pipeline — all from this chat.
-                </Typography>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={() => window.dispatchEvent(new CustomEvent('ace:start-tour'))}
-                  sx={{
-                    mb: 3, fontSize: '0.78rem', textTransform: 'none',
-                    borderColor: alpha(BRAND.primary, 0.3),
-                    color: BRAND.primaryLight,
-                    '&:hover': { borderColor: BRAND.primary, background: alpha(BRAND.primary, 0.08) },
-                  }}
-                >
-                  Take a Tour
-                </Button>
-
-                {/* ═══ Get Ace Running — Guided Setup ═══ */}
-                {setupSteps.filter(s => !completedSetup.includes(s.id)).length > 0 && (
-                  <Box sx={{
-                    maxWidth: 680, mx: 'auto', mb: 3,
-                    border: `1px solid ${alpha(BRAND.primary, 0.2)}`,
-                    borderRadius: '16px',
-                    overflow: 'hidden',
-                    background: alpha(BRAND.bgCard, 0.5),
-                    backdropFilter: 'blur(10px)',
-                  }}>
-                    {/* Section header */}
-                    <Box sx={{
-                      px: 2.5, py: 1.5,
-                      background: alpha(BRAND.primary, 0.06),
-                      borderBottom: `1px solid ${alpha(BRAND.primary, 0.12)}`,
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <RocketLaunchIcon sx={{ fontSize: 18, color: BRAND.primaryLight }} />
-                        <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', color: BRAND.textPrimary }}>
-                          Start Making Money
-                        </Typography>
-                      </Box>
-                      <Typography sx={{ fontSize: '0.72rem', color: BRAND.textMuted }}>
-                        {completedSetup.length} / {setupSteps.length} complete
-                      </Typography>
-                    </Box>
-
-                    {/* Progress bar */}
-                    <LinearProgress
-                      variant="determinate"
-                      value={(completedSetup.length / setupSteps.length) * 100}
-                      sx={{
-                        height: 3,
-                        backgroundColor: alpha(BRAND.primary, 0.08),
-                        '& .MuiLinearProgress-bar': {
-                          background: `linear-gradient(90deg, ${BRAND.primary}, ${BRAND.secondary})`,
-                          borderRadius: 0,
-                        },
-                      }}
-                    />
-
-                    {/* Steps */}
-                    <Box sx={{ p: 1 }}>
-                      {setupSteps.map((step) => {
-                        const done = completedSetup.includes(step.id);
-                        return (
-                          <Box
-                            key={step.id}
-                            onClick={() => { if (!done) step.action(); }}
-                            sx={{
-                              display: 'flex', alignItems: 'center', gap: 1.5,
-                              px: 2, py: 1.25,
-                              borderRadius: '10px',
-                              cursor: done ? 'default' : 'pointer',
-                              opacity: done ? 0.5 : 1,
-                              transition: 'all 0.2s ease',
-                              ...(!done && {
-                                '&:hover': {
-                                  background: alpha(BRAND.primary, 0.08),
-                                  '& .step-cta': { opacity: 1 },
-                                },
-                              }),
-                            }}
-                          >
-                            {/* Step icon */}
-                            <Box sx={{
-                              width: 38, height: 38,
-                              borderRadius: '10px',
-                              background: done ? alpha(BRAND.success, 0.15) : step.gradient,
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              color: done ? BRAND.success : '#fff',
-                              flexShrink: 0,
-                              boxShadow: done ? 'none' : `0 3px 10px ${alpha('#000', 0.15)}`,
-                              transition: 'all 0.3s ease',
-                            }}>
-                              {done ? <CheckCircleIcon sx={{ fontSize: 20 }} /> : step.icon}
-                            </Box>
-
-                            {/* Text */}
-                            <Box sx={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
-                              <Typography sx={{
-                                fontWeight: 600, fontSize: '0.82rem',
-                                color: done ? BRAND.textMuted : BRAND.textPrimary,
-                                textDecoration: done ? 'line-through' : 'none',
-                                lineHeight: 1.3,
-                              }}>
-                                {step.title}
-                              </Typography>
-                              <Typography sx={{ fontSize: '0.72rem', color: BRAND.textMuted, lineHeight: 1.4 }}>
-                                {step.desc}
-                              </Typography>
-                            </Box>
-
-                            {/* CTA arrow */}
-                            {!done && (
-                              <Box
-                                className="step-cta"
-                                sx={{
-                                  display: 'flex', alignItems: 'center', gap: 0.5,
-                                  fontSize: '0.72rem', fontWeight: 600,
-                                  color: BRAND.primaryLight,
-                                  opacity: 0.5,
-                                  transition: 'opacity 0.2s',
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >
-                                {step.cta}
-                                <ArrowForwardIcon sx={{ fontSize: 13 }} />
-                              </Box>
-                            )}
-                          </Box>
-                        );
-                      })}
-                    </Box>
-                  </Box>
-                )}
-
-                {/* Quick Start Actions */}
-                <Typography variant="caption" sx={{ color: BRAND.textMuted, display: 'block', mb: 1 }}>
-                  Try asking:
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center', flexWrap: 'wrap' }}>
-                  {quickActions.map((action, i) => (
-                    <Chip
-                      key={i}
-                      label={action}
-                      onClick={() => { setInputText(action); }}
-                      sx={{
-                        cursor: 'pointer',
-                        fontSize: '0.85rem',
-                        py: 2.5,
-                        background: alpha(BRAND.primary, 0.08),
-                        border: `1px solid ${alpha(BRAND.primary, 0.15)}`,
-                        color: BRAND.primaryLight,
-                        '&:hover': {
-                          background: alpha(BRAND.primary, 0.15),
-                          border: `1px solid ${alpha(BRAND.primary, 0.3)}`,
-                        },
-                      }}
-                    />
-                  ))}
-                </Box>
-              </Box>
+              <WelcomeScreen
+                businessName={bizProfile?.name}
+                industry={bizProfile?.industry}
+                onSuggestionClick={(prompt) => setInputText(prompt)}
+              />
             )}
             {messages.map((msg, index) => (
               msg.sender === 'Ace Activity' ? (

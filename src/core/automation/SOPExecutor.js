@@ -3753,7 +3753,6 @@ What's a single concrete recovery action? Return JSON: {"action": "click_text|sc
       }
     } catch (e) {
       // Never let logging break execution
-      console.log(`[SOPExecutor] Could not persist execution log: ${e.message}`);
     }
   }
 
@@ -3829,7 +3828,6 @@ What's a single concrete recovery action? Return JSON: {"action": "click_text|sc
       learning.lastUpdated = new Date().toISOString();
       await fs.writeFile(learningPath, JSON.stringify(learning, null, 2));
     } catch (e) {
-      console.log(`[SOPExecutor] Could not update learning: ${e.message}`);
     }
   }
 

@@ -69,7 +69,6 @@ export class ContentLibraryManager {
     try {
       const data = await fs.readFile(this.libraryPath, 'utf-8');
       this.library = JSON.parse(data);
-      console.log(`📚 Content Library loaded: ${this.library.assets.length} assets`);
     } catch (error) {
       this.library = {
         assets: [],
@@ -77,7 +76,6 @@ export class ContentLibraryManager {
         lastUpdated: new Date().toISOString()
       };
       await this.saveLibrary();
-      console.log('📚 Created new Content Library');
     }
 
     this.initialized = true;
@@ -141,7 +139,6 @@ export class ContentLibraryManager {
     this.library.assets.push(asset);
     await this.saveLibrary();
 
-    console.log(`📷 Added asset: ${id} (${type})`);
     return asset;
   }
 
@@ -171,7 +168,6 @@ export class ContentLibraryManager {
       }
     }
 
-    console.log(`📚 Bulk imported ${imported.length} assets`);
     return imported;
   }
 

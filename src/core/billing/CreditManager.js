@@ -141,13 +141,11 @@ class CreditManager {
 
   async addCredits(amount, source = 'top_up') {
     this.data.purchasedCredits = (this.data.purchasedCredits || 0) + amount;
-    console.log(`[CreditManager] Added ${amount} credits (${source}). New purchased balance: ${this.data.purchasedCredits}`);
     await this._save();
   }
 
   async resetSubscriptionCredits() {
     this.data.subscriptionCredits = MONTHLY_CREDITS;
-    console.log(`[CreditManager] Subscription credits reset to ${MONTHLY_CREDITS}`);
     await this._save();
   }
 
@@ -160,7 +158,6 @@ class CreditManager {
     if (plan === 'credits' && this.data.subscriptionCredits === 0) {
       this.data.subscriptionCredits = MONTHLY_CREDITS;
     }
-    console.log(`[CreditManager] Plan set to: ${plan}`);
     await this._save();
   }
 

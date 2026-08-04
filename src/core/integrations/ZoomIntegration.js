@@ -63,7 +63,6 @@ class ZoomIntegration {
                 
                 try {
                     const user = await this.getCurrentUser();
-                    console.log(`✅ Zoom connected: ${user.email}`);
                     return { 
                         status: 'connected', 
                         email: user.email,
@@ -130,7 +129,6 @@ class ZoomIntegration {
             expires_at: Date.now() + (response.data.expires_in * 1000)
         };
         await this.saveTokens(this.tokens);
-        console.log('🔄 Zoom tokens refreshed');
     }
 
     /**
@@ -308,8 +306,6 @@ class ZoomIntegration {
 
         const response = await this.apiRequest('POST', '/users/me/meetings', meeting);
 
-        console.log(`🎥 Zoom meeting created: ${topic}`);
-        console.log(`   Join URL: ${response.join_url}`);
 
         return {
             success: true,
@@ -421,7 +417,6 @@ class ZoomIntegration {
             await fs.unlink(this.tokenPath);
             this.isAuthenticated = false;
             this.tokens = null;
-            console.log('🔌 Zoom disconnected');
             return true;
         } catch { return false; }
     }

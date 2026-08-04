@@ -201,7 +201,6 @@ export class UpdateManager {
       try {
         await this._exec('npm install && npm run build', studioDir);
       } catch (e) {
-        console.log('[UpdateManager] Studio build failed (non-critical):', e.message);
       }
       progress('build', 'done', 'Dashboard & Studio rebuilt');
 

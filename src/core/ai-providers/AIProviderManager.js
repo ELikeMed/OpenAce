@@ -129,7 +129,6 @@ export class AIProviderManager {
     if (provider === 'ollama' && !options.provider) {
       const heavyProvider = this._getHeavyTaskProvider(messages);
       if (heavyProvider) {
-        console.log(`[AIProviderManager] Heavy task detected — routing to ${heavyProvider}`);
         provider = heavyProvider;
       }
     }
@@ -1151,13 +1150,11 @@ CRITICAL RULES:
       if (fallback) {
         this.activeProvider = fallback;
         this.config.ai_providers.active_provider = fallback;
-        console.log(`Active provider ${providerName} disabled, fell back to ${fallback}`);
       }
     }
 
     // Save config to disk
     await fs.writeFile(this.configPath, JSON.stringify(this.config, null, 2));
-    console.log(`✅ Updated ${providerName} config`);
   }
 
   // ═══════════════════════════════════════════════════════
@@ -1201,6 +1198,5 @@ CRITICAL RULES:
       this.config.ai_providers.task_routing[task] = provider || null;
     }
     await fs.writeFile(this.configPath, JSON.stringify(this.config, null, 2));
-    console.log('✅ Updated task routing:', this.config.ai_providers.task_routing);
   }
 }

@@ -74,7 +74,6 @@ class GoogleIntegration {
                 
                 // Set up automatic token refresh
                 this.oauth2Client.on('tokens', async (newTokens) => {
-                    console.log('🔄 Google tokens auto-refreshed');
                     const updated = { ...tokens, ...newTokens };
                     await this.saveTokens(updated);
                 });
@@ -82,14 +81,12 @@ class GoogleIntegration {
                 // Verify tokens still work
                 try {
                     const userInfo = await this.getUserInfo();
-                    console.log(`✅ Google connected: ${userInfo.email}`);
                     return { 
                         status: 'connected', 
                         email: userInfo.email,
                         name: userInfo.name 
                     };
                 } catch (e) {
-                    console.log('⚠️  Stored tokens expired, re-authorization needed');
                     return { status: 'needs_auth', message: 'Tokens expired' };
                 }
             }
@@ -131,7 +128,6 @@ class GoogleIntegration {
     async saveTokens(tokens) {
         await fs.mkdir(path.dirname(this.tokenPath), { recursive: true });
         await fs.writeFile(this.tokenPath, JSON.stringify(tokens, null, 2));
-        console.log('💾 Google tokens saved');
     }
 
     /**
@@ -290,7 +286,6 @@ class GoogleIntegration {
             await fs.unlink(this.tokenPath);
             this.isAuthenticated = false;
             this.oauth2Client = null;
-            console.log('🔌 Google account disconnected');
             return true;
         } catch (e) {
             return false;
@@ -393,10 +388,6 @@ class GoogleIntegration {
             end: response.data.end
         };
 
-        console.log(`📅 Event created: ${eventData.title}`);
-        if (result.meetLink) {
-            console.log(`   Meet link: ${result.meetLink}`);
-        }
 
         return result;
     }
@@ -669,7 +660,6 @@ class GoogleIntegration {
             fields: 'id, name, webViewLink'
         });
 
-        console.log(`📤 Uploaded to Drive: ${response.data.name}`);
         return response.data;
     }
 
@@ -684,7 +674,6 @@ class GoogleIntegration {
         );
 
         await fs.writeFile(destPath, Buffer.from(response.data));
-        console.log(`📥 Downloaded: ${destPath}`);
         return destPath;
     }
 
@@ -755,7 +744,6 @@ class GoogleIntegration {
             requestBody: { raw: encoded }
         });
 
-        console.log(`📧 Email sent to: ${to}`);
         return { success: true, messageId: response.data.id };
     }
 
@@ -871,7 +859,6 @@ class GoogleIntegration {
                 organizations: company ? [{ name: company, title }] : []
             }
         });
-        console.log(`👤 Contact created: ${firstName} ${lastName}`);
         return response.data;
     }
 

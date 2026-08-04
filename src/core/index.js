@@ -1016,10 +1016,8 @@ this.log.info('Task queue processing started');
         });
 
         if (brainResult.question) {
-          console.log(`[OpenAce] ✅ Returning question with ${brainResult.question.options?.length || 0} options to API`);
         }
         if (brainResult.pendingActions) {
-          console.log(`[OpenAce] ✅ Returning ${brainResult.pendingActions.length} pendingActions to API`);
         }
         return {
           message: finalMessage,
@@ -2256,7 +2254,6 @@ this.log.info('Task queue processing started');
    */
   clearHistory() {
     this.conversationHistory = [];
-    console.log('✅ Conversation history cleared');
   }
 
   /**
@@ -2322,7 +2319,6 @@ this.log.info('Task queue processing started');
       this.autonomousScheduler.setPipelineManager(this.pipelineManager);
     }
 
-    console.log(`[OpenAce] Switched to business: ${target.name} (${id})`);
     return target;
   }
 
@@ -2347,7 +2343,6 @@ this.log.info('Task queue processing started');
     if (!existsSync(pipelinePath)) {
       if (isFirstBusiness && existsSync(oldPipeline)) {
         await fs.copyFile(oldPipeline, pipelinePath);
-        console.log(`[OpenAce] Seeded pipeline for "${slug}" from existing data`);
       } else {
         const defaultPipeline = {
           stages: [
@@ -2376,7 +2371,6 @@ this.log.info('Task queue processing started');
     if (!existsSync(contactsPath)) {
       if (isFirstBusiness && existsSync(oldContacts)) {
         await fs.copyFile(oldContacts, contactsPath);
-        console.log(`[OpenAce] Seeded contacts for "${slug}" from existing data`);
       } else {
         await fs.writeFile(contactsPath, JSON.stringify({ contacts: [] }, null, 2));
       }

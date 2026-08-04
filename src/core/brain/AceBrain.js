@@ -401,13 +401,10 @@ export class AceBrain {
             this.personas[persona.id] = persona;
           }
         } catch (err) {
-          console.log(`[AceBrain] Failed to load persona file ${file}: ${err.message}`);
         }
       }
 
-      console.log(`[AceBrain] Loaded ${Object.keys(this.personas).length} personas: ${Object.keys(this.personas).join(', ')}`);
     } catch (err) {
-      console.log(`[AceBrain] Could not load personas directory: ${err.message}`);
       this.personas = {};
     }
   }
@@ -442,7 +439,6 @@ export class AceBrain {
 
     this.activePersona = bestPersona;
     if (bestPersona) {
-      console.log(`[AceBrain] Detected persona: ${bestPersona.name} (matched ${bestCount} keywords)`);
     }
     return bestPersona;
   }
@@ -1808,9 +1804,7 @@ ${pageContext}
           department: interactionType,
           channelId,
         });
-        console.log(`📝 [AceBrain] Correction detected and saved from channel ${channelId}`);
       } catch (e) {
-        console.log(`[AceBrain] Failed to save correction: ${e.message}`);
       }
     }
 
@@ -1849,7 +1843,6 @@ ${pageContext}
       const learningsPath = path.join(PROJECT_ROOT, 'data', 'knowledge', 'learnings.json');
       const data = await fs.readFile(learningsPath, 'utf8');
       this.learnings = JSON.parse(data);
-      console.log(`🧠 Loaded ${this.learnings.length} past learnings`);
     } catch (e) {
       this.learnings = [];
     }
@@ -1938,7 +1931,6 @@ ${pageContext}
       for (const [channelId, history] of Object.entries(parsed)) {
         this.conversations.set(channelId, history);
       }
-      console.log(`[AceBrain] Loaded ${Object.keys(parsed).length} persisted conversations`);
     } catch {
       // No conversations file yet — first run
     }
@@ -2250,7 +2242,6 @@ ${pageContext}
       const actionMatches = message.match(/\b(?:need to|must|should|will|going to|have to|plan to|want to|please)\s+[^.!?\n]+/gi) || [];
       entities.actionItems = [...new Set(actionMatches.map(a => a.trim()))];
     } catch (err) {
-      console.log(`[AceBrain] Entity extraction error: ${err.message}`);
     }
 
     return entities;
@@ -2266,7 +2257,6 @@ ${pageContext}
    */
   setAgentOrchestrator(orchestrator) {
     this.agentOrchestrator = orchestrator;
-    console.log('[AceBrain] AgentOrchestrator connected');
   }
 
   /**
@@ -2279,7 +2269,6 @@ ${pageContext}
     if (this.unifiedAgent?.subsystems) {
       this.unifiedAgent.subsystems.codeAgent = codeAgent;
     }
-    console.log('[AceBrain] CodeAgent connected');
   }
 
   /**

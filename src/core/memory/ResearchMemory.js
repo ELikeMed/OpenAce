@@ -65,7 +65,6 @@ export class ResearchMemory {
       resultLength: record.results.length
     });
 
-    console.log(`🔬 Research saved: "${query.substring(0, 60)}..." (${record.results.length} chars)`);
     return record;
   }
 

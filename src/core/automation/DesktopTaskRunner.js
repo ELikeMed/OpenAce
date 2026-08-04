@@ -220,7 +220,6 @@ export class DesktopTaskRunner {
       const step = steps[i];
       const stepDesc = step.description || step.target || step.text || step.key || '';
       this.onProgress(`🎓 Step ${i + 1}/${steps.length}: ${step.action} — ${stepDesc}`);
-      console.log(`[SOP Replay] Step ${i + 1}/${steps.length}: ${step.action} at (${step.x},${step.y}) — ${stepDesc}`);
 
       // ── Apply learning from past runs (extra wait for unreliable steps) ──
       await this._applyLearning(step, i + 1, sop.id);
@@ -1647,7 +1646,6 @@ end tell
       learning.lastUpdated = new Date().toISOString();
       await fs.writeFile(learningPath, JSON.stringify(learning, null, 2));
     } catch (e) {
-      console.log(`[DesktopTaskRunner] Could not update learning: ${e.message}`);
     }
   }
 
@@ -2192,7 +2190,6 @@ Use "click" if an element needs clicking, "scroll" if the target might be off-sc
       if (result.startsWith('clicked:')) {
         const parts = result.substring(8);
         const desc = parts.split(':').slice(1).join(':') || target;
-        console.log(`[SOP Replay] DOM click success: "${desc.substring(0, 60)}"`);
         return true;
       }
       return false;
@@ -2204,7 +2201,6 @@ Use "click" if an element needs clicking, "scroll" if the target might be off-sc
         this.onProgress('⚠️ Chrome JS disabled — enable: View → Developer → Allow JavaScript from Apple Events');
         this.onProgress('   Falling back to AI vision + coordinates for all clicks');
       } else {
-        console.log(`[SOP Replay] DOM click failed for "${target}": ${e.message}`);
       }
       return false;
     }

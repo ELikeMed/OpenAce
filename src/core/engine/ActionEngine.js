@@ -2122,33 +2122,21 @@ Your task is to process the user's request based *only* on the skill instruction
 
   // ─── EXEC CODE ────────────────────────────────────────
   async execCode(message, context = {}) {
-    console.log('[ActionEngine] execCode called');
-
-    // If there's an active project context, route file operations to that project
-    if (context.activeProject || context.projectDir) {
-      const projectName = context.activeProject;
-      const projectDir = context.projectDir || `projects/${projectName}`;
-      console.log(`[ActionEngine] 📂 Code task with active project context: ${projectName} (${projectDir})`);
-      // Do NOT create a new project — edit the existing one
-    }
 
     // First check if there's a matching skill for this code request (e.g., landing-page-builder)
     if (this.skillsManager) {
       const matchedSkill = this.skillsManager.findMatchingSkill(message);
       if (matchedSkill && (matchedSkill.executionMode === 'code-agent' || matchedSkill.category === 'technology')) {
-        console.log(`[ActionEngine] Matched code skill: "${matchedSkill.name}" — executing via skill system`);
         return await this.execUseSkill({ skill: matchedSkill, query: message });
       }
     }
 
     if (!this.agentOrchestrator) {
-      console.log('[ActionEngine] AgentOrchestrator not connected — cannot route code task');
       return { success: false, message: '❌ Code agent not available. AgentOrchestrator is not connected.' };
     }
 
     try {
       const taskDesc = typeof message === 'string' ? message : (message.description || 'Execute code task');
-      console.log(`[ActionEngine] Routing code task to AgentOrchestrator: "${taskDesc.substring(0, 80)}..."`);
       
       // Pass project context to the orchestrator so it routes files correctly
       const executeOptions = {};
@@ -2162,7 +2150,6 @@ Your task is to process the user's request based *only* on the skill instruction
       
       // Propagate the actual success/failure status from the orchestrator
       const success = result.success !== false;
-      console.log(`[ActionEngine] Code task ${success ? 'completed' : 'failed'}: ${result.summary || ''}`);
 
       return {
         success,
@@ -2171,7 +2158,6 @@ Your task is to process the user's request based *only* on the skill instruction
         result
       };
     } catch (error) {
-      console.log(`[ActionEngine] execCode error: ${error.message}`);
       return { success: false, message: `❌ Code execution failed: ${error.message}` };
     }
   }
@@ -2653,7 +2639,6 @@ Your task is to process the user's request based *only* on the skill instruction
    */
   setAgentOrchestrator(orchestrator) {
     this.agentOrchestrator = orchestrator;
-    console.log('[ActionEngine] AgentOrchestrator connected');
   }
 
   /**
@@ -2661,7 +2646,6 @@ Your task is to process the user's request based *only* on the skill instruction
    */
   setCodeAgent(codeAgent) {
     this.codeAgent = codeAgent;
-    console.log('[ActionEngine] CodeAgent connected');
   }
 
   /**
@@ -2669,7 +2653,6 @@ Your task is to process the user's request based *only* on the skill instruction
    */
   setProjectManager(projectManager) {
     this.projectManager = projectManager;
-    console.log('[ActionEngine] ✅ ProjectManager connected');
   }
 
   /**
@@ -2677,7 +2660,6 @@ Your task is to process the user's request based *only* on the skill instruction
    */
   setDeployPipeline(deployPipeline) {
     this.deployPipeline = deployPipeline;
-    console.log('[ActionEngine] ✅ DeployPipeline connected');
   }
 
   // ═══════════════════════════════════════════════════════
@@ -2694,7 +2676,6 @@ Your task is to process the user's request based *only* on the skill instruction
     if (studioMatch) {
       context.activeProject = studioMatch[1].trim();
       message = message.slice(studioMatch[0].length).trim();
-      console.log(`[ActionEngine] 📂 Active project context: ${context.activeProject}`);
     }
     return { message, context };
   }
@@ -2708,7 +2689,6 @@ Your task is to process the user's request based *only* on the skill instruction
    */
   async execCreateProject(message, context = {}) {
     try {
-      console.log('[ActionEngine] 🏗️ Creating project via ProjectManager');
       
       // Extract project description from message
       const description = message;
@@ -2799,7 +2779,6 @@ Your task is to process the user's request based *only* on the skill instruction
         // --- AI-Powered Code Generation ---
         if (this.aiManager) {
           try {
-            console.log('[ActionEngine] 🤖 Attempting AI-powered code generation...');
             const prompt = this._buildProjectGenerationPrompt(description, projectType, projectName);
             const provider = this._getCodeGenerationProvider();
             
@@ -2820,7 +2799,7 @@ Your task is to process the user's request based *only* on the skill instruction
                 }
               }
               aiGenerated = filesWritten.length > 0;
-              console.log(`[ActionEngine] ✅ AI generated ${filesWritten.length} files for project "${projectName}"`);
+
             }
           } catch (aiError) {
             console.warn('[ActionEngine] ⚠️ AI code generation failed, using template scaffolding:', aiError.message);
@@ -2845,7 +2824,6 @@ Your task is to process the user's request based *only* on the skill instruction
         };
       } else {
         // Fallback to CodeAgent if ProjectManager not available
-        console.log('[ActionEngine] ⚠️ ProjectManager not available, falling back to code task');
         return await this.execCode(message, context);
       }
     } catch (error) {
@@ -2879,7 +2857,6 @@ Your task is to process the user's request based *only* on the skill instruction
       else if (/vercel/i.test(message)) target = 'vercel';
       else if (/netlify/i.test(message)) target = 'netlify';
       
-      console.log(`[ActionEngine] 🚀 Deploying project "${projectName}" to ${target}`);
       
       if (this.deployPipeline) {
         const result = await this.deployPipeline.deploy(projectName, { target });
@@ -2907,7 +2884,6 @@ Your task is to process the user's request based *only* on the skill instruction
         return { success: true, message: '❓ No active project. Please specify which project to edit or open one in Studio.' };
       }
       
-      console.log(`[ActionEngine] ✏️ Editing project "${projectName}": ${message}`);
 
       // --- AI-Powered Project Editing ---
       if (this.aiManager && this.projectManager) {
@@ -2945,7 +2921,7 @@ Your task is to process the user's request based *only* on the skill instruction
           }
 
           if (filesUpdated.length > 0) {
-            console.log(`[ActionEngine] ✅ AI edited ${filesUpdated.length} files in project "${projectName}"`);
+
             return {
               success: true,
               message: `✏️ Updated project "${projectName}"!\n\n🤖 AI modified ${filesUpdated.length} file(s):\n${filesUpdated.map(f => `  • ${f}`).join('\n')}\n\nRefresh the preview to see updates.`,

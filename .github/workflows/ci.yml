@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install dependencies
+        run: npm install --ignore-optional
+
+      - name: Build dashboard
+        working-directory: src/desktop/dashboard-ui
+        run: |
+          npm install
+          npm run build
+
+      - name: Build studio
+        working-directory: src/studio
+        run: |
+          npm install
+          npm run build
+
+      - name: Verify server starts
+        run: |
+          timeout 10 node scripts/start-dashboard.js &
+          sleep 5
+          curl -f http://localhost:3333 || exit 1
+        env:
+          NODE_ENV: test

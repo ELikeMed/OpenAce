@@ -90,7 +90,6 @@ export class CorrectionMemory {
 
     this.corrections.push(record);
 
-    console.log(`📝 Correction saved: "${correction.substring(0, 60)}..." (topic: ${topic})`);
     return record;
   }
 

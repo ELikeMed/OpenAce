@@ -28,7 +28,6 @@ class BusinessManager {
   async load() {
     await fs.mkdir(this.dataDir, { recursive: true });
 
-    console.log(`[BusinessManager] Loading from: ${this.profilesPath}`);
 
     // Try reading profiles.json directly (more reliable than existsSync)
     let loaded = false;
@@ -36,10 +35,8 @@ class BusinessManager {
       const raw = await fs.readFile(this.profilesPath, 'utf-8');
       this.profiles = JSON.parse(raw);
       loaded = true;
-      console.log(`[BusinessManager] Loaded ${this.profiles.length} profiles from profiles.json`);
     } catch (err) {
       if (err.code === 'ENOENT') {
-        console.log('[BusinessManager] profiles.json not found, checking for migration...');
       } else {
         console.error(`[BusinessManager] Error reading profiles.json: ${err.message}`);
       }
@@ -64,7 +61,6 @@ class BusinessManager {
       await this._saveActive();
     }
 
-    console.log(`[BusinessManager] Ready — ${this.profiles.length} profiles, active: ${this.activeId}`);
     return this.getActive();
   }
 
@@ -91,10 +87,8 @@ class BusinessManager {
       };
       this.profiles = [entry];
       await this._saveProfiles();
-      console.log(`[BusinessManager] Migrated profile.json → profiles.json (id: ${slug})`);
     } catch (e) {
       if (e.code === 'ENOENT') {
-        console.log('[BusinessManager] No profile.json found — fresh install');
       } else {
         console.error('[BusinessManager] Migration failed:', e.message);
       }

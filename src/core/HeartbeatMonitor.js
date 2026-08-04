@@ -24,7 +24,6 @@ export class HeartbeatMonitor {
    */
   setSocialMediaScheduler(scheduler) {
     this.socialMediaScheduler = scheduler;
-    console.log('📱 Social Media Scheduler connected to Heartbeat');
   }
 
   /**
@@ -32,7 +31,6 @@ export class HeartbeatMonitor {
    */
   async start() {
     if (this.isRunning) {
-      console.log('💓 Heartbeat already running');
       return;
     }
 
@@ -66,7 +64,6 @@ export class HeartbeatMonitor {
     
     const checkIntervalMs = 15 * 60 * 1000; // 15 minutes
     
-    console.log('📱 Social Media Scheduler check started (every 15 minutes)');
     
     // Initial check
     this.checkSocialMediaPosts();
@@ -84,18 +81,15 @@ export class HeartbeatMonitor {
     if (!this.socialMediaScheduler) return;
     
     this.lastSocialMediaCheck = new Date().toISOString();
-    console.log(`\n📱 Social Media Check - ${new Date().toLocaleTimeString()}`);
     
     try {
       const result = await this.socialMediaScheduler.heartbeat();
       
       if (result.duePosts > 0) {
-        console.log(`📬 Executed ${result.executed}/${result.duePosts} scheduled posts`);
         if (result.failed > 0) {
-          console.log(`⚠️ ${result.failed} posts failed`);
+          console.warn(`[Heartbeat] ${result.failed} social media posts failed`);
         }
       } else {
-        console.log('📭 No posts due at this time');
       }
       
       // Update health checks
@@ -127,11 +121,9 @@ export class HeartbeatMonitor {
     if (this.socialMediaCheckInterval) {
       clearInterval(this.socialMediaCheckInterval);
       this.socialMediaCheckInterval = null;
-      console.log('📱 Social Media Scheduler stopped');
     }
     
     this.isRunning = false;
-    console.log('💔 Heartbeat stopped');
   }
 
   /**
@@ -139,27 +131,13 @@ export class HeartbeatMonitor {
    */
   async beat() {
     this.heartbeatCount++;
-    const now = new Date();
-    
-    console.log(`\n💓 Heartbeat #${this.heartbeatCount} - ${now.toLocaleTimeString()}`);
 
     if (this.ace.config.heartbeat.check_health) {
       await this.performHealthChecks();
     }
 
-    // Log uptime
-    const uptime = this.getUptime();
-    console.log(`⏱️  Uptime: ${uptime}`);
-    
-    // Log social media status if scheduler is connected
-    if (this.socialMediaScheduler) {
-      const status = this.socialMediaScheduler.getStatus();
-      console.log(`📱 Social Media: ${status.isRunning ? 'Active' : 'Paused'} | Today's posts: ${Object.values(status.todaysCounts).filter(v => typeof v === 'number').reduce((a, b) => a + b, 0)}`);
-    }
-
     // This is where we can trigger proactive monitoring
     if (this.ace.proactiveMonitor) {
-        console.log('💓 Heartbeat triggering proactive monitor...');
         this.ace.proactiveMonitor.runChecks();
     }
   }
@@ -218,12 +196,6 @@ export class HeartbeatMonitor {
       });
     }
 
-    // Print health check results
-    console.log('\n🏥 Health Check Results:');
-    this.healthChecks.forEach(check => {
-      const icon = check.status === 'healthy' ? '✅' : '❌';
-      console.log(`${icon} ${check.name}: ${check.details || check.error}`);
-    });
   }
 
   /**

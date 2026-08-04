@@ -47,9 +47,6 @@ export class AceMessageProcessor {
     await this.initializeGoogle();
     
     console.log('🧠 Ace Message Processor initialized');
-    console.log(`   Skills loaded: ${this.skills.length}`);
-    console.log(`   SOPs loaded: ${this.sops.length}`);
-    console.log(`   Google: ${this.google?.isConnected() ? '✅ Connected' : '❌ Not connected'}`);
     
     return true;
   }
@@ -62,10 +59,8 @@ export class AceMessageProcessor {
       this.google = new GoogleIntegration();
       const status = await this.google.initialize();
       if (status.status === 'connected') {
-        console.log(`📧 Google connected: ${status.email}`);
       }
     } catch (error) {
-      console.log('⚠️ Google integration not available:', error.message);
     }
   }
 
@@ -84,7 +79,6 @@ export class AceMessageProcessor {
         }
       }
     } catch (error) {
-      console.log('⚠️ Could not load skills:', error.message);
     }
   }
 
@@ -96,7 +90,6 @@ export class AceMessageProcessor {
       const sopsDir = path.join(PROJECT_ROOT, 'data', 'sops');
       await this.loadSOPsRecursive(sopsDir);
     } catch (error) {
-      console.log('⚠️ Could not load SOPs:', error.message);
     }
   }
 
@@ -132,27 +125,22 @@ export class AceMessageProcessor {
           baseUrl: providerConfig.base_url || 'http://localhost:11434/v1',
           model: providerConfig.model || 'llama3.2'
         };
-        console.log(`🤖 AI Provider: Ollama (${this.aiProvider.model})`);
       } else if (activeProvider === 'openai' && providerConfig?.enabled) {
         this.aiProvider = {
           type: 'openai',
           apiKey: providerConfig.api_key || process.env.OPENAI_API_KEY,
           model: providerConfig.model || 'gpt-4o'
         };
-        console.log(`🤖 AI Provider: OpenAI (${this.aiProvider.model})`);
       } else if (activeProvider === 'claude' && providerConfig?.enabled) {
         this.aiProvider = {
           type: 'claude',
           apiKey: providerConfig.api_key || process.env.ANTHROPIC_API_KEY,
           model: providerConfig.model || 'claude-3-5-sonnet-20241022'
         };
-        console.log(`🤖 AI Provider: Claude (${this.aiProvider.model})`);
       } else {
-        console.log('⚠️ No AI provider configured, using basic responses');
         this.aiProvider = { type: 'basic' };
       }
     } catch (error) {
-      console.log('⚠️ Could not initialize AI:', error.message);
       this.aiProvider = { type: 'basic' };
     }
   }
@@ -162,7 +150,6 @@ export class AceMessageProcessor {
    */
   setBrain(brain) {
     this.brain = brain;
-    console.log('🧠 AceMessageProcessor connected to AceBrain');
   }
 
   /**
@@ -546,31 +533,27 @@ NEVER:
    */
   async executeActions(chatId, actions) {
     for (const action of actions) {
-      console.log(`Executing action: ${action.type}`);
       
       try {
         switch (action.type) {
           case 'send_email':
             if (this.google?.isConnected()) {
               await this.google.sendEmail(action.data);
-              console.log(`📧 Email sent to ${action.data.to}`);
             }
             break;
           case 'create_meeting':
             if (this.google?.isConnected()) {
-              const meeting = await this.google.createEvent(action.data);
-              console.log(`📅 Meeting created: ${meeting.htmlLink}`);
+              await this.google.createEvent(action.data);
             }
             break;
           case 'schedule_meeting':
             if (this.google?.isConnected()) {
-              const result = await this.google.scheduleMeeting(
+              await this.google.scheduleMeeting(
                 action.data.title,
                 action.data.startTime,
                 action.data.duration,
                 action.data.attendees
               );
-              console.log(`📅 Meeting scheduled: ${result.meetLink || result.htmlLink}`);
             }
             break;
         }
@@ -859,7 +842,6 @@ NEVER:
     const filepath = path.join(strategiesDir, filename);
     
     await fs.writeFile(filepath, JSON.stringify(strategy, null, 2));
-    console.log(`📄 Strategy saved: ${filename}`);
     
     return filename;
   }
@@ -885,7 +867,6 @@ NEVER:
       data.leads.push(newLead);
       
       await fs.writeFile(pipelinePath, JSON.stringify(data, null, 2));
-      console.log(`👤 Lead added: ${lead.name}`);
       
       return newLead;
     } catch (error) {

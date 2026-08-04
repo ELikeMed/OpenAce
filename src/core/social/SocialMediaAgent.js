@@ -121,10 +121,8 @@ export class SocialMediaAgent {
     try {
       const data = await fs.readFile(this.configPath, 'utf-8');
       this.config = { ...this.config, ...JSON.parse(data) };
-      console.log('📱 Social Media Agent config loaded');
     } catch (error) {
       await this.saveConfig();
-      console.log('📱 Created new Social Media Agent config');
     }
 
     this.initialized = true;
@@ -141,12 +139,10 @@ export class SocialMediaAgent {
   async launchBrowser() {
     await this.initialize();
     await this.smartBrowser.launchBrowser();
-    console.log('🌐 Social Media Browser ready (real Chrome)');
   }
 
   async closeBrowser() {
     await this.smartBrowser.close();
-    console.log('🌐 Social Media Browser session ended');
   }
 
   // ═══════════════════════════════════════════════════════
@@ -207,7 +203,6 @@ export class SocialMediaAgent {
     const config = this.platforms[platform];
     if (!config) throw new Error(`Unknown platform: ${platform}`);
 
-    console.log(`🔐 Opening ${config.name} for login...`);
 
     try {
       await this.smartBrowser.launchBrowser();
@@ -417,7 +412,6 @@ export class SocialMediaAgent {
   }
 
   async smartPost(platform, content, options = {}) {
-    console.log(`🧠 Using smart posting for ${platform}...`);
     try {
       await this.smartBrowser.initialize();
       const result = await this.smartBrowser.postToSocialMedia(platform, content, options);
@@ -443,10 +437,8 @@ export class SocialMediaAgent {
     try {
       const result = await postMethod();
       if (result.success) return result;
-      console.log(`⚠️ Standard posting failed, trying smart method...`);
       return await this.smartPost(platform, content, options);
     } catch (error) {
-      console.log(`⚠️ Standard posting threw error: ${error.message}, trying smart method...`);
       return await this.smartPost(platform, content, options);
     }
   }
@@ -456,7 +448,6 @@ export class SocialMediaAgent {
     const platforms = options.platforms || ['linkedin', 'facebook', 'twitter'];
 
     for (const platform of platforms) {
-      console.log(`\n📱 Posting to ${platform}...`);
       results.platforms[platform] = await this.postWithFallback(platform, content, options);
       await this.delay(2000);
     }

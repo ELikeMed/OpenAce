@@ -58,7 +58,6 @@ const BusinessProfileWizard = ({ onComplete }) => {
 
   const handleSubmit = async () => {
     // In a real app, you'd send this to the backend
-    console.log('Submitting profile:', profile);
     alert('Business profile saved!');
     if (onComplete) {
       onComplete();

@@ -96,7 +96,6 @@ export class TaskQueue {
           task.status = STATUS.PENDING;
           task.retryCount = (task.retryCount || 0) + 1;
           task.lastError = 'Process crashed while running';
-          console.log(`[TaskQueue] Recovered crashed task: ${task.id} (${task.type})`);
         }
       }
     } catch {
@@ -154,7 +153,6 @@ export class TaskQueue {
     await this.persist();
     
     eventBus.emit('queue:task:enqueued', { taskId: task.id, type: task.type, priority: task.priority });
-    console.log(`[TaskQueue] Enqueued: ${task.id} (${task.type}, priority: ${task.priority})`);
     
     return task.id;
   }
@@ -221,7 +219,6 @@ export class TaskQueue {
       this.metrics.totalCompleted++;
       
       eventBus.emit('queue:task:completed', { taskId: task.id, type: task.type, result });
-      console.log(`[TaskQueue] ✅ Completed: ${task.id} (${task.type})`);
       
     } catch (error) {
       task.lastError = error.message;
@@ -239,7 +236,6 @@ export class TaskQueue {
         this.metrics.totalRetries++;
         
         eventBus.emit('queue:task:retry', { taskId: task.id, type: task.type, retryCount: task.retryCount, delay });
-        console.log(`[TaskQueue] ⚠️ Retry ${task.retryCount}/${task.maxRetries} for ${task.id} in ${delay}ms: ${error.message}`);
         
       } else {
         // Dead letter — exceeded max retries
@@ -248,7 +244,6 @@ export class TaskQueue {
         this.metrics.totalDead++;
         
         eventBus.emit('queue:task:dead', { taskId: task.id, type: task.type, error: error.message, retries: task.retryCount });
-        console.log(`[TaskQueue] ❌ Dead: ${task.id} (${task.type}) after ${task.retryCount} retries: ${error.message}`);
       }
       
       this.metrics.totalFailed++;
@@ -295,7 +290,6 @@ export class TaskQueue {
     };
     
     loop();
-    console.log(`[TaskQueue] Processing loop started (${intervalMs}ms interval)`);
     }
 
   /**
@@ -307,7 +301,6 @@ export class TaskQueue {
       clearTimeout(this.processingTimer);
       this.processingTimer = null;
     }
-    console.log('[TaskQueue] Processing loop stopped');
   }
 
   /**

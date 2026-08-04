@@ -47,7 +47,6 @@ export class ResearchAgent {
     if (this.permissionsManager) {
       this.permissionsManager.logAction(action, context, result);
     }
-    console.log(`[Research] ${action}:`, result.success ? '✓' : '✗', result.reason || '');
   }
 
   // ═══════════════════════════════════════════════════════
@@ -74,9 +73,7 @@ export class ResearchAgent {
     try {
       results = await this.searchDuckDuckGo(query, maxResults);
       searchBackend = 'duckduckgo';
-      console.log(`  🦆 DuckDuckGo: ${results.length} results`);
     } catch (e) {
-      console.log(`  ⚠️ DuckDuckGo failed: ${e.message}`);
     }
 
     const searchResult = {
@@ -277,18 +274,15 @@ export class ResearchAgent {
     const maxPages = options.maxPages || 3;
     const maxSearchResults = options.maxSearchResults || 10;
 
-    console.log(`\n🔍 Researching: "${topic}"\n`);
 
     // Clean the query — strip conversational parts for better search results
     const cleanQuery = this.cleanSearchQuery(topic);
-    console.log(`  📝 Search query: "${cleanQuery}"`);
 
     try {
       // Step 1: Search the web
       const search = await this.webSearch(cleanQuery, { maxResults: maxSearchResults });
 
       if (search.results.length === 0) {
-        console.log('  ⚠️ No search results found');
         return {
           topic,
           cleanQuery,
@@ -299,18 +293,15 @@ export class ResearchAgent {
         };
       }
 
-      console.log(`  ✅ Found ${search.results.length} search results`);
 
       // Step 2: Fetch top results for detailed content
       const scrapedPages = [];
       for (let i = 0; i < Math.min(maxPages, search.results.length); i++) {
         const result = search.results[i];
         try {
-          console.log(`  📄 Fetching: ${result.title?.substring(0, 50)}...`);
           const content = await this.fetchPage(result.url);
           scrapedPages.push({ ...result, content });
         } catch (error) {
-          console.log(`  ⚠️ Failed: ${result.url} - ${error.message}`);
           scrapedPages.push({ ...result, content: null });
         }
       }
@@ -390,7 +381,6 @@ export class ResearchAgent {
       else baseQuery += ` from $${minPrice}`;
     }
 
-    console.log(`\n🏠 Searching real estate: "${baseQuery}"\n`);
 
     const queries = [
       `site:zillow.com ${baseQuery}`,
@@ -402,7 +392,6 @@ export class ResearchAgent {
     const allResults = [];
     for (const query of queries) {
       try {
-        console.log(`  🔍 Searching: ${query.substring(0, 60)}...`);
         const search = await this.webSearch(query, { maxResults: 5 });
         for (const result of search.results) {
           if (!allResults.some(r => r.url === result.url)) {
@@ -410,7 +399,6 @@ export class ResearchAgent {
           }
         }
       } catch (error) {
-        console.log(`  ⚠️ Failed: ${error.message}`);
       }
     }
 
@@ -489,7 +477,6 @@ export class ResearchAgent {
   async searchLeads(industry, location, options = {}) {
     const query = `${industry} companies ${location} contact`;
 
-    console.log(`\n👥 Searching leads: "${query}"\n`);
 
     const search = await this.webSearch(query, { maxResults: 10 });
 
@@ -517,7 +504,6 @@ export class ResearchAgent {
   async saveResearch(research) {
     const permission = this.checkPermission('file_create', { path: this.dataDir });
     if (!permission.allowed) {
-      console.log('⚠️ Cannot save research: file permission denied');
       return null;
     }
 
@@ -525,7 +511,6 @@ export class ResearchAgent {
     const filepath = path.join(this.dataDir, filename);
 
     await fs.writeFile(filepath, JSON.stringify(research, null, 2));
-    console.log(`💾 Research saved to: ${filename}`);
 
     return filepath;
   }

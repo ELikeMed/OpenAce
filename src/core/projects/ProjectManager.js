@@ -62,7 +62,6 @@ class ProjectManager {
    * Scans the projects/ directory and returns an array of project metadata objects
    */
   async listProjects() {
-    console.log('[ProjectManager] Scanning projects directory...');
 
     try {
       await fs.mkdir(this.projectsDir, { recursive: true });
@@ -80,11 +79,9 @@ class ProjectManager {
         const meta = await this.getProject(entry.name);
         projects.push(meta);
       } catch (err) {
-        console.log(`[ProjectManager] Skipping "${entry.name}": ${err.message}`);
       }
     }
 
-    console.log(`[ProjectManager] Found ${projects.length} projects`);
     return projects;
   }
 
@@ -102,7 +99,6 @@ class ProjectManager {
       return JSON.parse(raw);
     }
 
-    console.log(`[ProjectManager] Auto-detecting metadata for "${projectName}"...`);
 
     const files = await fs.readdir(projectDir);
     let type = 'static-site';
@@ -182,7 +178,6 @@ class ProjectManager {
 
     // Write the project.json
     await fs.writeFile(metaPath, JSON.stringify(meta, null, 2), 'utf-8');
-    console.log(`[ProjectManager] Created project.json for "${projectName}" (type: ${type}, framework: ${framework})`);
 
     return meta;
   }
@@ -229,7 +224,6 @@ class ProjectManager {
     // Verify project exists
     await fs.stat(projectDir);
 
-    console.log(`[ProjectManager] Building file tree for "${projectName}"...`);
     return this._buildTree(projectDir, '');
   }
 
@@ -286,7 +280,6 @@ class ProjectManager {
    */
   async readFile(projectName, filePath) {
     const resolved = this.validateFilePath(projectName, filePath);
-    console.log(`[ProjectManager] Reading file: ${projectName}/${filePath}`);
 
     const stat = await fs.stat(resolved);
     if (!stat.isFile()) {
@@ -309,7 +302,6 @@ class ProjectManager {
    */
   async writeFile(projectName, filePath, content) {
     const resolved = this.validateFilePath(projectName, filePath);
-    console.log(`[ProjectManager] Writing file: ${projectName}/${filePath}`);
 
     // --- Version History: backup existing file before overwriting ---
     if (existsSync(resolved)) {
@@ -322,7 +314,6 @@ class ProjectManager {
         const baseName = path.basename(filePath);
         const backupName = `${baseName}_${timestamp}.bak`;
         await fs.writeFile(path.join(historyDir, backupName), currentContent, 'utf-8');
-        console.log(`[ProjectManager] Backed up ${filePath} -> .history/${path.join(path.dirname(filePath), backupName)}`);
 
         // Enforce max 10 versions per file
         const allEntries = await fs.readdir(historyDir);
@@ -333,7 +324,6 @@ class ProjectManager {
           const toDelete = matchingBackups.slice(0, matchingBackups.length - 10);
           for (const old of toDelete) {
             await fs.unlink(path.join(historyDir, old));
-            console.log(`[ProjectManager] Pruned old backup: ${old}`);
           }
         }
       } catch (backupErr) {
@@ -502,11 +492,9 @@ class ProjectManager {
       counter++;
     }
     if (finalName !== name) {
-      console.log(`[ProjectManager] Project "${name}" exists, using "${finalName}" instead`);
     }
     name = finalName;
 
-    console.log(`[ProjectManager] Creating project "${name}" (type: ${type})...`);
     await fs.mkdir(projectDir, { recursive: true });
 
     const now = new Date().toISOString();
@@ -588,7 +576,6 @@ class ProjectManager {
     // Write project.json
     await fs.writeFile(path.join(projectDir, 'project.json'), JSON.stringify(meta, null, 2), 'utf-8');
 
-    console.log(`[ProjectManager] Project "${name}" created successfully`);
     return meta;
   }
 
@@ -610,9 +597,7 @@ class ProjectManager {
       throw new Error(`"${projectName}" is not a directory`);
     }
 
-    console.log(`[ProjectManager] Deleting project "${projectName}"...`);
     await fs.rm(projectDir, { recursive: true, force: true });
-    console.log(`[ProjectManager] Project "${projectName}" deleted`);
 
     return { success: true, deleted: projectName };
   }
@@ -641,7 +626,6 @@ class ProjectManager {
       throw new Error(`"${projectName}" is not a directory`);
     }
 
-    console.log(`[ProjectManager] Creating ZIP archive for "${projectName}"...`);
 
     return new Promise((resolve, reject) => {
       const archive = archiver('zip', { zlib: { level: 9 } });
@@ -650,7 +634,6 @@ class ProjectManager {
       archive.on('data', (chunk) => chunks.push(chunk));
       archive.on('end', () => {
         const buffer = Buffer.concat(chunks);
-        console.log(`[ProjectManager] ZIP created for "${projectName}" (${buffer.length} bytes)`);
         resolve(buffer);
       });
       archive.on('error', (err) => reject(err));
@@ -713,7 +696,6 @@ class ProjectManager {
 
     await fs.mkdir(projectDir, { recursive: true });
 
-    console.log(`[ProjectManager] Importing ZIP → "${finalName}" (${entries.length} entries, prefix: "${commonPrefix || 'none'}")...`);
 
     for (const entry of entries) {
       let entryPath = entry.entryName;
@@ -733,7 +715,6 @@ class ProjectManager {
       // Security: ensure path doesn't escape project dir
       const resolved = path.resolve(targetPath);
       if (!resolved.startsWith(path.resolve(projectDir) + path.sep) && resolved !== path.resolve(projectDir)) {
-        console.log(`[ProjectManager] Skipping unsafe path: ${entryPath}`);
         continue;
       }
 
@@ -747,7 +728,6 @@ class ProjectManager {
 
     // Auto-detect metadata
     const meta = await this.ensureProjectJson(finalName);
-    console.log(`[ProjectManager] ZIP import complete: "${finalName}" (${meta.type})`);
     return { ...meta, name: finalName };
   }
 
@@ -781,11 +761,9 @@ class ProjectManager {
       counter++;
     }
 
-    console.log(`[ProjectManager] Importing folder "${resolvedSource}" → "${finalName}"...`);
     await this._copyDir(resolvedSource, projectDir);
 
     const meta = await this.ensureProjectJson(finalName);
-    console.log(`[ProjectManager] Folder import complete: "${finalName}" (${meta.type})`);
     return { ...meta, name: finalName };
   }
 
@@ -820,7 +798,6 @@ class ProjectManager {
       counter++;
     }
 
-    console.log(`[ProjectManager] Linking folder "${resolvedSource}" → "${finalName}"...`);
     await fs.symlink(resolvedSource, projectDir, 'dir');
 
     // Auto-detect project type and ensure project.json exists
@@ -831,7 +808,6 @@ class ProjectManager {
     const fullMeta = { ...meta, linked: true, linkedPath: resolvedSource };
     await fs.writeFile(metaPath, JSON.stringify(fullMeta, null, 2));
 
-    console.log(`[ProjectManager] Folder linked: "${finalName}" → "${resolvedSource}" (${meta.type})`);
     return { ...fullMeta, name: finalName };
   }
 
