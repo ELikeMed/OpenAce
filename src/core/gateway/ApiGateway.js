@@ -2071,6 +2071,11 @@ export class ApiGateway {
     // GET /api/onboarding-status — check if first-run setup is needed
     this.app.get('/api/onboarding-status', this.wrap(async (req, res) => {
       try {
+        // Cloud mode with env var API key — skip onboarding, AI is pre-configured
+        if (process.env.OPENACE_CLOUD === 'true' && (process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || process.env.KIMI_API_KEY)) {
+          return res.json({ success: true, data: { needsOnboarding: false } });
+        }
+
         // Method 1: Check in-memory business profiles (most reliable)
         if (this.ace?.businessProfile?.profiles?.length > 0) {
           const name = this.ace.businessProfile.profiles[0]?.name?.trim();

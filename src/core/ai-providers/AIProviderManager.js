@@ -37,11 +37,35 @@ export class AIProviderManager {
         const configData = await fs.readFile(this.configPath, 'utf-8');
         this.config = JSON.parse(configData);
       } catch (err) {
-        console.warn('⚠️ No config file found. OpenAce will start in setup mode.');
+        console.warn('⚠️ No config file found. Checking environment variables...');
         this.config = { ai_providers: { active_provider: '', providers: {} } };
-        this.needsConfiguration = true;
-        return this;
       }
+    }
+
+    // Environment variable fallback — if no config file, check env vars for API keys
+    // This lets cloud deployments work by setting GEMINI_API_KEY, OPENAI_API_KEY, etc.
+    const envProviders = this.config.ai_providers.providers;
+    if (process.env.GEMINI_API_KEY && !envProviders.gemini?.api_key) {
+      envProviders.gemini = { enabled: true, api_key: process.env.GEMINI_API_KEY, model: process.env.GEMINI_MODEL || 'gemini-2.5-flash' };
+      if (!this.config.ai_providers.active_provider) this.config.ai_providers.active_provider = 'gemini';
+    }
+    if (process.env.OPENAI_API_KEY && !envProviders.openai?.api_key) {
+      envProviders.openai = { enabled: true, api_key: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL || 'gpt-4.1-mini' };
+      if (!this.config.ai_providers.active_provider) this.config.ai_providers.active_provider = 'openai';
+    }
+    if (process.env.ANTHROPIC_API_KEY && !envProviders.claude?.api_key) {
+      envProviders.claude = { enabled: true, api_key: process.env.ANTHROPIC_API_KEY, model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-6' };
+      if (!this.config.ai_providers.active_provider) this.config.ai_providers.active_provider = 'claude';
+    }
+    if (process.env.KIMI_API_KEY && !envProviders.kimi?.api_key) {
+      envProviders.kimi = { enabled: true, api_key: process.env.KIMI_API_KEY, model: process.env.KIMI_MODEL || 'kimi-k3' };
+      if (!this.config.ai_providers.active_provider) this.config.ai_providers.active_provider = 'kimi';
+    }
+
+    // If still no provider after env vars, enter setup mode
+    if (!this.config.ai_providers.active_provider && !Object.values(envProviders).some(p => p?.enabled)) {
+      this.needsConfiguration = true;
+      return this;
     }
 
     // Initialize enabled providers (skip if API key is empty)
