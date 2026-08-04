@@ -1,94 +1,136 @@
 /**
- * Express auth middleware for cloud mode.
- * Validates Supabase JWT tokens and attaches user to req.
- * In local mode (no Supabase configured), all requests pass through.
+ * Express auth middleware — JWT + bcrypt.
+ * Zero external dependencies (no Supabase, no Firebase).
+ *
+ * In local mode (OPENACE_CLOUD !== 'true'), all requests pass through.
+ * In cloud mode, validates JWT tokens and attaches userId to req.
  */
 
-import { getSupabase, isCloudMode } from './SupabaseClient.js';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
+import { isCloudMode } from './SupabaseClient.js';
+import { getDatabase } from './CloudDatabase.js';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'openace-dev-secret-change-in-production';
+const JWT_EXPIRES = '30d';
 
 export function authMiddleware(req, res, next) {
-  // Local mode — no auth required
+  // Local mode — no auth
   if (!isCloudMode()) {
     req.userId = 'local';
     return next();
   }
 
-  // Cloud mode — validate JWT
+  // Public routes — no auth required
+  if (isPublicRoute(req.path)) {
+    req.userId = null;
+    return next();
+  }
+
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
-    // Allow unauthenticated access to public routes
-    if (isPublicRoute(req.path)) {
-      req.userId = null;
-      return next();
-    }
     return res.status(401).json({ success: false, error: 'Authentication required' });
   }
 
-  const token = authHeader.slice(7);
-  const supabase = getSupabase();
-  if (!supabase) {
-    return res.status(500).json({ success: false, error: 'Auth not configured' });
+  try {
+    const token = authHeader.slice(7);
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.userId = decoded.userId;
+    req.userEmail = decoded.email;
+    next();
+  } catch {
+    return res.status(401).json({ success: false, error: 'Invalid or expired token' });
   }
-
-  supabase.auth.getUser(token)
-    .then(({ data, error }) => {
-      if (error || !data.user) {
-        return res.status(401).json({ success: false, error: 'Invalid or expired token' });
-      }
-      req.userId = data.user.id;
-      req.userEmail = data.user.email;
-      next();
-    })
-    .catch(() => {
-      res.status(401).json({ success: false, error: 'Token validation failed' });
-    });
 }
 
-// Auth API routes — signup, login, logout, password reset
 export function authRoutes(app) {
-  const supabase = getSupabase();
-  if (!supabase) return;
-
+  // Signup
   app.post('/api/auth/signup', async (req, res) => {
-    const { email, password } = req.body;
+    const { email, password, name } = req.body;
     if (!email || !password) {
       return res.json({ success: false, error: 'Email and password required' });
     }
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) return res.json({ success: false, error: error.message });
-    res.json({ success: true, data: { user: data.user, session: data.session } });
+    if (password.length < 6) {
+      return res.json({ success: false, error: 'Password must be at least 6 characters' });
+    }
+
+    const db = getDatabase();
+
+    // Check if email already exists
+    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    if (existing) {
+      return res.json({ success: false, error: 'An account with this email already exists' });
+    }
+
+    const userId = crypto.randomUUID();
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    db.prepare('INSERT INTO users (id, email, password_hash, name) VALUES (?, ?, ?, ?)')
+      .run(userId, email.toLowerCase(), passwordHash, name || '');
+
+    // Create default credits (trial)
+    db.prepare('INSERT INTO credits (user_id, plan, total, trial_start) VALUES (?, ?, ?, datetime(\'now\'))')
+      .run(userId, 'trial', 0);
+
+    const token = jwt.sign({ userId, email: email.toLowerCase() }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+
+    res.json({
+      success: true,
+      data: {
+        user: { id: userId, email: email.toLowerCase(), name },
+        token,
+      },
+    });
   });
 
+  // Login
   app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
     if (!email || !password) {
       return res.json({ success: false, error: 'Email and password required' });
     }
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return res.json({ success: false, error: error.message });
-    res.json({ success: true, data: { user: data.user, session: data.session } });
+
+    const db = getDatabase();
+    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase());
+
+    if (!user) {
+      return res.json({ success: false, error: 'Invalid email or password' });
+    }
+
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) {
+      return res.json({ success: false, error: 'Invalid email or password' });
+    }
+
+    const token = jwt.sign(
+      { userId: user.id, email: user.email },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES }
+    );
+
+    res.json({
+      success: true,
+      data: {
+        user: { id: user.id, email: user.email, name: user.name },
+        token,
+      },
+    });
   });
 
-  app.post('/api/auth/logout', async (req, res) => {
-    await supabase.auth.signOut();
-    res.json({ success: true });
-  });
-
-  app.get('/api/auth/user', async (req, res) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
+  // Get current user
+  app.get('/api/auth/user', (req, res) => {
+    if (!req.userId) {
       return res.json({ success: false, error: 'Not authenticated' });
     }
-    const { data, error } = await supabase.auth.getUser(authHeader.slice(7));
-    if (error) return res.json({ success: false, error: error.message });
-    res.json({ success: true, data: { user: data.user } });
+    const db = getDatabase();
+    const user = db.prepare('SELECT id, email, name, created_at FROM users WHERE id = ?').get(req.userId);
+    if (!user) return res.json({ success: false, error: 'User not found' });
+    res.json({ success: true, data: { user } });
   });
 
-  app.post('/api/auth/reset-password', async (req, res) => {
-    const { email } = req.body;
-    if (!email) return res.json({ success: false, error: 'Email required' });
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
-    if (error) return res.json({ success: false, error: error.message });
+  // Logout (client-side — just discard the token)
+  app.post('/api/auth/logout', (req, res) => {
     res.json({ success: true });
   });
 }
