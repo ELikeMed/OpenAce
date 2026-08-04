@@ -13,6 +13,8 @@ import { darkTheme, lightTheme, BRAND } from './theme';
 import Chat from './Chat';
 import Sidebar from './components/Sidebar';
 import OnboardingWizard from './components/OnboardingWizard';
+import AuthPage from './components/AuthPage';
+import { isAuthenticated, getToken } from './auth';
 
 import SOPs from './components/SOPs';
 import Pipeline from './components/Pipeline';
@@ -27,7 +29,7 @@ import Books from './components/Books';
 import Integrations from './components/Integrations';
 import GuidedTour from './components/GuidedTour';
 
-const API = 'http://localhost:3333';
+const API = window.location.origin;
 
 // Tool IDs that open chat actions instead of separate pages
 const CHAT_TOOLS = new Set(['research', 'social']);
@@ -37,6 +39,8 @@ function App() {
   const [collapsed, setCollapsed] = useState(false);
   const [needsOnboarding, setNeedsOnboarding] = useState(null);
   const [themeMode, setThemeMode] = useState(() => localStorage.getItem('ace_theme') || 'dark');
+  const [isCloudMode, setIsCloudMode] = useState(false);
+  const [authed, setAuthed] = useState(false);
 
   // Conversations for sidebar
   const [conversations, setConversations] = useState([]);
@@ -85,6 +89,26 @@ function App() {
     window.addEventListener('ace:recording-start', onStart);
     window.addEventListener('ace:recording-stop', onStop);
     return () => { window.removeEventListener('ace:recording-start', onStart); window.removeEventListener('ace:recording-stop', onStop); };
+  }, []);
+
+  // Detect cloud mode and check auth
+  useEffect(() => {
+    fetch(`${API}/api/auth/user`, {
+      headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
+    })
+      .then(r => r.json())
+      .then(res => {
+        if (res.success && res.data?.user) {
+          setIsCloudMode(true);
+          setAuthed(true);
+        }
+      })
+      .catch(() => {
+        // If auth endpoint doesn't exist (404), we're in local mode
+        setAuthed(true); // local mode = always authed
+      });
+    // Also check if we have a stored token
+    if (isAuthenticated()) setAuthed(true);
   }, []);
 
   useEffect(() => {
@@ -270,6 +294,16 @@ function App() {
     : creditBalance?.total ?? null;
 
   // ═══ RENDER ═══
+
+  // Cloud mode — show login if not authenticated
+  if (isCloudMode && !authed) {
+    return (
+      <ThemeProvider theme={activeTheme}>
+        <CssBaseline />
+        <AuthPage onAuth={() => setAuthed(true)} />
+      </ThemeProvider>
+    );
+  }
 
   // Loading
   if (needsOnboarding === null) {

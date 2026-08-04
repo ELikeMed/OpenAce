@@ -37,8 +37,11 @@ import { isCloudMode } from '../src/core/cloud/SupabaseClient.js';
 app.use('/api/', authMiddleware);
 if (isCloudMode()) {
   authRoutes(app);
-  console.log('☁️  Cloud mode enabled — Supabase auth active');
+  console.log('☁️  Cloud mode enabled — SQLite + JWT auth active');
 }
+
+// Health check (used by Railway, Docker, etc.)
+app.get('/health', (req, res) => res.json({ status: 'ok', cloud: isCloudMode(), version: '1.8.0' }));
 
 app.use(express.static(path.join(baseDir, 'src/desktop/dashboard-ui/dist')));
 
