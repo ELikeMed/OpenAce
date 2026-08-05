@@ -1024,16 +1024,20 @@ export class UnifiedAgent {
     const lower = message.toLowerCase();
     const allTools = this.toolDeclarations[0].functionDeclarations;
 
-    // Free tier: only allow chat + research + leads + notes (no browser, email, social, code, etc.)
+    // Free tier: minimal tools only — no browser, desktop, email, social, code, SOPs
     if (this._freeTierMode) {
+      // If it's a short/simple message, skip tools entirely — just chat
+      if (lower.length < 100 && !(/\b(find|search|lead|research|competitor)\b/).test(lower)) {
+        this._freeTierMode = false;
+        return [{ functionDeclarations: [] }]; // No tools = pure conversation
+      }
       const freeTools = new Set([
-        'web_search', 'read_webpage',                              // Research
-        'find_leads', 'save_leads', 'get_pipeline', 'move_lead',  // Leads
-        'save_note', 'recall_notes', 'recall_research',            // Memory
-        'manage_contacts',                                          // Contacts
+        'web_search', 'read_webpage',
+        'find_leads', 'save_leads', 'get_pipeline',
+        'save_note', 'recall_notes',
       ]);
       const filtered = allTools.filter(t => freeTools.has(t.name));
-      this._freeTierMode = false; // Reset for next request
+      this._freeTierMode = false;
       return [{ functionDeclarations: filtered }];
     }
 
@@ -2217,8 +2221,33 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
     const thinking = ['🧠 UnifiedAgent processing...'];
     this._currentConversationId = channelContext.channelId || channelContext.conversationId || '';
 
-    // Build messages for Gemini
-    const systemPrompt = await this._buildSystemPrompt(message);
+    // Free tier visitors: use a simple conversational prompt (no tools, no deep thinking)
+    let systemPrompt;
+    if (this._freeTierMode && !this.businessContext) {
+      systemPrompt = `You are Ace — a business assistant. You're chatting with someone new.
+
+YOUR GOAL: Learn about their business so you can help them. Keep it conversational and easy.
+
+HOW TO RESPOND:
+- Keep answers SHORT (2-3 sentences max)
+- Ask ONE simple follow-up question at a time
+- Be warm, direct, and professional
+- NEVER use tools or suggest technical steps
+- NEVER mention AI models, APIs, or infrastructure
+
+QUESTIONS TO ASK (one at a time, naturally):
+1. "What's your business?" or "What do you do?"
+2. "Who are your ideal customers?"
+3. "What's your biggest challenge right now — finding leads, closing deals, or something else?"
+4. "What's your website? I can learn a lot from it."
+5. "What's the best email to reach you? I'll set up your account."
+
+If they give you a website URL, say you'll research it. If they ask you to find leads or research competitors, do it enthusiastically — that's what you're built for.
+
+NEVER say "As an AI" or mention Ollama, Gemini, Claude, or any model name. You are Ace, powered by Ace Clubs.`;
+    } else {
+      systemPrompt = await this._buildSystemPrompt(message);
+    }
     const messages = [];
 
     // Include recent conversation history for context (last 25 messages)
