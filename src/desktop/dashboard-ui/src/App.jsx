@@ -369,6 +369,7 @@ function App() {
           onOpenCredits={() => setCreditModalOpen(true)}
           themeMode={themeMode}
           onToggleTheme={handleToggleTheme}
+          isOwner={!isCloudMode || authed}
         />
 
         {/* Main Content */}
@@ -464,15 +465,17 @@ function App() {
           </Box>
         )}
 
-        {/* Guided Tour */}
-        <GuidedTour
-          active={tourActive}
-          onClose={() => setTourActive(false)}
-          onNavigate={(tabId) => setSelectedTool(tabId === 'chat' ? null : tabId)}
-          currentPage={selectedTool || 'chat'}
-          helpOpen={helpOpen}
-          onHelpToggle={() => setHelpOpen(!helpOpen)}
-        />
+        {/* Guided Tour + Help — owner only, hidden from visitors */}
+        {(!isCloudMode || authed) && (
+          <GuidedTour
+            active={tourActive}
+            onClose={() => setTourActive(false)}
+            onNavigate={(tabId) => setSelectedTool(tabId === 'chat' ? null : tabId)}
+            currentPage={selectedTool || 'chat'}
+            helpOpen={helpOpen}
+            onHelpToggle={() => setHelpOpen(!helpOpen)}
+          />
+        )}
 
         {/* ═══ MODALS ═══ */}
 

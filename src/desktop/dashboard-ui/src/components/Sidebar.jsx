@@ -56,6 +56,7 @@ export default function Sidebar({
   onOpenCredits,
   themeMode,
   onToggleTheme,
+  isOwner = false,
 }) {
   const [hoveredChat, setHoveredChat] = useState(null);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
@@ -165,8 +166,8 @@ export default function Sidebar({
         </Tooltip>
       </Box>
 
-      {/* Tools Section */}
-      <Box sx={{ py: 0.5 }}>
+      {/* Tools Section — only visible to authenticated owner */}
+      {isOwner && <Box sx={{ py: 0.5 }}>
         <List disablePadding>
           {toolItems.map((item) => (
             <ListItem key={item.id} disablePadding>
@@ -200,9 +201,9 @@ export default function Sidebar({
             </ListItem>
           ))}
         </List>
-      </Box>
+      </Box>}
 
-      <Divider sx={{ mx: collapsed ? 1 : 2, borderColor: BRAND.border }} />
+      {isOwner && <Divider sx={{ mx: collapsed ? 1 : 2, borderColor: BRAND.border }} />}
 
       {/* Chats Section */}
       <Box sx={{ flex: 1, overflow: 'auto', py: 1 }}>
@@ -254,8 +255,8 @@ export default function Sidebar({
 
       {/* Bottom Section */}
       <Box sx={{ p: collapsed ? 1 : 1.5, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-        {/* Credits */}
-        {credits !== null && credits !== undefined && (
+        {/* Credits — owner only */}
+        {isOwner && credits !== null && credits !== undefined && (
           <Tooltip title={collapsed ? `${credits} credits` : ''} placement="right">
             <Box
               onClick={onOpenCredits}
@@ -301,8 +302,8 @@ export default function Sidebar({
           </Box>
         </Tooltip>
 
-        {/* Settings */}
-        <Tooltip title={collapsed ? 'Settings' : ''} placement="right">
+        {/* Settings — owner only */}
+        {isOwner && <Tooltip title={collapsed ? 'Settings' : ''} placement="right">
           <Box
             onClick={onOpenSettings}
             sx={{
@@ -320,7 +321,7 @@ export default function Sidebar({
               </Typography>
             )}
           </Box>
-        </Tooltip>
+        </Tooltip>}
 
         {/* Collapse toggle (when collapsed) */}
         {collapsed && (
