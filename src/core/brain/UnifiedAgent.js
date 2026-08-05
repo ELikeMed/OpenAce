@@ -2221,10 +2221,10 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
     const thinking = ['🧠 UnifiedAgent processing...'];
     this._currentConversationId = channelContext.channelId || channelContext.conversationId || '';
 
-    // Free tier visitors: use a simple conversational prompt (no tools, no deep thinking)
+    // Free tier visitors: simple conversational prompt, NO business context, NO tools
     let systemPrompt;
-    if (this._freeTierMode && !this.businessContext) {
-      systemPrompt = `You are Ace — a business assistant. You're chatting with someone new.
+    if (this._freeTierMode) {
+      systemPrompt = `You are Ace — a business assistant. You're chatting with someone new. You do NOT know anything about them yet.
 
 YOUR GOAL: Learn about their business so you can help them. Keep it conversational and easy.
 
@@ -2250,10 +2250,10 @@ NEVER say "As an AI" or mention Ollama, Gemini, Claude, or any model name. You a
     }
     const messages = [];
 
-    // Include recent conversation history for context (last 25 messages)
-    // Keeps enough context so Ace remembers email drafts, contact info, and prior decisions
-    // Gemini requires the first message to be role 'user' — skip leading assistant messages
-    const recentHistory = conversationHistory.slice(-25);
+    // Include recent conversation history for context
+    // Free tier: only use THIS conversation's history (max 10), not the owner's old chats
+    const historyLimit = this._freeTierMode ? 10 : 25;
+    const recentHistory = conversationHistory.slice(-historyLimit);
     let foundFirstUser = false;
     for (const msg of recentHistory) {
       if (msg.role === 'system') continue;
