@@ -3571,9 +3571,8 @@ function Chat({ hideSidebar = false }) {
           >
             {messages.length === 0 && (
               <WelcomeScreen
-                businessName={bizProfile?.name}
-                industry={bizProfile?.industry}
-                onSuggestionClick={(prompt) => setInputText(prompt)}
+                onSend={(text) => { setInputText(text); setTimeout(() => { const btn = document.querySelector('[data-send-button]'); if (btn) btn.click(); }, 100); }}
+                onAttach={(files) => handleFileSelect(files)}
               />
             )}
             {messages.map((msg, index) => (
@@ -3635,12 +3634,12 @@ function Chat({ hideSidebar = false }) {
             />
           </Box>
 
-          {/* Input Area */}
+          {/* Input Area — hidden when welcome screen is showing (it has its own input) */}
           <Box sx={{
             p: { xs: 1, md: 2 },
             borderTop: `1px solid ${BRAND.border}`,
             background: alpha(BRAND.bgCard, 0.8),
-            backdropFilter: 'blur(20px)',
+            display: messages.length === 0 ? 'none' : 'block',
           }}>
             {/* Image preview strip */}
             {attachedImages.length > 0 && (
