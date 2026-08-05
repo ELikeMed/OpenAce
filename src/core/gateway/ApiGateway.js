@@ -26,6 +26,7 @@ import { eventBus, EVENTS } from '../events/EventBus.js';
 import { logCapture } from '../diagnostics/LogCapture.js';
 import { SOPParser } from '../automation/SOPParser.js';
 import FormRenderer from '../forms/FormRenderer.js';
+import { UsageTracker } from '../cloud/UsageTracker.js';
 
 export class ApiGateway {
   constructor(app, options = {}) {
@@ -34,12 +35,15 @@ export class ApiGateway {
     this.activityLogger = options.activityLogger || null;
     this.baseDir = options.baseDir || process.cwd();
     this.startTime = options.startTime || Date.now();
-    
+
     // SSE clients for real-time push
     this.sseClients = new Set();
-    
+
     // Social media system (lazy loaded)
     this.socialMediaSystem = null;
+
+    // Usage tracking for freemium (50 free messages for anonymous users)
+    this._usageTracker = new UsageTracker();
   }
 
   /**
@@ -632,6 +636,17 @@ export class ApiGateway {
 
     this.app.post('/api/chat-stream', this.wrap(async (req, res) => {
       if (!this.ace) return res.json({ error: 'OpenAce not initialized' });
+
+      // Usage tracking — enforce free message limit for anonymous users
+      if (this._usageTracker) {
+        const usage = this._usageTracker.checkAndTrack(req);
+        if (!usage.allowed) {
+          res.setHeader('Content-Type', 'text/event-stream');
+          res.write(`data: ${JSON.stringify({ type: 'message', content: usage.message })}\n\n`);
+          res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+          return res.end();
+        }
+      }
 
       const { message: rawMessage, mode, project, conversationId, images: rawImages } = req.body;
       const images = rawImages || [];
@@ -2067,6 +2082,12 @@ export class ApiGateway {
     const profilePath = path.join(this.baseDir, 'data', 'business', 'profile.json');
     const profilesPath = path.join(this.baseDir, 'data', 'business', 'profiles.json');
     const configPath = path.join(this.baseDir, 'config', 'openace.config.json');
+
+    // GET /api/usage — how many free messages remain
+    this.app.get('/api/usage', this.wrap(async (req, res) => {
+      const info = this._usageTracker.getUsageInfo(req);
+      res.json({ success: true, data: info });
+    }));
 
     // GET /api/onboarding-status — check if first-run setup is needed
     this.app.get('/api/onboarding-status', this.wrap(async (req, res) => {

@@ -5,7 +5,7 @@
  * Every tool call = 1 credit. Chat is always free.
  *
  * Plans:
- *   - trial:   45-day free trial, full access, no credit card
+ *   - trial:   10-day free trial, full access, no credit card
  *   - credits: $15/mo subscription (1,500 credits/month) + purchasable top-ups
  *   - byo_key: $15/mo platform fee, no credit limits (user provides own AI key)
  */
@@ -14,7 +14,7 @@ import fs from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
 
-const TRIAL_DAYS = 45;
+const TRIAL_DAYS = 10;
 const GRACE_DAYS = 3;
 const MONTHLY_CREDITS = 1500;
 const MAX_USAGE_LOG = 500;
