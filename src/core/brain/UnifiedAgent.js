@@ -1024,6 +1024,19 @@ export class UnifiedAgent {
     const lower = message.toLowerCase();
     const allTools = this.toolDeclarations[0].functionDeclarations;
 
+    // Free tier: only allow chat + research + leads + notes (no browser, email, social, code, etc.)
+    if (this._freeTierMode) {
+      const freeTools = new Set([
+        'web_search', 'read_webpage',                              // Research
+        'find_leads', 'save_leads', 'get_pipeline', 'move_lead',  // Leads
+        'save_note', 'recall_notes', 'recall_research',            // Memory
+        'manage_contacts',                                          // Contacts
+      ]);
+      const filtered = allTools.filter(t => freeTools.has(t.name));
+      this._freeTierMode = false; // Reset for next request
+      return [{ functionDeclarations: filtered }];
+    }
+
     // Tool group definitions: name → array of tool names
     const groups = {
       memory:    ['save_note', 'recall_notes', 'recall_research', 'get_site_memory'],
@@ -2459,8 +2472,9 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
       }
 
       // ═══ Tool calling loop (phase 1) ═══
-      const MAX_ITERATIONS = 25;
-      const MAX_PHASES = 3; // Auto-continuation phases (code-enforced follow-through)
+      // Free tier: 3 iterations max, no auto-continuation. Paid: 25 iterations, 3 phases.
+      const MAX_ITERATIONS = this._freeTierMode ? 3 : 25;
+      const MAX_PHASES = this._freeTierMode ? 1 : 3;
       const toolsCalled = []; // Track which tools were called (shared across all phases)
       const failedToolCounts = new Map(); // Track failures by category for struggle detection
 

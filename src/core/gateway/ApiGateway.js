@@ -651,6 +651,12 @@ export class ApiGateway {
       const { message: rawMessage, mode, project, conversationId, images: rawImages } = req.body;
       const images = rawImages || [];
 
+      // Free tier: limit tools and iterations for anonymous users
+      const isFreeTier = !req.userId || req.userId === 'local' || req.userId === null;
+      if (isFreeTier && this.ace?.brain?.agent) {
+        this.ace.brain.agent._freeTierMode = true;
+      }
+
       // If a project name is provided, prepend Studio context prefix so ActionEngine picks it up
       let message = rawMessage;
       if (project && !rawMessage.startsWith('[Studio Project:')) {

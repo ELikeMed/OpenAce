@@ -3698,9 +3698,9 @@ function Chat({ hideSidebar = false }) {
               </Box>
             )}
 
-            {/* Action shortcuts */}
+            {/* Action shortcuts — hidden on mobile for clean UX */}
             {!activeAction && (
-              <Box sx={{ display: 'flex', gap: 0.75, mb: 1, flexWrap: { xs: 'nowrap', md: 'wrap' }, overflowX: { xs: 'auto', md: 'visible' }, pb: { xs: 0.5, md: 0 }, '&::-webkit-scrollbar': { height: 0 } }}>
+              <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 0.75, mb: 1, flexWrap: 'wrap' }}>
                 {actionChips.map((chip) => (
                   <Chip
                     key={chip.id}
@@ -3799,7 +3799,8 @@ function Chat({ hideSidebar = false }) {
                   },
                 }}
               />
-              {/* Mic / Voice-to-text button */}
+              {/* Mic / Voice-to-text button — hidden on mobile */}
+              <Box sx={{ display: { xs: 'none', md: 'block' } }}>
               <Tooltip title={
                 !speechSupported
                   ? 'Voice input not supported in this browser'
@@ -3904,6 +3905,7 @@ function Chat({ hideSidebar = false }) {
                   {isTraining ? <StopCircleIcon sx={{ fontSize: 24 }} /> : <SchoolIcon sx={{ fontSize: 22 }} />}
                 </IconButton>
               </Tooltip>
+              </Box>
               {/* Send / Stop button */}
               {isThinking ? (
                 <Tooltip title="Stop Ace" placement="top">
