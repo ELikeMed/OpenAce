@@ -369,7 +369,7 @@ function App() {
         {/* Main Content */}
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', overflow: 'hidden' }}>
           {/* Update Banner */}
-          {updateInfo?.updateAvailable && !updateDismissed && updateInfo.latestVersion !== updateInfo.dismissedVersion && (
+          {!isCloudMode && updateInfo?.updateAvailable && !updateDismissed && updateInfo.latestVersion !== updateInfo.dismissedVersion && (
             <Box sx={{
               px: 3, py: 1,
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
