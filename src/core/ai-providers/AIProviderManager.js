@@ -46,7 +46,7 @@ export class AIProviderManager {
     // This lets cloud deployments set keys without touching the config
     const envProviders = this.config.ai_providers.providers;
     if (process.env.GEMINI_API_KEY) {
-      envProviders.gemini = { enabled: true, api_key: process.env.GEMINI_API_KEY, model: process.env.GEMINI_MODEL || 'gemini-2.5-flash' };
+      envProviders.gemini = { enabled: true, api_key: process.env.GEMINI_API_KEY, model: process.env.GEMINI_MODEL || 'gemini-2.0-flash' };
       if (!this.config.ai_providers.active_provider) this.config.ai_providers.active_provider = 'gemini';
     }
     if (process.env.OPENAI_API_KEY) {

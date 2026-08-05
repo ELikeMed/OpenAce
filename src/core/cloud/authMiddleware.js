@@ -156,6 +156,7 @@ const PUBLIC_ROUTES = [
   '/api/scheduled',
   '/api/desktop',
   '/api/feedback',
+  '/api/events',
   '/forms/',
   '/health',
 ];
