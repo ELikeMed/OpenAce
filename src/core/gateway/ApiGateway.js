@@ -27,6 +27,7 @@ import { logCapture } from '../diagnostics/LogCapture.js';
 import { SOPParser } from '../automation/SOPParser.js';
 import FormRenderer from '../forms/FormRenderer.js';
 import { UsageTracker } from '../cloud/UsageTracker.js';
+import { ConversationCapture } from '../cloud/ConversationCapture.js';
 
 export class ApiGateway {
   constructor(app, options = {}) {
@@ -44,6 +45,9 @@ export class ApiGateway {
 
     // Usage tracking for freemium (50 free messages for anonymous users)
     this._usageTracker = new UsageTracker();
+
+    // Capture conversations for LLM training improvement
+    this._conversationCapture = new ConversationCapture();
   }
 
   /**
@@ -707,6 +711,12 @@ export class ApiGateway {
         
         const thinkingSteps = response?.thinking || progressMessages;
         res.write(`data: ${JSON.stringify({ type: 'response', content: response, thinking: thinkingSteps })}\n\n`);
+
+        // Capture conversation for LLM training improvement
+        const responseText = response?.message || response?.data?.summary || '';
+        if (rawMessage && responseText) {
+          this._conversationCapture.capture(rawMessage, responseText);
+        }
         res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
 
       } catch (error) {
