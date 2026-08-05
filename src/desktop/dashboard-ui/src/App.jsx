@@ -91,24 +91,25 @@ function App() {
     return () => { window.removeEventListener('ace:recording-start', onStart); window.removeEventListener('ace:recording-stop', onStop); };
   }, []);
 
-  // Detect cloud mode and check auth
+  // Detect cloud mode from server health endpoint
   useEffect(() => {
-    fetch(`${API}/api/auth/user`, {
-      headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
-    })
+    fetch(`${API}/health`)
       .then(r => r.json())
       .then(res => {
-        if (res.success && res.data?.user) {
+        if (res.cloud) {
           setIsCloudMode(true);
+          // Check if user is authenticated
+          if (isAuthenticated()) {
+            setAuthed(true);
+          }
+        } else {
+          // Local mode — always authed, always owner
           setAuthed(true);
         }
       })
       .catch(() => {
-        // If auth endpoint doesn't exist (404), we're in local mode
-        setAuthed(true); // local mode = always authed
+        setAuthed(true); // Can't reach server, assume local
       });
-    // Also check if we have a stored token
-    if (isAuthenticated()) setAuthed(true);
   }, []);
 
   useEffect(() => {
@@ -295,15 +296,8 @@ function App() {
 
   // ═══ RENDER ═══
 
-  // Cloud mode — show login if not authenticated
-  if (isCloudMode && !authed) {
-    return (
-      <ThemeProvider theme={activeTheme}>
-        <CssBaseline />
-        <AuthPage onAuth={() => setAuthed(true)} />
-      </ThemeProvider>
-    );
-  }
+  // Auth page only shows when user explicitly clicks "Sign Up" (not on first visit)
+  // Everyone gets straight to chat — signup comes after 50 free messages
 
   // Loading
   if (needsOnboarding === null) {
@@ -465,15 +459,15 @@ function App() {
           </Box>
         )}
 
-        {/* Guided Tour + Help — owner only, hidden from visitors */}
-        {(!isCloudMode || authed) && (
+        {/* Guided Tour — only in local mode for the owner */}
+        {!isCloudMode && (
           <GuidedTour
             active={tourActive}
             onClose={() => setTourActive(false)}
             onNavigate={(tabId) => setSelectedTool(tabId === 'chat' ? null : tabId)}
             currentPage={selectedTool || 'chat'}
-            helpOpen={helpOpen}
-            onHelpToggle={() => setHelpOpen(!helpOpen)}
+            helpOpen={false}
+            onHelpToggle={() => {}}
           />
         )}
 

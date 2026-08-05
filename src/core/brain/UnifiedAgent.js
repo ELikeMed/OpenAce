@@ -2643,30 +2643,22 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
     } catch (error) {
       console.error('[UnifiedAgent] Process error:', error.message);
 
-      // Provide actionable error messages instead of raw SDK errors
+      // User-friendly error messages — never expose provider names or raw errors
       let errorMsg;
       const errStr = error.message || '';
-      const provider = this.aiManager?.activeProvider || 'AI';
 
       if (errStr.includes('fetch failed') || errStr.includes('ENOTFOUND') || errStr.includes('ECONNREFUSED')) {
-        errorMsg = `I'm having trouble connecting to the AI service (${provider}). Please check:\n\n` +
-          `1. **Internet connection** — make sure you're online\n` +
-          `2. **API key** — verify your ${provider} API key is correct in Settings\n` +
-          `3. **Firewall/VPN** — your network may be blocking the API\n\n` +
-          `Try restarting Ace after checking these.`;
+        errorMsg = `I'm having trouble connecting right now. Give me a moment and try again.`;
       } else if (errStr.includes('API_KEY') || errStr.includes('403') || errStr.includes('PERMISSION_DENIED') || errStr.includes('authentication_error') || errStr.includes('invalid_api_key')) {
-        errorMsg = `Your ${provider} API key appears invalid or lacks permissions. Please check your API key in Settings.`;
+        errorMsg = `I'm experiencing a connection issue. The team has been notified — try again in a moment.`;
       } else if (errStr.includes('429') || errStr.includes('RESOURCE_EXHAUSTED') || errStr.includes('rate_limit')) {
-        errorMsg = `I've hit the ${provider} API rate limit. Please wait a moment and try again, or check your plan limits.`;
+        errorMsg = `I'm a little busy right now. Give me about 30 seconds and try again.`;
       } else if (errStr.includes('quota') || errStr.includes('insufficient_quota')) {
-        errorMsg = `Your ${provider} API quota has been exhausted. Check your usage and consider upgrading your plan.`;
+        errorMsg = `I've reached my capacity for the moment. Please try again shortly.`;
       } else if (errStr.includes('No AI provider configured')) {
-        errorMsg = `No AI provider is configured. Please add a Gemini, Claude, or OpenAI API key in Settings to get started.`;
+        errorMsg = `I'm still setting up. Please check back in a moment.`;
       } else {
-        const soul = this._soulConfig;
-        errorMsg = soul
-          ? `Something went wrong on my end — ${errStr}. Let me try a different approach. Can you tell me what you're trying to do?`
-          : `Error: ${errStr}. Please try again.`;
+        errorMsg = `Something went wrong on my end. Let me try a different approach — can you tell me what you're trying to do?`;
       }
 
       return {
