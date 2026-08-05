@@ -1,48 +1,46 @@
 import { createTheme, alpha } from '@mui/material';
 
-// ═══ Shared brand colors (same in both modes) ═══
 const CORE = {
-  primary: '#6C5CE7',
-  primaryLight: '#A29BFE',
-  primaryDark: '#5A4BD1',
-  secondary: '#00CEC9',
-  secondaryLight: '#55EFC4',
-  accent: '#FD79A8',
-  warning: '#FDCB6E',
-  error: '#FF7675',
-  success: '#00B894',
-  info: '#74B9FF',
+  primary: '#8B7EC8',
+  primaryLight: '#A99DE0',
+  primaryDark: '#6B5FA8',
+  secondary: '#5CB8B2',
+  secondaryLight: '#7DD4CE',
+  accent: '#C87DA8',
+  warning: '#D4B76A',
+  error: '#C87070',
+  success: '#5CB882',
+  info: '#6BAAD4',
 };
 
-// ═══ Mode-specific surface colors ═══
 const DARK = {
   ...CORE,
-  bg: '#0B0B14',
-  bgSidebar: '#0F0F1A',
-  bgCard: '#161625',
-  bgSurface: '#1A1A2E',
-  bgElevated: '#1E2040',
-  bgHover: '#252545',
-  border: '#2A2A4A',
-  borderLight: '#35356A',
-  textPrimary: '#F2F2FA',
-  textSecondary: '#B0B0D0',
-  textMuted: '#7878A8',
+  bg: '#0C0B10',
+  bgSidebar: '#100F16',
+  bgCard: '#16151E',
+  bgSurface: '#1A1924',
+  bgElevated: '#201F2C',
+  bgHover: '#262535',
+  border: '#2A2840',
+  borderLight: '#363452',
+  textPrimary: '#E8E6F0',
+  textSecondary: '#B0ACCA',
+  textMuted: '#726E90',
 };
 
 const LIGHT = {
   ...CORE,
-  bg: '#F5F5FA',
+  bg: '#F8F7FC',
   bgSidebar: '#FFFFFF',
   bgCard: '#FFFFFF',
-  bgSurface: '#F0F0F8',
+  bgSurface: '#F2F1F8',
   bgElevated: '#FFFFFF',
-  bgHover: '#EDEDF5',
-  border: '#E0E0EE',
-  borderLight: '#D0D0E0',
-  textPrimary: '#1A1A2E',
-  textSecondary: '#5A5A7A',
-  textMuted: '#9090A8',
+  bgHover: '#EEEDF5',
+  border: '#E0DEF0',
+  borderLight: '#D4D2E4',
+  textPrimary: '#1A1928',
+  textSecondary: '#5A587A',
+  textMuted: '#908EA8',
 };
 
 function buildTheme(mode) {
@@ -75,9 +73,6 @@ function buildTheme(mode) {
         styleOverrides: {
           body: {
             backgroundColor: B.bg,
-            background: mode === 'dark'
-              ? `linear-gradient(160deg, ${B.bg} 0%, #08081A 50%, #0A0A20 100%)`
-              : B.bg,
             scrollbarWidth: 'thin',
             scrollbarColor: `${B.border} transparent`,
             '&::-webkit-scrollbar': { width: 6 },
@@ -97,13 +92,10 @@ function buildTheme(mode) {
         styleOverrides: {
           root: { textTransform: 'none', fontWeight: 600, borderRadius: 10, padding: '8px 20px' },
           contained: {
-            background: `linear-gradient(135deg, ${B.primary} 0%, ${B.primaryLight} 100%)`,
-            boxShadow: `0 4px 15px ${alpha(B.primary, 0.4)}`,
+            background: B.primary,
             color: '#fff',
-            '&:hover': {
-              background: `linear-gradient(135deg, ${B.primaryDark} 0%, ${B.primary} 100%)`,
-              boxShadow: `0 6px 20px ${alpha(B.primary, 0.5)}`,
-            },
+            boxShadow: 'none',
+            '&:hover': { background: B.primaryDark, boxShadow: 'none' },
           },
         },
       },
@@ -113,7 +105,7 @@ function buildTheme(mode) {
             '& .MuiOutlinedInput-root': {
               borderRadius: 10,
               '& fieldset': { borderColor: B.border },
-              '&:hover fieldset': { borderColor: B.primaryLight },
+              '&:hover fieldset': { borderColor: B.borderLight },
               '&.Mui-focused fieldset': { borderColor: B.primary },
             },
           },
@@ -124,30 +116,26 @@ function buildTheme(mode) {
           root: {
             borderRadius: 8, margin: '1px 8px', padding: '8px 12px',
             '&.Mui-selected': {
-              background: alpha(B.primary, 0.15),
-              '&:hover': { background: alpha(B.primary, 0.22) },
+              background: alpha(B.primary, 0.12),
+              '&:hover': { background: alpha(B.primary, 0.18) },
             },
-            '&:hover': { background: alpha(B.primary, 0.08) },
+            '&:hover': { background: alpha(B.primary, 0.06) },
           },
         },
       },
       MuiChip: { styleOverrides: { root: { fontWeight: 500 } } },
       MuiLinearProgress: {
         styleOverrides: {
-          root: { borderRadius: 5, height: 6, backgroundColor: alpha(B.primary, 0.15) },
-          bar: { borderRadius: 5, background: `linear-gradient(90deg, ${B.primary}, ${B.secondary})` },
+          root: { borderRadius: 5, height: 6, backgroundColor: alpha(B.primary, 0.12) },
+          bar: { borderRadius: 5, background: B.primary },
         },
       },
     },
   });
 }
 
-// Pre-built themes
 const darkTheme = buildTheme('dark');
 const lightTheme = buildTheme('light');
-
-// BRAND export uses dark palette by default (components that import BRAND directly)
-// For theme-aware colors, components should use theme.palette instead
 const BRAND = DARK;
 
 export { BRAND, DARK, LIGHT, darkTheme, lightTheme, buildTheme };

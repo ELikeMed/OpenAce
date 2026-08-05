@@ -114,16 +114,14 @@ export default function Sidebar({
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: collapsed ? 0 : 0.5, justifyContent: collapsed ? 'center' : 'flex-start' }}>
           <Avatar sx={{
             width: 28, height: 28,
-            background: `linear-gradient(135deg, ${BRAND.primary} 0%, ${BRAND.secondary} 100%)`,
-            boxShadow: `0 2px 10px ${alpha(BRAND.primary, 0.4)}`,
+            background: BRAND.primary,
           }}>
             <AceSpadeIcon sx={{ fontSize: 15 }} />
           </Avatar>
           {!collapsed && (
             <Typography sx={{
               fontSize: '0.95rem', fontWeight: 700, letterSpacing: '-0.01em',
-              background: `linear-gradient(135deg, ${BRAND.textPrimary} 0%, ${BRAND.primaryLight} 100%)`,
-              backgroundClip: 'text', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+              color: BRAND.textPrimary,
             }}>
               OpenAce
             </Typography>
