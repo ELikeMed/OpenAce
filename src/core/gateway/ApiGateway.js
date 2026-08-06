@@ -663,10 +663,17 @@ export class ApiGateway {
 
       // Force real search for lead/research requests — don't let the model hallucinate
       const lowerMsg = (rawMessage || '').toLowerCase();
-      const wantsLeads = /\b(find|search|get|show|pull|look)\b.*\b(lead|client|customer|prospect|compan)/i.test(rawMessage);
-      const wantsResearch = /\b(research|look up|check out|analyze)\b.*\b(competitor|company|website|market)/i.test(rawMessage);
+      const wantsLeads = /\b(find|finding|search|get|show|pull|look|need|want|give)\b.{0,30}\b(lead|leads|client|clients|customer|customers|prospect|prospects|compan|businesses)/i.test(rawMessage)
+        || /\b(property manager|plumber|dentist|contractor|realtor|agent|lawyer|attorney|restaurant|salon|gym|doctor|accountant|landscap|roofing|painter|electrician|hvac|cleaning)/i.test(rawMessage)
+        || /\b(businesses|companies|firms|agencies|offices|practices|shops|stores)\s+(in|near|around)\s+/i.test(rawMessage)
+        || /\b(in|near|around)\s+\w+.{0,20}(lead|client|business|compan)/i.test(rawMessage);
+      const wantsResearch = /\b(research|look up|check out|analyze|look into|investigate)\b/i.test(rawMessage) && /\b(competitor|company|website|market|industry|business)/i.test(rawMessage);
 
-      if ((wantsLeads || wantsResearch) && this.ace?.brain?.unifiedAgent) {
+      // Also detect "[industry] in [city]" pattern directly (e.g., "property managers in Boca Raton")
+      const industryInCity = rawMessage?.match(/^(.{3,40})\s+in\s+([A-Z][a-zA-Z\s]{2,30})$/);
+      const isLeadSearch = wantsLeads || (industryInCity && !rawMessage.includes('?'));
+
+      if ((isLeadSearch || wantsResearch) && this.ace?.brain?.unifiedAgent) {
         const agent = this.ace.brain.unifiedAgent;
 
         res.setHeader('Content-Type', 'text/event-stream');
@@ -674,10 +681,10 @@ export class ApiGateway {
         res.setHeader('Connection', 'keep-alive');
 
         try {
-          if (wantsLeads) {
+          if (isLeadSearch) {
             // Extract industry and location from the message
-            // Patterns: "leads in construction in Dallas", "plumbers in Miami", "find me dentists in Austin"
-            const cleaned = rawMessage.replace(/^(find|search|get|show|pull|look for|can you find|help me find)\s+(me\s+)?/i, '').trim();
+            let cleaned = rawMessage.replace(/^(find|finding|search|get|show|pull|look for|can you find|help me find|i need|i want|give me|let's find|okay find|yes find)\s+(me\s+)?/i, '').trim();
+            cleaned = cleaned.replace(/^(some|more|new|a few|a list of|a bunch of)\s+/i, '').trim();
 
             // Try to split into industry + location (look for "in" as separator)
             const inMatch = cleaned.match(/^(.+?)\s+in\s+(.+)$/i);
@@ -687,6 +694,12 @@ export class ApiGateway {
             // Clean up common prefixes
             industry = industry.replace(/^(leads?|clients?|customers?|prospects?|companies?|businesses?)\s+(for|in|of)?\s*/i, '').trim();
             if (!industry) industry = cleaned;
+
+            // If we still don't have a location, try to find a city/state in the raw message
+            if (!location) {
+              const cityMatch = rawMessage.match(/\b(in|near|around)\s+([A-Z][a-zA-Z\s]{2,30})/);
+              if (cityMatch) location = cityMatch[2].trim();
+            }
 
             res.write(`data: ${JSON.stringify({ type: 'thinking', content: `Finding ${industry} businesses${location ? ' in ' + location : ''}...` })}\n\n`);
 
