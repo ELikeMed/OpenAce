@@ -16,10 +16,23 @@ export class LeadFinder {
     this.config = options.config || {};
     this.onProgress = options.onProgress || ((msg) => console.log(`[LeadFinder] ${msg}`));
 
-    // Extract API keys from config
+    // Extract API keys from config OR environment variables
     const externalApis = this.config.external_apis || {};
-    this.placesApiKey = externalApis.google?.places_api_key || '';
-    this.serperApiKey = externalApis.serper?.api_key || '';
+    this.placesApiKey = externalApis.google?.places_api_key || process.env.GOOGLE_PLACES_API_KEY || '';
+    this.serperApiKey = externalApis.serper?.api_key || process.env.SERPER_API_KEY || '';
+
+    // Contact enrichment — scrapes websites for emails and phones
+    this._enricher = null;
+  }
+
+  async _getEnricher() {
+    if (!this._enricher) {
+      try {
+        const { ContactEnricher } = await import('../discovery/ContactEnricher.js');
+        this._enricher = new ContactEnricher();
+      } catch { /* enricher not available */ }
+    }
+    return this._enricher;
   }
 
   // ═══════════════════════════════════════════════════════
@@ -101,6 +114,23 @@ export class LeadFinder {
           detailedLeads.push(this._placesToLead(place, industry, location));
         }
       }
+
+      // Enrich leads with contact info from their websites
+      const enricher = await this._getEnricher();
+      if (enricher) {
+        this.onProgress('Enriching leads with contact info...');
+        for (const lead of detailedLeads) {
+          if (lead.website && !lead.email) {
+            try {
+              const contacts = await enricher.enrich(lead.website);
+              if (contacts.emails?.length) lead.email = contacts.emails[0];
+              if (contacts.phones?.length && !lead.phone) lead.phone = contacts.phones[0];
+            } catch { /* enrichment failed for this lead, skip */ }
+          }
+        }
+        this.onProgress(`Enriched ${detailedLeads.filter(l => l.email).length} leads with email`);
+      }
+
       return detailedLeads;
     }
 
