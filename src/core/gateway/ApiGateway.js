@@ -707,11 +707,22 @@ export class ApiGateway {
 
             let responseText;
             if (parsed.success && parsed.leads?.length > 0) {
-              const formatted = parsed.leads.map((l, i) =>
-                `**${i + 1}. ${l.company}**${l.address ? '\n   📍 ' + l.address : ''}${l.phone ? '\n   📞 ' + l.phone : ''}${l.website ? '\n   🌐 ' + l.website : ''}${l.email ? '\n   ✉️ ' + l.email : ''}`
-              ).join('\n\n');
+              const formatted = parsed.leads.map((l, i) => {
+                let entry = `**${i + 1}. ${l.company}**`;
+                if (l.address) entry += `\n   📍 ${l.address}`;
+                if (l.contactPerson) entry += `\n   👤 ${l.contactPerson}${l.contactRole ? ' — ' + l.contactRole : ''}`;
+                if (l.email) entry += `\n   ✉️ ${l.email}`;
+                if (l.phone) entry += `\n   📞 ${l.phone}`;
+                if (l.website) entry += `\n   🌐 ${l.website}`;
+                if (l.contacts?.length > 1) {
+                  entry += `\n   👥 +${l.contacts.length - 1} more contacts found`;
+                }
+                return entry;
+              }).join('\n\n');
 
-              responseText = `Found ${parsed.leads.length} real ${industry} businesses${location ? ' in ' + location : ''}:\n\n${formatted}\n\nWant me to save these to your pipeline, or draft outreach emails to the top ones?`;
+              const withEmails = parsed.leads.filter(l => l.email).length;
+              const withContacts = parsed.leads.filter(l => l.contactPerson).length;
+              responseText = `Found ${parsed.leads.length} ${industry} businesses${location ? ' in ' + location : ''}${withContacts ? ` — got contacts at ${withContacts} of them` : ''}:\n\n${formatted}\n\n${withEmails > 0 ? `I have email addresses for ${withEmails} of these. Want me to draft personalized outreach, or save them to your pipeline?` : 'Want me to save these to your pipeline?'}`;
             } else {
               responseText = `Couldn't find ${industry} businesses${location ? ' in ' + location : ''}. Can you be more specific — what type of business and what city?`;
             }

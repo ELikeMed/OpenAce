@@ -3354,7 +3354,7 @@ RULES:
     try {
       const { LeadFinder } = await import('../engine/LeadFinder.js');
       const finder = new LeadFinder({
-        config: this.config || {},
+        config: { ...this.config, aiManager: this.aiManager },
         onProgress: this.onProgress,
       });
 
