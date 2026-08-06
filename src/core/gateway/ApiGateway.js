@@ -657,8 +657,8 @@ export class ApiGateway {
 
       // Free tier: limit tools and iterations for anonymous users
       const isFreeTier = !req.userId || req.userId === 'local' || req.userId === null;
-      if (isFreeTier && this.ace?.brain?.agent) {
-        this.ace.brain.agent._freeTierMode = true;
+      if (isFreeTier && this.ace?.brain?.unifiedAgent) {
+        this.ace.brain.unifiedAgent._freeTierMode = true;
       }
 
       // If a project name is provided, prepend Studio context prefix so ActionEngine picks it up
