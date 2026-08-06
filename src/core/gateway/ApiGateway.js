@@ -661,6 +661,56 @@ export class ApiGateway {
         this.ace.brain.unifiedAgent._freeTierMode = true;
       }
 
+      // Force real search for lead/research requests — don't let the model hallucinate
+      const lowerMsg = (rawMessage || '').toLowerCase();
+      const wantsLeads = /\b(find|search|get|show|pull|look)\b.*\b(lead|client|customer|prospect|compan)/i.test(rawMessage);
+      const wantsResearch = /\b(research|look up|check out|analyze)\b.*\b(competitor|company|website|market)/i.test(rawMessage);
+
+      if (isFreeTier && (wantsLeads || wantsResearch) && this.ace?.brain?.unifiedAgent) {
+        const agent = this.ace.brain.unifiedAgent;
+
+        // Extract search terms from the message
+        const searchQuery = rawMessage.replace(/^(find|search|get|show|pull|look for|can you find)\s+(me\s+)?/i, '').trim();
+
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+
+        res.write(`data: ${JSON.stringify({ type: 'thinking', content: 'Searching...' })}\n\n`);
+
+        try {
+          // Call the REAL search tool directly
+          const resultJson = await agent._toolWebSearch({ query: searchQuery });
+          const parsed = JSON.parse(resultJson);
+
+          let responseText;
+          if (parsed.results && parsed.results.length > 0) {
+            const formatted = parsed.results.slice(0, 8).map((r, i) =>
+              `**${i + 1}. ${r.title}**\n   ${r.url}${r.snippet ? '\n   ' + r.snippet.substring(0, 150) : ''}`
+            ).join('\n\n');
+
+            responseText = wantsLeads
+              ? `Found ${parsed.results.length} results. Here are the top leads:\n\n${formatted}\n\nWant me to dig deeper into any of these, or should I draft outreach emails to the best ones?`
+              : `Here's what I found:\n\n${formatted}\n\nWant me to dig deeper into any of these?`;
+          } else {
+            responseText = `I searched but didn't find strong results for "${searchQuery}". Can you be more specific — what industry and what city?`;
+          }
+
+          const response = { message: responseText, toolsUsed: [wantsLeads ? 'find_leads' : 'web_search'] };
+          res.write(`data: ${JSON.stringify({ type: 'response', content: response, thinking: ['Searching...'] })}\n\n`);
+          res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+
+          if (rawMessage && responseText) {
+            this._conversationCapture.capture(rawMessage, responseText);
+          }
+        } catch (err) {
+          res.write(`data: ${JSON.stringify({ type: 'response', content: { message: `Search hit an issue: ${err.message}. Try being more specific — what industry and city?` } })}\n\n`);
+          res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+        }
+
+        return res.end();
+      }
+
       // If a project name is provided, prepend Studio context prefix so ActionEngine picks it up
       let message = rawMessage;
       if (project && !rawMessage.startsWith('[Studio Project:')) {
