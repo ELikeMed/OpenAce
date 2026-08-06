@@ -661,17 +661,15 @@ export class ApiGateway {
         this.ace.brain.unifiedAgent._freeTierMode = true;
       }
 
-      // Force real search for lead/research requests — don't let the model hallucinate
-      const lowerMsg = (rawMessage || '').toLowerCase();
-      const wantsLeads = /\b(find|finding|search|get|show|pull|look|need|want|give)\b.{0,30}\b(lead|leads|client|clients|customer|customers|prospect|prospects|compan|businesses)/i.test(rawMessage)
-        || /\b(property manager|plumber|dentist|contractor|realtor|agent|lawyer|attorney|restaurant|salon|gym|doctor|accountant|landscap|roofing|painter|electrician|hvac|cleaning)/i.test(rawMessage)
-        || /\b(businesses|companies|firms|agencies|offices|practices|shops|stores)\s+(in|near|around)\s+/i.test(rawMessage)
-        || /\b(in|near|around)\s+\w+.{0,20}(lead|client|business|compan)/i.test(rawMessage);
-      const wantsResearch = /\b(research|look up|check out|analyze|look into|investigate)\b/i.test(rawMessage) && /\b(competitor|company|website|market|industry|business)/i.test(rawMessage);
+      // Force real search ONLY when a specific [industry] + [location] is given
+      // Generic requests like "help me find leads" go through conversational flow
+      const hasLocation = /\b(in|near|around)\s+[A-Z][a-zA-Z\s]{2,25}/i.test(rawMessage);
+      const hasIndustry = /\b(property manager|plumber|dentist|contractor|realtor|real estate|lawyer|attorney|restaurant|salon|gym|doctor|accountant|landscap|roofing|painter|electrician|hvac|cleaning|insurance|financial|mortgage|therapist|chiropract|veterinar|photographer|moving|pest control|daycare|tutor)/i.test(rawMessage);
+      const hasBusinessType = /\b(businesses|companies|firms|agencies|offices|practices|shops|stores)\s+(in|near|around)\s+/i.test(rawMessage);
+      const wantsResearch = /\b(research|look up|check out|analyze)\b/i.test(rawMessage) && /\b(competitor|company|website)/i.test(rawMessage);
 
-      // Also detect "[industry] in [city]" pattern directly (e.g., "property managers in Boca Raton")
-      const industryInCity = rawMessage?.match(/^(.{3,40})\s+in\s+([A-Z][a-zA-Z\s]{2,30})$/);
-      const isLeadSearch = wantsLeads || (industryInCity && !rawMessage.includes('?'));
+      // Only trigger forced search when we have BOTH industry AND location
+      const isLeadSearch = hasLocation && (hasIndustry || hasBusinessType);
 
       if ((isLeadSearch || wantsResearch) && this.ace?.brain?.unifiedAgent) {
         const agent = this.ace.brain.unifiedAgent;
