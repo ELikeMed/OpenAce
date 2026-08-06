@@ -666,42 +666,73 @@ export class ApiGateway {
       const wantsLeads = /\b(find|search|get|show|pull|look)\b.*\b(lead|client|customer|prospect|compan)/i.test(rawMessage);
       const wantsResearch = /\b(research|look up|check out|analyze)\b.*\b(competitor|company|website|market)/i.test(rawMessage);
 
-      if (isFreeTier && (wantsLeads || wantsResearch) && this.ace?.brain?.unifiedAgent) {
+      if ((wantsLeads || wantsResearch) && this.ace?.brain?.unifiedAgent) {
         const agent = this.ace.brain.unifiedAgent;
-
-        // Extract search terms from the message
-        const searchQuery = rawMessage.replace(/^(find|search|get|show|pull|look for|can you find)\s+(me\s+)?/i, '').trim();
 
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
 
-        res.write(`data: ${JSON.stringify({ type: 'thinking', content: 'Searching...' })}\n\n`);
-
         try {
-          // Call the REAL search tool directly
-          const resultJson = await agent._toolWebSearch({ query: searchQuery });
-          const parsed = JSON.parse(resultJson);
+          if (wantsLeads) {
+            // Extract industry and location from the message
+            // Patterns: "leads in construction in Dallas", "plumbers in Miami", "find me dentists in Austin"
+            const cleaned = rawMessage.replace(/^(find|search|get|show|pull|look for|can you find|help me find)\s+(me\s+)?/i, '').trim();
 
-          let responseText;
-          if (parsed.results && parsed.results.length > 0) {
-            const formatted = parsed.results.slice(0, 8).map((r, i) =>
-              `**${i + 1}. ${r.title}**\n   ${r.url}${r.snippet ? '\n   ' + r.snippet.substring(0, 150) : ''}`
-            ).join('\n\n');
+            // Try to split into industry + location (look for "in" as separator)
+            const inMatch = cleaned.match(/^(.+?)\s+in\s+(.+)$/i);
+            let industry = inMatch ? inMatch[1] : cleaned;
+            let location = inMatch ? inMatch[2] : '';
 
-            responseText = wantsLeads
-              ? `Found ${parsed.results.length} results. Here are the top leads:\n\n${formatted}\n\nWant me to dig deeper into any of these, or should I draft outreach emails to the best ones?`
-              : `Here's what I found:\n\n${formatted}\n\nWant me to dig deeper into any of these?`;
+            // Clean up common prefixes
+            industry = industry.replace(/^(leads?|clients?|customers?|prospects?|companies?|businesses?)\s+(for|in|of)?\s*/i, '').trim();
+            if (!industry) industry = cleaned;
+
+            res.write(`data: ${JSON.stringify({ type: 'thinking', content: `Finding ${industry} businesses${location ? ' in ' + location : ''}...` })}\n\n`);
+
+            // Use the REAL LeadFinder with Google Places API
+            const resultJson = await agent._toolFindLeads({ industry, location: location || 'United States', count: 10 });
+            const parsed = JSON.parse(resultJson);
+
+            let responseText;
+            if (parsed.success && parsed.leads?.length > 0) {
+              const formatted = parsed.leads.map((l, i) =>
+                `**${i + 1}. ${l.company}**${l.address ? '\n   📍 ' + l.address : ''}${l.phone ? '\n   📞 ' + l.phone : ''}${l.website ? '\n   🌐 ' + l.website : ''}${l.email ? '\n   ✉️ ' + l.email : ''}`
+              ).join('\n\n');
+
+              responseText = `Found ${parsed.leads.length} real ${industry} businesses${location ? ' in ' + location : ''}:\n\n${formatted}\n\nWant me to save these to your pipeline, or draft outreach emails to the top ones?`;
+            } else {
+              responseText = `Couldn't find ${industry} businesses${location ? ' in ' + location : ''}. Can you be more specific — what type of business and what city?`;
+            }
+
+            const response = { message: responseText, toolsUsed: ['find_leads'] };
+            res.write(`data: ${JSON.stringify({ type: 'response', content: response, thinking: [`Finding ${industry} businesses...`] })}\n\n`);
           } else {
-            responseText = `I searched but didn't find strong results for "${searchQuery}". Can you be more specific — what industry and what city?`;
+            // Research request — use web search
+            const searchQuery = rawMessage.replace(/^(research|look up|check out|analyze|look into)\s+(my\s+)?/i, '').trim();
+            res.write(`data: ${JSON.stringify({ type: 'thinking', content: `Researching: ${searchQuery}` })}\n\n`);
+
+            const resultJson = await agent._toolWebSearch({ query: searchQuery });
+            const parsed = JSON.parse(resultJson);
+
+            let responseText;
+            if (parsed.results?.length > 0) {
+              const formatted = parsed.results.slice(0, 6).map((r, i) =>
+                `**${i + 1}. ${r.title}**\n   ${r.url}${r.snippet ? '\n   ' + r.snippet.substring(0, 150) : ''}`
+              ).join('\n\n');
+              responseText = `Here's what I found:\n\n${formatted}\n\nWant me to dig deeper into any of these?`;
+            } else {
+              responseText = `Didn't find strong results for "${searchQuery}". Can you be more specific?`;
+            }
+
+            const response = { message: responseText, toolsUsed: ['web_search'] };
+            res.write(`data: ${JSON.stringify({ type: 'response', content: response, thinking: [`Researching: ${searchQuery}`] })}\n\n`);
           }
 
-          const response = { message: responseText, toolsUsed: [wantsLeads ? 'find_leads' : 'web_search'] };
-          res.write(`data: ${JSON.stringify({ type: 'response', content: response, thinking: ['Searching...'] })}\n\n`);
           res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
 
-          if (rawMessage && responseText) {
-            this._conversationCapture.capture(rawMessage, responseText);
+          if (rawMessage) {
+            this._conversationCapture.capture(rawMessage, 'Lead search executed');
           }
         } catch (err) {
           res.write(`data: ${JSON.stringify({ type: 'response', content: { message: `Search hit an issue: ${err.message}. Try being more specific — what industry and city?` } })}\n\n`);
