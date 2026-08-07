@@ -661,15 +661,17 @@ export class ApiGateway {
         this.ace.brain.unifiedAgent._freeTierMode = true;
       }
 
-      // Force real search ONLY when a specific [industry] + [location] is given
-      // Generic requests like "help me find leads" go through conversational flow
+      // Force real search when we can detect a specific industry + location
       const hasLocation = /\b(in|near|around)\s+[A-Z][a-zA-Z\s]{2,25}/i.test(rawMessage);
-      const hasIndustry = /\b(property manager|plumber|dentist|contractor|realtor|real estate|lawyer|attorney|restaurant|salon|gym|doctor|accountant|landscap|roofing|painter|electrician|hvac|cleaning|insurance|financial|mortgage|therapist|chiropract|veterinar|photographer|moving|pest control|daycare|tutor)/i.test(rawMessage);
-      const hasBusinessType = /\b(businesses|companies|firms|agencies|offices|practices|shops|stores)\s+(in|near|around)\s+/i.test(rawMessage);
+      const hasIndustry = /\b(property manage|plumb|dentist|contractor|realtor|real estate|lawyer|attorney|law firm|restaurant|salon|gym|doctor|accountant|landscap|roofing|painter|electrician|hvac|cleaning|insurance|financial|mortgage|therapist|chiropract|veterinar|photographer|moving|pest control|daycare|tutor|marketing|consult|architect|engineer|clinic|pharmacy|bank|hotel|spa|auto|mechanic|construction|developer)/i.test(rawMessage);
+      const hasBusinessType = /\b(businesses|companies|firms|agencies|offices|practices|shops|stores|professionals)\s+(in|near|around)\s+/i.test(rawMessage);
       const wantsResearch = /\b(research|look up|check out|analyze)\b/i.test(rawMessage) && /\b(competitor|company|website)/i.test(rawMessage);
 
-      // Only trigger forced search when we have BOTH industry AND location
-      const isLeadSearch = hasLocation && (hasIndustry || hasBusinessType);
+      // Also catch "find CMOs at law firms in Miami" type requests
+      const wantsContactsAt = /\b(find|get|show|who)\b.{0,20}\b(cmo|ceo|cto|owner|manager|director|contact|people|person|staff|team)\b.{0,20}\b(at|of|from|for)\b/i.test(rawMessage) && hasLocation;
+
+      // Trigger forced search when we have industry + location OR contact-at requests
+      const isLeadSearch = (hasLocation && (hasIndustry || hasBusinessType)) || wantsContactsAt;
 
       if ((isLeadSearch || wantsResearch) && this.ace?.brain?.unifiedAgent) {
         const agent = this.ace.brain.unifiedAgent;
