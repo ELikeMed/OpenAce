@@ -701,8 +701,8 @@ export class ApiGateway {
 
             res.write(`data: ${JSON.stringify({ type: 'thinking', content: `Finding ${industry} businesses${location ? ' in ' + location : ''}...` })}\n\n`);
 
-            // Use the REAL LeadFinder with Google Places API
-            const resultJson = await agent._toolFindLeads({ industry, location: location || 'United States', count: 10 });
+            // Use the REAL LeadFinder with Google Places API — limit to 5 for speed
+            const resultJson = await agent._toolFindLeads({ industry, location: location || 'United States', count: 5 });
             const parsed = JSON.parse(resultJson);
 
             let responseText;
