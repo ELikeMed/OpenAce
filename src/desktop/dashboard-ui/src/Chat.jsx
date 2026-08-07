@@ -3204,6 +3204,17 @@ function Chat({ hideSidebar = false }) {
                 setProjectToast({ name: createdProject });
               }
             }
+            if (event.type === 'account_created') {
+              // Auto-save token — user is now logged in without knowing
+              localStorage.setItem('ace_token', event.token);
+              localStorage.setItem('ace_user', JSON.stringify(event.profile));
+              console.log('[Ace] Account auto-created for', event.profile?.email);
+            }
+            if (event.type === 'profile_updated') {
+              // Update stored profile
+              const existing = JSON.parse(localStorage.getItem('ace_user') || '{}');
+              localStorage.setItem('ace_user', JSON.stringify({ ...existing, ...event.profile }));
+            }
             if (event.type === 'error') {
               setMessages(prev => {
                 const updated = prev.map(m => m.sender === 'Ace Activity' && !m.complete ? { ...m, complete: true } : m);

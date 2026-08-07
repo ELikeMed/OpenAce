@@ -8,6 +8,15 @@ export default function WelcomeScreen({ onSend, onAttach }) {
   const [input, setInput] = useState('');
   const fileRef = useRef(null);
 
+  // Check for returning user
+  const storedUser = JSON.parse(localStorage.getItem('ace_user') || 'null');
+  const userName = storedUser?.name;
+  const isReturning = !!userName;
+
+  // Time-aware greeting
+  const hour = new Date().getHours();
+  const timeGreeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+
   const handleSend = () => {
     if (input.trim()) {
       onSend?.(input.trim());
@@ -22,11 +31,17 @@ export default function WelcomeScreen({ onSend, onAttach }) {
     }
   };
 
-  const suggestions = [
-    "I need help finding leads",
-    "Research my competitors",
-    "What can you do for my business?",
-  ];
+  const suggestions = isReturning
+    ? [
+        'Find me new leads',
+        "What's in my pipeline?",
+        'Research my competitors',
+      ]
+    : [
+        'I need help finding leads',
+        'Research my competitors',
+        'What can you do for my business?',
+      ];
 
   return (
     <Box sx={{
@@ -49,7 +64,7 @@ export default function WelcomeScreen({ onSend, onAttach }) {
         textAlign: 'center',
         mb: 0.5,
       }}>
-        Hey, tell me about your business
+        {isReturning ? `${timeGreeting}, ${userName}` : 'Hey, tell me about your business'}
       </Typography>
 
       <Typography sx={{
@@ -59,7 +74,10 @@ export default function WelcomeScreen({ onSend, onAttach }) {
         mb: 3,
         maxWidth: 400,
       }}>
-        I'll help you find leads, research competitors, and grow.
+        {isReturning
+          ? "What are we working on today?"
+          : "I'll help you find leads, research competitors, and grow."
+        }
       </Typography>
 
       {/* Input bar */}
@@ -89,7 +107,7 @@ export default function WelcomeScreen({ onSend, onAttach }) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="My business is..."
+            placeholder={isReturning ? 'What do you need?' : 'My business is...'}
             variant="standard"
             InputProps={{ disableUnderline: true }}
             autoFocus

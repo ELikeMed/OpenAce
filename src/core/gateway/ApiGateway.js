@@ -28,6 +28,7 @@ import { SOPParser } from '../automation/SOPParser.js';
 import FormRenderer from '../forms/FormRenderer.js';
 import { UsageTracker } from '../cloud/UsageTracker.js';
 import { ConversationCapture } from '../cloud/ConversationCapture.js';
+import { ProfileBuilder } from '../cloud/ProfileBuilder.js';
 
 export class ApiGateway {
   constructor(app, options = {}) {
@@ -48,6 +49,9 @@ export class ApiGateway {
 
     // Capture conversations for LLM training improvement
     this._conversationCapture = new ConversationCapture();
+
+    // Profile builder — extracts name/email/website from chat, auto-creates accounts
+    this._profileBuilder = new ProfileBuilder();
   }
 
   /**
@@ -821,6 +825,16 @@ export class ApiGateway {
         const responseText = response?.message || response?.data?.summary || '';
         if (rawMessage && responseText) {
           this._conversationCapture.capture(rawMessage, responseText);
+        }
+
+        // Profile builder — extract name/email/website, auto-create account
+        const sessionId = conversationId || req.headers['x-session-id'] || 'default';
+        const profileResult = this._profileBuilder.processMessage(sessionId, rawMessage, responseText);
+        if (profileResult.accountCreated) {
+          // Send token to client so they're auto-logged in
+          res.write(`data: ${JSON.stringify({ type: 'account_created', token: profileResult.token, profile: profileResult.profile })}\n\n`);
+        } else if (profileResult.profileUpdated) {
+          res.write(`data: ${JSON.stringify({ type: 'profile_updated', profile: profileResult.profile })}\n\n`);
         }
         res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
 
