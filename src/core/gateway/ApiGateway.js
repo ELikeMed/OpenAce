@@ -822,15 +822,14 @@ export class ApiGateway {
         const thinkingSteps = response?.thinking || progressMessages;
         res.write(`data: ${JSON.stringify({ type: 'response', content: response, thinking: thinkingSteps })}\n\n`);
 
-        // Capture conversation for LLM training improvement
-        const responseText = response?.message || response?.data?.summary || '';
-        if (rawMessage && responseText) {
-          this._conversationCapture.capture(rawMessage, responseText);
-        }
+        // NOTE: Conversation capture DISABLED for privacy.
+        // We never store user conversations for training.
+        // Training data is generated synthetically — see training/generate-data.js
 
         // Profile builder — extract name/email/website, auto-create account
         const sessionId = conversationId || req.headers['x-session-id'] || 'default';
-        const profileResult = this._profileBuilder.processMessage(sessionId, rawMessage, responseText);
+        const aceResponseText = response?.message || response?.data?.summary || '';
+        const profileResult = this._profileBuilder.processMessage(sessionId, rawMessage, aceResponseText);
         if (profileResult.accountCreated) {
           // Send token to client so they're auto-logged in
           res.write(`data: ${JSON.stringify({ type: 'account_created', token: profileResult.token, profile: profileResult.profile })}\n\n`);
