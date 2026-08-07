@@ -363,7 +363,7 @@ function App() {
           onOpenCredits={() => setCreditModalOpen(true)}
           themeMode={themeMode}
           onToggleTheme={handleToggleTheme}
-          isOwner={!isCloudMode || authed}
+          isOwner={!isCloudMode || (authed && (() => { try { const u = JSON.parse(localStorage.getItem('ace_user') || '{}'); return u.email === 'openaceai@gmail.com' || u.email === 'likemindedpro@gmail.com'; } catch { return false; } })())}
         />
 
         {/* Main Content */}

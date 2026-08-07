@@ -15,6 +15,16 @@ import { getDatabase } from './CloudDatabase.js';
 const JWT_SECRET = process.env.JWT_SECRET || 'openace-dev-secret-change-in-production';
 const JWT_EXPIRES = '30d';
 
+// Admin emails — full access to all tools, settings, data
+const ADMIN_EMAILS = new Set([
+  'openaceai@gmail.com',
+  'likemindedpro@gmail.com',
+]);
+
+export function isAdmin(email) {
+  return ADMIN_EMAILS.has(email?.toLowerCase());
+}
+
 export function authMiddleware(req, res, next) {
   // Local mode — no auth
   if (!isCloudMode()) {

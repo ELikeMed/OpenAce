@@ -659,8 +659,9 @@ export class ApiGateway {
       const { message: rawMessage, mode, project, conversationId, images: rawImages } = req.body;
       const images = rawImages || [];
 
-      // Free tier: limit tools and iterations for anonymous users
-      const isFreeTier = !req.userId || req.userId === 'local' || req.userId === null;
+      // Free tier: limit tools and iterations for anonymous/non-admin users
+      const isAdmin = req.userEmail && (req.userEmail === 'openaceai@gmail.com' || req.userEmail === 'likemindedpro@gmail.com');
+      const isFreeTier = !isAdmin && (!req.userId || req.userId === 'local' || req.userId === null);
       if (isFreeTier && this.ace?.brain?.unifiedAgent) {
         this.ace.brain.unifiedAgent._freeTierMode = true;
       }
