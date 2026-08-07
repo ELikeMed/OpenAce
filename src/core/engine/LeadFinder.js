@@ -129,49 +129,19 @@ export class LeadFinder {
         }
       }
 
-      // Deep enrichment — find the PEOPLE at each business
-      this.onProgress('Researching contacts at each business...');
-      const smartEnricher = await this._getSmartEnricher();
+      // Quick enrichment — scrape contact pages for emails (fast, no AI needed)
       const basicEnricher = await this._getEnricher();
-
-      for (const lead of detailedLeads) {
-        if (!lead.website) continue;
-        try {
-          if (smartEnricher) {
-            // Full AI-powered enrichment — finds people, roles, emails
-            const result = await smartEnricher.enrich({
-              name: lead.company || lead.name,
-              website: lead.website,
-              address: lead.address,
-              phone: lead.phone,
-              emails: lead.email ? [lead.email] : [],
-            });
-            if (result.contacts?.length > 0) {
-              lead.contacts = result.contacts.map(c => ({
-                name: c.name || '',
-                role: c.role || c.title || '',
-                email: c.email || '',
-                phone: c.phone || '',
-              })).filter(c => c.email || c.phone);
-              // Put the best email on the lead itself
-              const bestContact = result.contacts.find(c => c.email) || result.contacts[0];
-              if (bestContact?.email && !lead.email) lead.email = bestContact.email;
-              if (bestContact?.phone && !lead.phone) lead.phone = bestContact.phone;
-              if (bestContact?.name) lead.contactPerson = bestContact.name;
-              if (bestContact?.role) lead.contactRole = bestContact.role || bestContact.title;
-            }
-            this.onProgress(`  ✓ ${lead.company}: ${result.contacts?.length || 0} contacts found`);
-          } else if (basicEnricher) {
-            // Basic scraping fallback
+      if (basicEnricher) {
+        this.onProgress('Finding contact info...');
+        for (const lead of detailedLeads) {
+          if (!lead.website || lead.email) continue;
+          try {
             const contacts = await basicEnricher.enrich(lead.website);
             if (contacts.emails?.length) lead.email = contacts.emails[0];
             if (contacts.phones?.length && !lead.phone) lead.phone = contacts.phones[0];
-          }
-        } catch (e) {
-          this.onProgress(`  ⚠ ${lead.company}: enrichment failed`);
+          } catch { /* skip */ }
         }
       }
-      this.onProgress(`Done — ${detailedLeads.filter(l => l.email).length} leads with email contacts`);
 
       return detailedLeads;
     }
