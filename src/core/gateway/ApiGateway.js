@@ -2094,6 +2094,72 @@ export class ApiGateway {
       });
     }));
 
+    // ═══════════════════════════════════════════════════════
+    // LLM TRAINING — Admin only
+    // ═══════════════════════════════════════════════════════
+
+    this.app.get('/api/admin/training', this.wrap(async (req, res) => {
+      const isAdminUser = req.userEmail === 'openaceai@gmail.com' || req.userEmail === 'likemindedpro@gmail.com';
+      if (!isAdminUser) return res.status(403).json({ success: false, error: 'Admin only' });
+
+      const trainPath = path.join(this.baseDir, 'training/train.jsonl');
+      try {
+        const content = await fs.readFile(trainPath, 'utf-8');
+        const lines = content.split('\n').filter(l => l.trim());
+        const examples = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+        res.json({
+          success: true,
+          data: {
+            totalExamples: examples.length,
+            examples: examples.slice(-20).map((e, i) => ({
+              id: lines.length - 20 + i,
+              user: e.messages?.[0]?.content || '',
+              assistant: e.messages?.[1]?.content || '',
+            })),
+          }
+        });
+      } catch {
+        res.json({ success: true, data: { totalExamples: 0, examples: [] } });
+      }
+    }));
+
+    this.app.post('/api/admin/training/add', this.wrap(async (req, res) => {
+      const isAdminUser = req.userEmail === 'openaceai@gmail.com' || req.userEmail === 'likemindedpro@gmail.com';
+      if (!isAdminUser) return res.status(403).json({ success: false, error: 'Admin only' });
+
+      const { user, assistant } = req.body;
+      if (!user || !assistant) return res.json({ success: false, error: 'Both user and assistant fields required' });
+
+      const trainPath = path.join(this.baseDir, 'training/train.jsonl');
+      const entry = JSON.stringify({ messages: [{ role: 'user', content: user }, { role: 'assistant', content: assistant }] });
+      await fs.appendFile(trainPath, entry + '\n');
+
+      res.json({ success: true, message: 'Example added' });
+    }));
+
+    this.app.post('/api/admin/training/retrain', this.wrap(async (req, res) => {
+      const isAdminUser = req.userEmail === 'openaceai@gmail.com' || req.userEmail === 'likemindedpro@gmail.com';
+      if (!isAdminUser) return res.status(403).json({ success: false, error: 'Admin only' });
+
+      const { exec } = await import('child_process');
+      const trainCmd = `python3 -m mlx_lm lora --model mlx-community/Qwen2.5-7B-Instruct-4bit --data ${path.join(this.baseDir, 'training')} --train --iters 200 --batch-size 1 --learning-rate 1e-5 --adapter-path ${path.join(this.baseDir, 'training/ace-adapter')}`;
+
+      res.json({ success: true, message: 'Training started. This takes 5-10 minutes. Rebuild the model after with: ollama create ace-clubs -f Modelfile' });
+
+      // Run training in background
+      exec(trainCmd, { cwd: this.baseDir }, (error, stdout, stderr) => {
+        if (error) {
+          console.error('[Training] Failed:', error.message);
+        } else {
+          console.log('[Training] Complete. Rebuilding Ollama model...');
+          exec('ollama create ace-clubs -f Modelfile', { cwd: this.baseDir }, (err2) => {
+            if (err2) console.error('[Training] Ollama rebuild failed:', err2.message);
+            else console.log('[Training] ace-clubs model rebuilt successfully');
+          });
+        }
+      });
+    }));
+
     // POST /api/desktop/scroll — Scroll up or down
     // Body: { direction: "down", amount: 5 }
     this.app.post('/api/desktop/scroll', this.wrap(async (req, res) => {

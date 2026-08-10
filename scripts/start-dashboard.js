@@ -43,6 +43,92 @@ if (isCloudMode()) {
 // Health check (used by Railway, Docker, etc.)
 app.get('/health', (req, res) => res.json({ status: 'ok', cloud: isCloudMode(), version: '1.8.0' }));
 
+// Admin training page — accessible at /admin/training
+app.get('/admin/training', (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ace Training</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0C0B10;color:#E8E6F0;font-family:Inter,-apple-system,sans-serif;padding:24px;max-width:800px;margin:0 auto}
+h1{font-size:1.5rem;margin-bottom:4px}h2{font-size:1.1rem;margin:24px 0 12px;color:#8B7EC8}.sub{color:#726E90;font-size:.85rem;margin-bottom:24px}
+.card{background:#16151E;border:1px solid #2A2840;border-radius:12px;padding:20px;margin-bottom:16px}
+.stats{display:flex;gap:16px;margin-bottom:24px}.stat{background:#16151E;border:1px solid #2A2840;border-radius:10px;padding:16px;flex:1;text-align:center}
+.stat-num{font-size:1.8rem;font-weight:700;color:#8B7EC8}.stat-label{font-size:.75rem;color:#726E90;margin-top:4px}
+textarea,input{width:100%;padding:12px;border-radius:8px;border:1px solid #2A2840;background:#0C0B10;color:#E8E6F0;font-size:.9rem;margin-bottom:8px;outline:none;resize:vertical;font-family:inherit}
+textarea:focus,input:focus{border-color:#8B7EC8}
+button{padding:10px 20px;border:none;border-radius:8px;font-size:.9rem;font-weight:600;cursor:pointer;margin-right:8px}
+.btn-primary{background:#8B7EC8;color:#fff}.btn-primary:hover{background:#6B5FA8}
+.btn-danger{background:#C87070;color:#fff}.btn-danger:hover{background:#A85858}
+.btn-outline{background:transparent;border:1px solid #2A2840;color:#B0ACCA}.btn-outline:hover{border-color:#8B7EC8}
+.example{padding:12px;border-bottom:1px solid #1E1D2A;font-size:.85rem}.example:last-child{border:none}
+.example .user{color:#8B7EC8;font-weight:600}.example .ace{color:#B0ACCA;margin-top:4px}
+.status{padding:12px;border-radius:8px;margin-top:12px;font-size:.85rem;display:none}
+.status.ok{background:#1a2e1a;border:1px solid #2e4a2e;color:#5CB882;display:block}
+.status.err{background:#2e1a1a;border:1px solid #4a2e2e;color:#C87070;display:block}
+.status.info{background:#1a1a2e;border:1px solid #2e2e4a;color:#8B7EC8;display:block}
+a{color:#8B7EC8;text-decoration:none}a:hover{text-decoration:underline}
+.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
+</style></head><body>
+<div class="topbar"><div><h1>Ace Training</h1><p class="sub">Teach Ace business knowledge</p></div><a href="/">← Back to Dashboard</a></div>
+
+<div class="stats"><div class="stat"><div class="stat-num" id="count">—</div><div class="stat-label">Training Examples</div></div>
+<div class="stat"><div class="stat-num">♣</div><div class="stat-label">Ace Clubs Model</div></div></div>
+
+<h2>Add Training Example</h2>
+<div class="card">
+<input id="userMsg" placeholder="What the user says... (e.g. How do I get more referrals?)">
+<textarea id="aceMsg" rows="3" placeholder="How Ace should respond... (2-3 sentences, direct, one follow-up question)"></textarea>
+<button class="btn-primary" onclick="addExample()">Add Example</button>
+<button class="btn-outline" onclick="document.getElementById('userMsg').value='';document.getElementById('aceMsg').value=''">Clear</button>
+<div class="status" id="addStatus"></div>
+</div>
+
+<h2>Retrain Model</h2>
+<div class="card">
+<p style="color:#726E90;font-size:.85rem;margin-bottom:12px">Runs fine-tuning on all training examples. Takes 5-10 minutes. The server stays running — training happens in the background.</p>
+<button class="btn-danger" onclick="retrain()">Start Training</button>
+<div class="status" id="trainStatus"></div>
+</div>
+
+<h2>Recent Examples</h2>
+<div class="card" id="examples">Loading...</div>
+
+<script>
+const token=localStorage.getItem('ace_token')||'';
+const headers={'Content-Type':'application/json','Authorization':'Bearer '+token};
+
+async function load(){
+  const r=await fetch('/api/admin/training',{headers});
+  const d=await r.json();
+  if(!d.success){document.getElementById('examples').textContent='Not authorized';return;}
+  document.getElementById('count').textContent=d.data.totalExamples;
+  const el=document.getElementById('examples');
+  if(d.data.examples.length===0){el.innerHTML='<p style="color:#726E90">No examples yet</p>';return;}
+  el.innerHTML=d.data.examples.map(e=>'<div class="example"><div class="user">User: '+e.user+'</div><div class="ace">Ace: '+e.assistant+'</div></div>').join('');
+}
+
+async function addExample(){
+  const user=document.getElementById('userMsg').value.trim();
+  const assistant=document.getElementById('aceMsg').value.trim();
+  const st=document.getElementById('addStatus');
+  if(!user||!assistant){st.className='status err';st.textContent='Both fields required';return;}
+  const r=await fetch('/api/admin/training/add',{method:'POST',headers,body:JSON.stringify({user,assistant})});
+  const d=await r.json();
+  if(d.success){st.className='status ok';st.textContent='Example added!';document.getElementById('userMsg').value='';document.getElementById('aceMsg').value='';load();}
+  else{st.className='status err';st.textContent=d.error||'Failed';}
+}
+
+async function retrain(){
+  const st=document.getElementById('trainStatus');
+  st.className='status info';st.textContent='Training started... this takes 5-10 minutes. You can close this page.';
+  const r=await fetch('/api/admin/training/retrain',{method:'POST',headers});
+  const d=await r.json();
+  if(d.success){st.className='status ok';st.textContent='Training running in background. Model will auto-rebuild when done.';}
+  else{st.className='status err';st.textContent=d.error||'Failed';}
+}
+
+load();
+</script></body></html>`);
+});
+
 // Admin login page — accessible at /admin
 app.get('/admin', (req, res) => {
   res.send(`<!DOCTYPE html>
