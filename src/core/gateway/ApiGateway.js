@@ -584,6 +584,11 @@ export class ApiGateway {
   registerChatRoutes() {
     // ═══ Conversation management endpoints ═══
     this.app.get('/api/conversations', this.wrap(async (req, res) => {
+      // Cloud mode: only admin sees stored conversations, visitors get empty
+      const isAdminUser = req.userEmail === 'openaceai@gmail.com' || req.userEmail === 'likemindedpro@gmail.com';
+      if (process.env.OPENACE_CLOUD === 'true' && !isAdminUser) {
+        return res.json({ success: true, data: [] });
+      }
       if (!this.activityLogger) return res.json({ success: true, data: [] });
       const conversations = this.activityLogger.getAllConversations();
       const enriched = conversations.map(conv => {
@@ -598,6 +603,10 @@ export class ApiGateway {
     }));
 
     this.app.get('/api/conversations/:chatId', this.wrap(async (req, res) => {
+      const isAdminUser = req.userEmail === 'openaceai@gmail.com' || req.userEmail === 'likemindedpro@gmail.com';
+      if (process.env.OPENACE_CLOUD === 'true' && !isAdminUser) {
+        return res.json({ success: true, data: [] });
+      }
       if (!this.activityLogger) return res.json({ success: true, data: [] });
       const messages = this.activityLogger.getConversation(req.params.chatId);
       res.json({ success: true, data: messages });
