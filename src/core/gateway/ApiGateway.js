@@ -29,6 +29,7 @@ import FormRenderer from '../forms/FormRenderer.js';
 import { UsageTracker } from '../cloud/UsageTracker.js';
 import { ConversationCapture } from '../cloud/ConversationCapture.js';
 import { ProfileBuilder } from '../cloud/ProfileBuilder.js';
+import { SessionManager } from '../cloud/SessionManager.js';
 
 export class ApiGateway {
   constructor(app, options = {}) {
@@ -52,6 +53,9 @@ export class ApiGateway {
 
     // Profile builder — extracts name/email/website from chat, auto-creates accounts
     this._profileBuilder = new ProfileBuilder();
+
+    // Session manager — per-user conversation isolation
+    this._sessionManager = new SessionManager();
   }
 
   /**
@@ -584,11 +588,13 @@ export class ApiGateway {
   registerChatRoutes() {
     // ═══ Conversation management endpoints ═══
     this.app.get('/api/conversations', this.wrap(async (req, res) => {
-      // Cloud mode: only admin sees stored conversations, visitors get empty
-      const isAdminUser = req.userEmail === 'openaceai@gmail.com' || req.userEmail === 'likemindedpro@gmail.com';
-      if (process.env.OPENACE_CLOUD === 'true' && !isAdminUser) {
-        return res.json({ success: true, data: [] });
+      // Cloud mode: each user only sees THEIR conversations
+      if (process.env.OPENACE_CLOUD === 'true') {
+        const sessionId = this._sessionManager.getSessionId(req);
+        const conversations = this._sessionManager.getConversations(sessionId);
+        return res.json({ success: true, data: conversations.map(c => ({ chatId: c.id, title: c.title, createdAt: c.created_at, updatedAt: c.updated_at })) });
       }
+      // Local mode: use activityLogger as before
       if (!this.activityLogger) return res.json({ success: true, data: [] });
       const conversations = this.activityLogger.getAllConversations();
       const enriched = conversations.map(conv => {
@@ -603,9 +609,10 @@ export class ApiGateway {
     }));
 
     this.app.get('/api/conversations/:chatId', this.wrap(async (req, res) => {
-      const isAdminUser = req.userEmail === 'openaceai@gmail.com' || req.userEmail === 'likemindedpro@gmail.com';
-      if (process.env.OPENACE_CLOUD === 'true' && !isAdminUser) {
-        return res.json({ success: true, data: [] });
+      if (process.env.OPENACE_CLOUD === 'true') {
+        const sessionId = this._sessionManager.getSessionId(req);
+        const messages = this._sessionManager.getMessages(sessionId, req.params.chatId);
+        return res.json({ success: true, data: messages.map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.content })) });
       }
       if (!this.activityLogger) return res.json({ success: true, data: [] });
       const messages = this.activityLogger.getConversation(req.params.chatId);
@@ -613,6 +620,11 @@ export class ApiGateway {
     }));
 
     this.app.delete('/api/conversations/:chatId', this.wrap(async (req, res) => {
+      if (process.env.OPENACE_CLOUD === 'true') {
+        const sessionId = this._sessionManager.getSessionId(req);
+        const deleted = this._sessionManager.deleteConversation(sessionId, req.params.chatId);
+        return res.json({ success: deleted });
+      }
       if (!this.activityLogger) return res.json({ success: false, error: 'No activity logger' });
       this.activityLogger.conversations.delete(req.params.chatId);
       await this.activityLogger.save();
@@ -831,13 +843,15 @@ export class ApiGateway {
         const thinkingSteps = response?.thinking || progressMessages;
         res.write(`data: ${JSON.stringify({ type: 'response', content: response, thinking: thinkingSteps })}\n\n`);
 
-        // NOTE: Conversation capture DISABLED for privacy.
-        // We never store user conversations for training.
-        // Training data is generated synthetically — see training/generate-data.js
+        // Save messages to per-user session (cloud mode only)
+        const sessionId = this._sessionManager.getSessionId(req);
+        const aceResponseText = response?.message || response?.data?.summary || '';
+        if (process.env.OPENACE_CLOUD === 'true' && conversationId) {
+          this._sessionManager.saveMessage(sessionId, conversationId, 'user', rawMessage);
+          this._sessionManager.saveMessage(sessionId, conversationId, 'ace', aceResponseText);
+        }
 
         // Profile builder — extract name/email/website, auto-create account
-        const sessionId = conversationId || req.headers['x-session-id'] || 'default';
-        const aceResponseText = response?.message || response?.data?.summary || '';
         const profileResult = this._profileBuilder.processMessage(sessionId, rawMessage, aceResponseText);
         if (profileResult.accountCreated) {
           // Send token to client so they're auto-logged in
