@@ -43,6 +43,30 @@ if (isCloudMode()) {
 // Health check (used by Railway, Docker, etc.)
 app.get('/health', (req, res) => res.json({ status: 'ok', cloud: isCloudMode(), version: '1.8.0' }));
 
+// Admin login page — accessible at /admin
+app.get('/admin', (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ace Admin</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0C0B10;color:#E8E6F0;font-family:Inter,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}
+.box{width:100%;max-width:360px;padding:40px;border-radius:16px;background:#16151E;border:1px solid #2A2840}
+h1{font-size:1.4rem;margin-bottom:8px}p{color:#726E90;font-size:.85rem;margin-bottom:24px}
+input{width:100%;padding:12px 16px;border-radius:10px;border:1px solid #2A2840;background:#0C0B10;color:#E8E6F0;font-size:.95rem;margin-bottom:12px;outline:none}
+input:focus{border-color:#8B7EC8}
+button{width:100%;padding:12px;border:none;border-radius:10px;background:#8B7EC8;color:#fff;font-size:.95rem;font-weight:600;cursor:pointer}
+button:hover{background:#6B5FA8}.err{color:#C87070;font-size:.85rem;margin-bottom:12px;display:none}
+</style></head><body><div class="box"><h1>Ace Admin</h1><p>Sign in to manage OpenAce</p>
+<div class="err" id="err"></div>
+<input type="email" id="email" placeholder="Email" value="openaceai@gmail.com">
+<input type="password" id="pass" placeholder="Password">
+<button onclick="login()">Sign In</button></div>
+<script>async function login(){const e=document.getElementById('email').value,p=document.getElementById('pass').value,err=document.getElementById('err');
+err.style.display='none';
+try{const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:e,password:p})});
+const d=await r.json();if(d.success){localStorage.setItem('ace_token',d.data.token);localStorage.setItem('ace_user',JSON.stringify(d.data.user));
+window.location.href='/';}else{err.textContent=d.error||'Login failed';err.style.display='block';}}
+catch(x){err.textContent='Connection failed';err.style.display='block';}}</script></body></html>`);
+});
+
 app.use(express.static(path.join(baseDir, 'src/desktop/dashboard-ui/dist')));
 
 // Serve generated projects (landing pages, etc.) at /projects/
