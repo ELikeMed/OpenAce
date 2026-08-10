@@ -43,142 +43,135 @@ if (isCloudMode()) {
 // Health check (used by Railway, Docker, etc.)
 app.get('/health', (req, res) => res.json({ status: 'ok', cloud: isCloudMode(), version: '1.8.0' }));
 
-// Admin training page — accessible at /admin/training
+// Admin training page
 app.get('/admin/training', (req, res) => {
   res.send(`<!DOCTYPE html>
-<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ace Training</title>
-<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0C0B10;color:#E8E6F0;font-family:Inter,-apple-system,sans-serif;padding:24px;max-width:800px;margin:0 auto}
-h1{font-size:1.5rem;margin-bottom:4px}h2{font-size:1.1rem;margin:24px 0 12px;color:#8B7EC8}.sub{color:#726E90;font-size:.85rem;margin-bottom:24px}
-.card{background:#16151E;border:1px solid #2A2840;border-radius:12px;padding:20px;margin-bottom:16px}
-.stats{display:flex;gap:16px;margin-bottom:24px}.stat{background:#16151E;border:1px solid #2A2840;border-radius:10px;padding:16px;flex:1;text-align:center}
-.stat-num{font-size:1.8rem;font-weight:700;color:#8B7EC8}.stat-label{font-size:.75rem;color:#726E90;margin-top:4px}
-textarea,input{width:100%;padding:12px;border-radius:8px;border:1px solid #2A2840;background:#0C0B10;color:#E8E6F0;font-size:.9rem;margin-bottom:8px;outline:none;resize:vertical;font-family:inherit}
-textarea:focus,input:focus{border-color:#8B7EC8}
-button{padding:10px 20px;border:none;border-radius:8px;font-size:.9rem;font-weight:600;cursor:pointer;margin-right:8px}
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Train Ace</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0C0B10;color:#E8E6F0;font-family:Inter,-apple-system,sans-serif;padding:24px;max-width:700px;margin:0 auto}
+.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:32px}
+h1{font-size:1.5rem}a{color:#8B7EC8;text-decoration:none;font-size:.85rem}a:hover{text-decoration:underline}
+.step{background:#16151E;border:1px solid #2A2840;border-radius:14px;padding:24px;margin-bottom:20px}
+.step-header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.step-num{width:32px;height:32px;border-radius:50%;background:#8B7EC8;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.9rem;flex-shrink:0}
+.step-title{font-size:1.05rem;font-weight:600}
+.step-desc{color:#726E90;font-size:.85rem;line-height:1.5;margin-bottom:16px}
+textarea,input[type=text]{width:100%;padding:12px;border-radius:8px;border:1px solid #2A2840;background:#0C0B10;color:#E8E6F0;font-size:.9rem;margin-bottom:8px;outline:none;resize:vertical;font-family:inherit}
+textarea:focus,input[type=text]:focus{border-color:#8B7EC8}
+input[type=file]{margin-bottom:8px;font-size:.85rem;color:#B0ACCA}
+button{padding:12px 24px;border:none;border-radius:10px;font-size:.9rem;font-weight:600;cursor:pointer;transition:all .15s}
+.btn-big{width:100%;padding:16px;font-size:1rem;border-radius:12px;margin-top:8px}
 .btn-primary{background:#8B7EC8;color:#fff}.btn-primary:hover{background:#6B5FA8}
-.btn-danger{background:#C87070;color:#fff}.btn-danger:hover{background:#A85858}
-.btn-outline{background:transparent;border:1px solid #2A2840;color:#B0ACCA}.btn-outline:hover{border-color:#8B7EC8}
-.example{padding:12px;border-bottom:1px solid #1E1D2A;font-size:.85rem}.example:last-child{border:none}
-.example .user{color:#8B7EC8;font-weight:600}.example .ace{color:#B0ACCA;margin-top:4px}
+.btn-green{background:#5CB882;color:#fff}.btn-green:hover{background:#4A9A6A}
+.btn-outline{background:transparent;border:1px solid #2A2840;color:#B0ACCA;margin-top:8px}.btn-outline:hover{border-color:#8B7EC8}
 .status{padding:12px;border-radius:8px;margin-top:12px;font-size:.85rem;display:none}
 .status.ok{background:#1a2e1a;border:1px solid #2e4a2e;color:#5CB882;display:block}
 .status.err{background:#2e1a1a;border:1px solid #4a2e2e;color:#C87070;display:block}
 .status.info{background:#1a1a2e;border:1px solid #2e2e4a;color:#8B7EC8;display:block}
-a{color:#8B7EC8;text-decoration:none}a:hover{text-decoration:underline}
-.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
+.stat-row{display:flex;gap:12px;margin-bottom:20px}.stat-box{flex:1;background:#1E1D2A;border-radius:10px;padding:14px;text-align:center}
+.stat-box .num{font-size:1.5rem;font-weight:700;color:#8B7EC8}.stat-box .label{font-size:.7rem;color:#726E90;margin-top:2px}
+.example{padding:10px;border-bottom:1px solid #1E1D2A;font-size:.83rem}.example:last-child{border:none}
+.example .u{color:#8B7EC8;font-weight:600}.example .a{color:#B0ACCA;margin-top:3px}
+#kbList div{padding:6px 0;border-bottom:1px solid #1E1D2A;font-size:.82rem;color:#B0ACCA}
+.divider{height:1px;background:#2A2840;margin:32px 0}
 </style></head><body>
-<div class="topbar"><div><h1>Ace Training</h1><p class="sub">Teach Ace business knowledge</p></div><a href="/">← Back to Dashboard</a></div>
+<div class="topbar"><h1>Train Ace</h1><a href="/">← Dashboard</a></div>
 
-<div class="stats"><div class="stat"><div class="stat-num" id="count">—</div><div class="stat-label">Training Examples</div></div>
-<div class="stat"><div class="stat-num">♣</div><div class="stat-label">Ace Clubs Model</div></div></div>
-
-<h2>Add Training Example</h2>
-<div class="card">
-<input id="userMsg" placeholder="What the user says... (e.g. How do I get more referrals?)">
-<textarea id="aceMsg" rows="3" placeholder="How Ace should respond... (2-3 sentences, direct, one follow-up question)"></textarea>
-<button class="btn-primary" onclick="addExample()">Add Example</button>
-<button class="btn-outline" onclick="document.getElementById('userMsg').value='';document.getElementById('aceMsg').value=''">Clear</button>
-<div class="status" id="addStatus"></div>
+<div class="stat-row">
+<div class="stat-box"><div class="num" id="count">—</div><div class="label">Training Examples</div></div>
+<div class="stat-box"><div class="num" id="kbCount">—</div><div class="label">Knowledge Docs</div></div>
+<div class="stat-box"><div class="num">♣</div><div class="label">Ace Clubs</div></div>
 </div>
 
-<h2>Retrain Model</h2>
-<div class="card">
-<p style="color:#726E90;font-size:.85rem;margin-bottom:12px">Runs fine-tuning on all training examples. Takes 5-10 minutes. The server stays running — training happens in the background.</p>
-<button class="btn-danger" onclick="retrain()">Start Training</button>
-<div class="status" id="trainStatus"></div>
+<div class="step">
+<div class="step-header"><div class="step-num">1</div><div class="step-title">Auto-Train (Recommended)</div></div>
+<div class="step-desc">One click — Ace learns business knowledge across 56 topics: sales, marketing, 15+ industries, operations, finance. Uses Gemini to generate training data and knowledge docs automatically.</div>
+<input type="text" id="geminiKey" placeholder="Paste your Gemini API key (free from aistudio.google.com/apikey)">
+<button class="btn-green btn-big" onclick="autoTrain()">Auto-Train Ace on Business Knowledge</button>
+<div class="status" id="autoStatus"></div>
 </div>
 
-<h2>Knowledge Base</h2>
-<div class="card">
-<p style="color:#726E90;font-size:.85rem;margin-bottom:12px">Upload documents that Ace can reference when answering questions. PDFs, text files, CSVs — anything with business knowledge. Ace doesn't memorize these — it searches them in real-time when someone asks a relevant question.</p>
-<p style="color:#726E90;font-size:.85rem;margin-bottom:12px"><strong>Ideas for what to upload:</strong></p>
-<ul style="color:#726E90;font-size:.85rem;margin-bottom:16px;padding-left:20px">
-<li>Industry reports and market research</li>
-<li>Sales playbooks and outreach templates</li>
-<li>Business strategy guides</li>
-<li>Pricing benchmarks by industry</li>
-<li>Marketing best practices</li>
-<li>Legal/compliance basics for businesses</li>
-</ul>
-<input type="file" id="knowledgeFile" accept=".pdf,.txt,.csv,.docx,.md" multiple style="margin-bottom:8px">
-<button class="btn-primary" onclick="uploadKnowledge()">Upload to Knowledge Base</button>
-<button class="btn-outline" onclick="loadKnowledge()">Refresh</button>
+<div class="step">
+<div class="step-header"><div class="step-num">2</div><div class="step-title">Upload Knowledge Docs</div></div>
+<div class="step-desc">Upload PDFs, text files, or docs with business info. Ace searches these when answering — no retraining needed. Instant.</div>
+<input type="file" id="knowledgeFile" accept=".pdf,.txt,.csv,.docx,.md" multiple>
+<button class="btn-primary" onclick="uploadKnowledge()">Upload Documents</button>
 <div class="status" id="kbStatus"></div>
 <div id="kbList" style="margin-top:12px"></div>
 </div>
 
-<h2>How Knowledge vs Training Works</h2>
-<div class="card" style="color:#726E90;font-size:.85rem">
-<p><strong style="color:#8B7EC8">Training examples</strong> = How Ace talks. Add a user question + ideal response. Requires retraining (5-10 min).</p>
-<p style="margin-top:8px"><strong style="color:#8B7EC8">Knowledge base</strong> = What Ace knows. Upload documents with business info. Instant — no retraining needed. Ace searches them when someone asks a relevant question.</p>
-<p style="margin-top:8px"><strong style="color:#8B7EC8">Best combo:</strong> Train on conversation style (50-200 examples). Upload knowledge docs for facts and data (unlimited). Ace gets the tone from training and the substance from knowledge.</p>
+<div class="step">
+<div class="step-header"><div class="step-num">3</div><div class="step-title">Add Custom Examples</div></div>
+<div class="step-desc">Teach Ace exactly how to respond. Type what a user would say and how Ace should answer. Short, direct, one follow-up question.</div>
+<input type="text" id="userMsg" placeholder="User says: How do I get more referrals?">
+<textarea id="aceMsg" rows="2" placeholder="Ace responds: Ask right after a win. 'Know anyone who could use this?' Most happy clients refer — they just need to be asked."></textarea>
+<button class="btn-primary" onclick="addExample()">Add Example</button>
+<div class="status" id="addStatus"></div>
 </div>
 
-<h2>Recent Examples</h2>
-<div class="card" id="examples">Loading...</div>
+<div class="step">
+<div class="step-header"><div class="step-num">4</div><div class="step-title">Retrain the Model</div></div>
+<div class="step-desc">After adding examples (Step 1 or 3), retrain so Ace learns them. Takes 5-10 minutes. You can close this page — it runs in the background.</div>
+<button class="btn-primary btn-big" onclick="retrain()">Retrain Ace Clubs Model</button>
+<div class="status" id="trainStatus"></div>
+</div>
+
+<div class="divider"></div>
+<div style="color:#726E90;font-size:.8rem;margin-bottom:12px;font-weight:600">Recent Training Examples</div>
+<div id="examples" style="background:#16151E;border:1px solid #2A2840;border-radius:10px;padding:4px 12px;max-height:300px;overflow:auto">Loading...</div>
 
 <script>
 const token=localStorage.getItem('ace_token')||'';
 const headers={'Content-Type':'application/json','Authorization':'Bearer '+token};
 
 async function load(){
-  const r=await fetch('/api/admin/training',{headers});
-  const d=await r.json();
-  if(!d.success){document.getElementById('examples').textContent='Not authorized';return;}
-  document.getElementById('count').textContent=d.data.totalExamples;
+  try{const r=await fetch('/api/admin/training',{headers});const d=await r.json();
+  if(!d.success)return;document.getElementById('count').textContent=d.data.totalExamples;
   const el=document.getElementById('examples');
-  if(d.data.examples.length===0){el.innerHTML='<p style="color:#726E90">No examples yet</p>';return;}
-  el.innerHTML=d.data.examples.map(e=>'<div class="example"><div class="user">User: '+e.user+'</div><div class="ace">Ace: '+e.assistant+'</div></div>').join('');
+  if(!d.data.examples.length){el.innerHTML='<p style="color:#726E90;padding:12px">No examples yet — start with Step 1</p>';return;}
+  el.innerHTML=d.data.examples.map(e=>'<div class="example"><div class="u">'+e.user+'</div><div class="a">'+e.assistant+'</div></div>').join('');}catch{}
 }
 
 async function addExample(){
-  const user=document.getElementById('userMsg').value.trim();
-  const assistant=document.getElementById('aceMsg').value.trim();
-  const st=document.getElementById('addStatus');
+  const user=document.getElementById('userMsg').value.trim(),assistant=document.getElementById('aceMsg').value.trim(),st=document.getElementById('addStatus');
   if(!user||!assistant){st.className='status err';st.textContent='Both fields required';return;}
-  const r=await fetch('/api/admin/training/add',{method:'POST',headers,body:JSON.stringify({user,assistant})});
-  const d=await r.json();
-  if(d.success){st.className='status ok';st.textContent='Example added!';document.getElementById('userMsg').value='';document.getElementById('aceMsg').value='';load();}
-  else{st.className='status err';st.textContent=d.error||'Failed';}
+  const r=await fetch('/api/admin/training/add',{method:'POST',headers,body:JSON.stringify({user,assistant})});const d=await r.json();
+  if(d.success){st.className='status ok';st.textContent='Added!';document.getElementById('userMsg').value='';document.getElementById('aceMsg').value='';load();}
+  else{st.className='status err';st.textContent=d.error;}
 }
 
 async function retrain(){
-  const st=document.getElementById('trainStatus');
-  st.className='status info';st.textContent='Training started... this takes 5-10 minutes. You can close this page.';
-  const r=await fetch('/api/admin/training/retrain',{method:'POST',headers});
-  const d=await r.json();
-  if(d.success){st.className='status ok';st.textContent='Training running in background. Model will auto-rebuild when done.';}
-  else{st.className='status err';st.textContent=d.error||'Failed';}
+  const st=document.getElementById('trainStatus');st.className='status info';st.textContent='Training started... 5-10 minutes. You can close this page.';
+  const r=await fetch('/api/admin/training/retrain',{method:'POST',headers});const d=await r.json();
+  if(d.success)st.className='status ok',st.textContent='Training running. Model will auto-rebuild when done.';
+  else st.className='status err',st.textContent=d.error;
 }
 
-load(); loadKnowledge();
+async function autoTrain(){
+  const key=document.getElementById('geminiKey').value.trim(),st=document.getElementById('autoStatus');
+  if(!key){st.className='status err';st.textContent='Paste your Gemini API key first (free from aistudio.google.com/apikey)';return;}
+  st.className='status info';st.textContent='Starting auto-training across 56 business topics... This takes about 8 minutes.';
+  try{const r=await fetch('/api/admin/training/auto',{method:'POST',headers,body:JSON.stringify({geminiKey:key})});const d=await r.json();
+  if(d.success)st.className='status ok',st.textContent='Auto-training started! 56 topics being processed. Check back in 8 minutes then hit Retrain.';
+  else st.className='status err',st.textContent=d.error;}catch(e){st.className='status err';st.textContent='Failed: '+e.message;}
+}
 
 async function uploadKnowledge(){
-  const files=document.getElementById('knowledgeFile').files;
-  const st=document.getElementById('kbStatus');
-  if(!files.length){st.className='status err';st.textContent='Select a file first';return;}
-  st.className='status info';st.textContent='Uploading '+files.length+' file(s)...';
-  for(const file of files){
-    const formData=new FormData();formData.append('file',file);
-    const r=await fetch('/api/workload/upload',{method:'POST',headers:{'Authorization':'Bearer '+token},body:formData});
-    const d=await r.json();
-    if(!d.success){st.className='status err';st.textContent='Failed: '+(d.error||'Unknown');return;}
-  }
-  st.className='status ok';st.textContent=files.length+' file(s) uploaded to knowledge base!';
-  document.getElementById('knowledgeFile').value='';
-  loadKnowledge();
+  const files=document.getElementById('knowledgeFile').files,st=document.getElementById('kbStatus');
+  if(!files.length){st.className='status err';st.textContent='Select files first';return;}
+  st.className='status info';st.textContent='Uploading...';
+  for(const f of files){const fd=new FormData();fd.append('file',f);
+  await fetch('/api/workload/upload',{method:'POST',headers:{'Authorization':'Bearer '+token},body:fd});}
+  st.className='status ok';st.textContent=files.length+' file(s) uploaded!';loadKnowledge();
 }
 
 async function loadKnowledge(){
-  try{
-    const r=await fetch('/api/workload/sources',{headers});
-    const d=await r.json();
-    const el=document.getElementById('kbList');
-    if(!d.success||!d.data?.length){el.innerHTML='<p style="color:#726E90;font-size:.85rem">No documents yet</p>';return;}
-    el.innerHTML='<p style="color:#726E90;font-size:.8rem;margin-bottom:8px">'+d.data.length+' documents loaded:</p>'+
-      d.data.map(s=>'<div style="padding:6px 0;border-bottom:1px solid #1E1D2A;font-size:.82rem;color:#B0ACCA">📄 '+s.name+' <span style="color:#726E90">('+s.chunks+' chunks)</span></div>').join('');
-  }catch{document.getElementById('kbList').innerHTML='';}
+  try{const r=await fetch('/api/workload/sources',{headers});const d=await r.json();const el=document.getElementById('kbList');
+  document.getElementById('kbCount').textContent=d.data?.length||0;
+  if(!d.data?.length){el.innerHTML='';return;}
+  el.innerHTML=d.data.map(s=>'<div>📄 '+s.name+'</div>').join('');}catch{}
 }
+
+load();loadKnowledge();
 </script></body></html>`);
 });
 

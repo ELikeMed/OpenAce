@@ -2160,6 +2160,24 @@ export class ApiGateway {
       });
     }));
 
+    this.app.post('/api/admin/training/auto', this.wrap(async (req, res) => {
+      const isAdminUser = req.userEmail === 'openaceai@gmail.com' || req.userEmail === 'likemindedpro@gmail.com';
+      if (!isAdminUser) return res.status(403).json({ success: false, error: 'Admin only' });
+
+      const { geminiKey } = req.body;
+      if (!geminiKey) return res.json({ success: false, error: 'Gemini API key required' });
+
+      const { exec } = await import('child_process');
+      const cmd = `GEMINI_API_KEY=${geminiKey} node training/auto-train.js`;
+
+      res.json({ success: true, message: 'Auto-training started' });
+
+      exec(cmd, { cwd: this.baseDir, timeout: 600000 }, (error, stdout, stderr) => {
+        if (error) console.error('[AutoTrain] Failed:', error.message);
+        else console.log('[AutoTrain] Complete:', stdout.split('\n').slice(-5).join('\n'));
+      });
+    }));
+
     // POST /api/desktop/scroll — Scroll up or down
     // Body: { direction: "down", amount: 5 }
     this.app.post('/api/desktop/scroll', this.wrap(async (req, res) => {
