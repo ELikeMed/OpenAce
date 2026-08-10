@@ -88,6 +88,32 @@ a{color:#8B7EC8;text-decoration:none}a:hover{text-decoration:underline}
 <div class="status" id="trainStatus"></div>
 </div>
 
+<h2>Knowledge Base</h2>
+<div class="card">
+<p style="color:#726E90;font-size:.85rem;margin-bottom:12px">Upload documents that Ace can reference when answering questions. PDFs, text files, CSVs — anything with business knowledge. Ace doesn't memorize these — it searches them in real-time when someone asks a relevant question.</p>
+<p style="color:#726E90;font-size:.85rem;margin-bottom:12px"><strong>Ideas for what to upload:</strong></p>
+<ul style="color:#726E90;font-size:.85rem;margin-bottom:16px;padding-left:20px">
+<li>Industry reports and market research</li>
+<li>Sales playbooks and outreach templates</li>
+<li>Business strategy guides</li>
+<li>Pricing benchmarks by industry</li>
+<li>Marketing best practices</li>
+<li>Legal/compliance basics for businesses</li>
+</ul>
+<input type="file" id="knowledgeFile" accept=".pdf,.txt,.csv,.docx,.md" multiple style="margin-bottom:8px">
+<button class="btn-primary" onclick="uploadKnowledge()">Upload to Knowledge Base</button>
+<button class="btn-outline" onclick="loadKnowledge()">Refresh</button>
+<div class="status" id="kbStatus"></div>
+<div id="kbList" style="margin-top:12px"></div>
+</div>
+
+<h2>How Knowledge vs Training Works</h2>
+<div class="card" style="color:#726E90;font-size:.85rem">
+<p><strong style="color:#8B7EC8">Training examples</strong> = How Ace talks. Add a user question + ideal response. Requires retraining (5-10 min).</p>
+<p style="margin-top:8px"><strong style="color:#8B7EC8">Knowledge base</strong> = What Ace knows. Upload documents with business info. Instant — no retraining needed. Ace searches them when someone asks a relevant question.</p>
+<p style="margin-top:8px"><strong style="color:#8B7EC8">Best combo:</strong> Train on conversation style (50-200 examples). Upload knowledge docs for facts and data (unlimited). Ace gets the tone from training and the substance from knowledge.</p>
+</div>
+
 <h2>Recent Examples</h2>
 <div class="card" id="examples">Loading...</div>
 
@@ -125,7 +151,34 @@ async function retrain(){
   else{st.className='status err';st.textContent=d.error||'Failed';}
 }
 
-load();
+load(); loadKnowledge();
+
+async function uploadKnowledge(){
+  const files=document.getElementById('knowledgeFile').files;
+  const st=document.getElementById('kbStatus');
+  if(!files.length){st.className='status err';st.textContent='Select a file first';return;}
+  st.className='status info';st.textContent='Uploading '+files.length+' file(s)...';
+  for(const file of files){
+    const formData=new FormData();formData.append('file',file);
+    const r=await fetch('/api/workload/upload',{method:'POST',headers:{'Authorization':'Bearer '+token},body:formData});
+    const d=await r.json();
+    if(!d.success){st.className='status err';st.textContent='Failed: '+(d.error||'Unknown');return;}
+  }
+  st.className='status ok';st.textContent=files.length+' file(s) uploaded to knowledge base!';
+  document.getElementById('knowledgeFile').value='';
+  loadKnowledge();
+}
+
+async function loadKnowledge(){
+  try{
+    const r=await fetch('/api/workload/sources',{headers});
+    const d=await r.json();
+    const el=document.getElementById('kbList');
+    if(!d.success||!d.data?.length){el.innerHTML='<p style="color:#726E90;font-size:.85rem">No documents yet</p>';return;}
+    el.innerHTML='<p style="color:#726E90;font-size:.8rem;margin-bottom:8px">'+d.data.length+' documents loaded:</p>'+
+      d.data.map(s=>'<div style="padding:6px 0;border-bottom:1px solid #1E1D2A;font-size:.82rem;color:#B0ACCA">📄 '+s.name+' <span style="color:#726E90">('+s.chunks+' chunks)</span></div>').join('');
+  }catch{document.getElementById('kbList').innerHTML='';}
+}
 </script></body></html>`);
 });
 
