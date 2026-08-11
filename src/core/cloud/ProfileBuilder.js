@@ -32,6 +32,7 @@ export class ProfileBuilder {
    */
   processMessage(sessionId, userMessage, aceResponse) {
     if (!isCloudMode()) return { profileUpdated: false };
+    console.log(`[ProfileBuilder] Processing message from session ${sessionId.substring(0, 12)}...: "${userMessage.substring(0, 50)}..."`);
 
     // Get or create session profile
     if (!this.sessions.has(sessionId)) {
@@ -46,6 +47,8 @@ export class ProfileBuilder {
     session.messageCount++;
     const profile = session.profile;
     let updated = false;
+
+    console.log(`[ProfileBuilder] Session profile so far: name=${profile.name}, email=${profile.email}, website=${profile.website}`);
 
     // Extract email
     const emailMatch = userMessage.match(EMAIL_REGEX);
@@ -84,6 +87,10 @@ export class ProfileBuilder {
         profile.business = userMessage.trim();
         updated = true;
       }
+    }
+
+    if (updated) {
+      console.log(`[ProfileBuilder] Updated! name=${profile.name}, email=${profile.email}, website=${profile.website}, business=${profile.business?.substring(0, 30)}`);
     }
 
     // Auto-create account when we have an email

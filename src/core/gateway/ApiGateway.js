@@ -688,8 +688,10 @@ export class ApiGateway {
       // Also catch "find CMOs at law firms in Miami" type requests
       const wantsContactsAt = /\b(find|get|show|who)\b.{0,20}\b(cmo|ceo|cto|owner|manager|director|contact|people|person|staff|team)\b.{0,20}\b(at|of|from|for)\b/i.test(rawMessage) && hasLocation;
 
-      // Trigger forced search when we have industry + location OR contact-at requests
-      const isLeadSearch = (hasLocation && (hasIndustry || hasBusinessType)) || wantsContactsAt;
+      // Only trigger forced search for SHORT command-like messages
+      // "dentists in Boca Raton" = search. Long paragraph describing a business = conversation.
+      const isShortCommand = (rawMessage || '').length < 80;
+      const isLeadSearch = isShortCommand && ((hasLocation && (hasIndustry || hasBusinessType)) || wantsContactsAt);
 
       if ((isLeadSearch || wantsResearch) && this.ace?.brain?.unifiedAgent) {
         const agent = this.ace.brain.unifiedAgent;
