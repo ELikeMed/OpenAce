@@ -672,10 +672,11 @@ export class ApiGateway {
       const { message: rawMessage, mode, project, conversationId, images: rawImages } = req.body;
       const images = rawImages || [];
 
-      // Free tier: limit tools and iterations for anonymous/non-admin users
+      // Always use freeTierMode in cloud mode — prevents the 7B model from
+      // going wild with tools during conversation. The forced search handles
+      // real lead/research requests separately. Admin gets full tools on desktop only.
       const isAdmin = req.userEmail && (req.userEmail === 'openaceai@gmail.com' || req.userEmail === 'likemindedpro@gmail.com');
-      const isFreeTier = !isAdmin && (!req.userId || req.userId === 'local' || req.userId === null);
-      if (isFreeTier && this.ace?.brain?.unifiedAgent) {
+      if (process.env.OPENACE_CLOUD === 'true' && this.ace?.brain?.unifiedAgent) {
         this.ace.brain.unifiedAgent._freeTierMode = true;
       }
 
