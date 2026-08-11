@@ -476,15 +476,7 @@ export class ApiGateway {
       res.json({ success: true, data: this.activityLogger.getRecentActivities(limit) });
     });
 
-    this.app.get('/api/conversations', (req, res) => {
-      if (!this.activityLogger) return res.json({ success: true, data: [] });
-      res.json({ success: true, data: this.activityLogger.getAllConversations() });
-    });
-
-    this.app.get('/api/conversation/:chatId', (req, res) => {
-      if (!this.activityLogger) return res.json({ success: true, data: { messages: [] } });
-      res.json({ success: true, data: this.activityLogger.getConversation(req.params.chatId) });
-    });
+    // Old conversation routes removed — replaced by session-isolated versions below
 
     this.app.get('/api/work-products', (req, res) => {
       if (!this.activityLogger) return res.json({ success: true, data: [] });
