@@ -69,8 +69,10 @@ export class ProfileBuilder {
       const scraper = new ProfileScraper();
       scraper.scrape(profile.website).then(scraped => {
         if (scraped) {
-          if (scraped.businessName && !profile.name) profile.name = scraped.businessName;
+          // Only use scraped name if we don't have a real one (not "Hi" etc)
+          if (scraped.businessName && (!profile.name || SKIP_WORDS.has(profile.name.toLowerCase()))) profile.name = scraped.businessName;
           if (scraped.description && !profile.business) profile.business = scraped.description;
+          // User's own description of their industry wins over scraped
           if (scraped.industry && !profile.industry) profile.industry = scraped.industry;
           if (scraped.location && !profile.location) profile.location = scraped.location;
           if (scraped.email && !profile.email) profile.email = scraped.email;
@@ -96,9 +98,11 @@ export class ProfileBuilder {
       updated = true;
     }
     // Also check if the message is just a first name (1-2 words, capitalized, short)
+    // Skip common greetings and short words that aren't names
+    const SKIP_WORDS = new Set(['hi', 'hey', 'hello', 'yes', 'no', 'ok', 'okay', 'sure', 'thanks', 'bye', 'yo', 'sup']);
     if (!profile.name && userMessage.length < 30) {
       const words = userMessage.trim().split(/\s+/);
-      if (words.length <= 2 && words.every(w => /^[A-Z][a-z]+$/.test(w))) {
+      if (words.length <= 2 && words.every(w => /^[A-Z][a-z]+$/.test(w)) && !SKIP_WORDS.has(userMessage.trim().toLowerCase())) {
         profile.name = userMessage.trim();
         updated = true;
       }
