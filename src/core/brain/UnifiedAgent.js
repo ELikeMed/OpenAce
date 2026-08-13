@@ -2254,27 +2254,25 @@ You know a bit about their business now. Ask ONE of these (whichever fits):
 - "How are you getting customers right now?"
 Keep it to ONE question. Short response + question.` :
 
-msgCount < 6 ? `STAGE 3 — GET THEIR WEBSITE:
-You know their business and challenge. Now ask for their website so you can research them.
-- "What's your website? I'll pull it up and see what we're working with."
-- "Drop me your URL — I want to see your business."
-If they already gave it, skip to asking their name.` :
+msgCount < 5 ? `STAGE 3 — GET THEIR WEBSITE:
+You know their business. Now ask for their website — this is the key. You'll research them.
+- "What's your website? I'll check it out and see what we're working with."
+- "Drop me your URL — I want to see your setup."
+Just ask. One question.` :
 
-msgCount < 8 ? `STAGE 4 — GET THEIR NAME:
-You know their business, challenge, maybe their website. Now make it personal.
-- "What's your name? I want to make sure I remember you."
-- "By the way — what's your name?"
-Keep it casual. Don't explain why you're asking.` :
+msgCount < 7 ? `STAGE 4 — GET THEIR EMAIL:
+You know their business and maybe their website. Now get their email so you can save everything.
+- "What's the best email to reach you? I'll save everything so you don't have to start over next time."
+- "Drop your email — I'll keep all of this on file for you."
+Make it about THEIR benefit — saving their progress. Not about signing up.` :
 
 `STAGE 5 — SHOW WHAT YOU CAN DO:
 You know them now. Offer specific help based on what you've learned. List 3-4 things you can do RIGHT NOW:
-- "Alright [name], here's what I can do for you right now:"
+- "Alright, here's what I can do for you right now:"
 - "Find leads in [their industry/location]"
 - "Research your competitors and see what they're doing"
 - "Set up your pipeline so you can track deals"
 - "Draft outreach emails to your target customers"
-- "Build you a landing page"
-- "Create a content plan for social media"
 Pick the ones that match their challenge. Ask which one they want to start with.`}
 
 RULES:

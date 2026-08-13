@@ -10,6 +10,7 @@
 
 import { getDatabase } from './CloudDatabase.js';
 import { isCloudMode } from './SupabaseClient.js';
+import { ProfileScraper } from './ProfileScraper.js';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
@@ -57,12 +58,35 @@ export class ProfileBuilder {
       updated = true;
     }
 
-    // Extract website
+    // Extract website — and auto-scrape to fill profile
     const websiteMatch = userMessage.match(WEBSITE_REGEX);
     if (websiteMatch && !profile.website) {
       const domain = websiteMatch[0];
       profile.website = domain.startsWith('http') ? domain : `https://${domain}`;
       updated = true;
+
+      // Scrape the website in background to fill profile automatically
+      const scraper = new ProfileScraper();
+      scraper.scrape(profile.website).then(scraped => {
+        if (scraped) {
+          if (scraped.businessName && !profile.name) profile.name = scraped.businessName;
+          if (scraped.description && !profile.business) profile.business = scraped.description;
+          if (scraped.industry && !profile.industry) profile.industry = scraped.industry;
+          if (scraped.location && !profile.location) profile.location = scraped.location;
+          if (scraped.email && !profile.email) profile.email = scraped.email;
+          if (scraped.phone && !profile.phone) profile.phone = scraped.phone;
+          console.log(`[ProfileBuilder] Scraped ${profile.website}: name=${scraped.businessName}, industry=${scraped.industry}, location=${scraped.location}, email=${scraped.email}`);
+
+          // If we got an email from scraping, auto-create the account
+          if (profile.email && !session.accountCreated) {
+            const result = this._createAccount(profile);
+            if (result) {
+              session.accountCreated = true;
+              console.log(`[ProfileBuilder] Auto-created account from website scrape: ${profile.email}`);
+            }
+          }
+        }
+      }).catch(() => {});
     }
 
     // Extract name
