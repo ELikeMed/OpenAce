@@ -1925,65 +1925,63 @@ function MessageBubble({ msg, msgIndex, onConfirmActions, onCancelActions, onQue
 
   const getBubbleStyle = () => {
     if (isUser) return {
-      background: `linear-gradient(135deg, ${BRAND.primary} 0%, ${BRAND.primaryDark} 100%)`,
-      color: '#fff',
-      borderRadius: '16px 16px 4px 16px',
-      boxShadow: `0 2px 12px ${alpha(BRAND.primary, 0.3)}`,
+      background: alpha(BRAND.primary, 0.12),
+      color: BRAND.textPrimary,
+      borderRadius: '18px 18px 4px 18px',
     };
     if (isSystem) return {
-      background: alpha(BRAND.warning, 0.08),
-      color: BRAND.warning,
-      borderRadius: '16px 16px 16px 4px',
-      border: `1px solid ${alpha(BRAND.warning, 0.15)}`,
+      background: alpha(BRAND.warning, 0.06),
+      color: BRAND.textSecondary,
+      borderRadius: '12px',
+      border: `1px solid ${alpha(BRAND.warning, 0.1)}`,
+      fontSize: '0.85rem',
     };
     if (isThinking) return {
-      background: alpha(BRAND.textMuted, 0.06),
+      background: 'transparent',
       color: BRAND.textMuted,
-      borderRadius: '16px 16px 16px 4px',
-      border: `1px dashed ${alpha(BRAND.textMuted, 0.15)}`,
-      fontStyle: 'italic',
+      fontSize: '0.85rem',
     };
     return {
-      background: alpha(BRAND.bgElevated, 0.8),
+      background: 'transparent',
       color: BRAND.textPrimary,
-      borderRadius: '16px 16px 16px 4px',
-      border: `1px solid ${BRAND.border}`,
     };
   };
 
   const getAvatar = () => {
     if (isUser) return (
       <Avatar sx={{
-        width: 40, height: 40,
-        background: `linear-gradient(135deg, ${BRAND.primary}, ${BRAND.primaryLight})`,
+        width: 28, height: 28,
+        background: BRAND.primary,
+        fontSize: '0.75rem', fontWeight: 700,
       }}>
-        <PersonIcon sx={{ fontSize: 22 }} />
+        <PersonIcon sx={{ fontSize: 16 }} />
       </Avatar>
     );
     if (isSystem) return (
       <Avatar sx={{
-        width: 40, height: 40,
+        width: 28, height: 28,
         background: alpha(BRAND.warning, 0.15),
         color: BRAND.warning,
       }}>
-        <InfoOutlinedIcon sx={{ fontSize: 22 }} />
+        <InfoOutlinedIcon sx={{ fontSize: 16 }} />
       </Avatar>
     );
     if (isThinking) return (
       <Avatar sx={{
-        width: 40, height: 40,
-        background: alpha(BRAND.textMuted, 0.1),
+        width: 28, height: 28,
+        background: alpha(BRAND.textMuted, 0.08),
         color: BRAND.textMuted,
       }}>
-        <AutoAwesomeIcon sx={{ fontSize: 22 }} />
+        <AceSpadeIcon sx={{ fontSize: 14 }} />
       </Avatar>
     );
+    // Ace avatar — spade icon (Clubs model)
     return (
       <Avatar sx={{
-        width: 40, height: 40,
-        background: `linear-gradient(135deg, ${BRAND.secondary}, ${BRAND.secondaryLight})`,
+        width: 28, height: 28,
+        background: BRAND.primary,
       }}>
-        <AceSpadeIcon sx={{ fontSize: 22 }} />
+        <AceSpadeIcon sx={{ fontSize: 14 }} />
       </Avatar>
     );
   };
@@ -1995,12 +1993,15 @@ function MessageBubble({ msg, msgIndex, onConfirmActions, onCancelActions, onQue
       sx={{
         display: 'flex',
         flexDirection: isUser ? 'row-reverse' : 'row',
-        gap: 1.5,
-        mb: 2,
-        px: 1,
-        animation: 'fadeInUp 0.3s ease',
+        gap: 1,
+        mb: 1.5,
+        px: { xs: 1.5, md: 2 },
+        maxWidth: 800,
+        mx: 'auto',
+        width: '100%',
+        animation: 'fadeInUp 0.2s ease',
         '@keyframes fadeInUp': {
-          from: { opacity: 0, transform: 'translateY(8px)' },
+          from: { opacity: 0, transform: 'translateY(4px)' },
           to: { opacity: 1, transform: 'translateY(0)' },
         },
       }}
@@ -2018,7 +2019,7 @@ function MessageBubble({ msg, msgIndex, onConfirmActions, onCancelActions, onQue
           {msg.sender}
         </Typography>
         <Box sx={{
-          px: 2.5, py: 2, ...getBubbleStyle(),
+          px: isUser ? 2 : 0.5, py: isUser ? 1.5 : 0.5, ...getBubbleStyle(),
           ...(isSpeakingThis && {
             boxShadow: `0 0 12px ${alpha(BRAND.secondary, 0.2)}`,
             borderColor: alpha(BRAND.secondary, 0.3),
@@ -3533,8 +3534,8 @@ function Chat({ hideSidebar = false }) {
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-          background: alpha(BRAND.bgCard, 0.5),
-          backdropFilter: 'blur(20px)',
+          background: 'transparent',
+          border: 'none',
           borderRadius: 0,
         }}>
           {/* Export button — top right of chat */}
@@ -3617,19 +3618,11 @@ function Chat({ hideSidebar = false }) {
               )
             ))}
             {isThinking && (
-              <Box sx={{ display: 'flex', gap: 1.5, px: 1, mb: 2 }}>
-                <Avatar sx={{
-                  width: 40, height: 40,
-                  background: `linear-gradient(135deg, ${BRAND.secondary}, ${BRAND.secondaryLight})`,
-                }}>
-                  <AceSpadeIcon sx={{ fontSize: 22 }} />
+              <Box sx={{ display: 'flex', gap: 1, px: { xs: 1.5, md: 2 }, mb: 1.5, maxWidth: 800, mx: 'auto', width: '100%' }}>
+                <Avatar sx={{ width: 28, height: 28, background: BRAND.primary }}>
+                  <AceSpadeIcon sx={{ fontSize: 14 }} />
                 </Avatar>
-                <Box sx={{
-                  px: 2.5, py: 2,
-                  background: alpha(BRAND.bgElevated, 0.8),
-                  borderRadius: '16px 16px 16px 4px',
-                  border: `1px solid ${BRAND.border}`,
-                }}>
+                <Box sx={{ px: 0.5, py: 0.5 }}>
                   <TypingIndicator />
                 </Box>
               </Box>
@@ -3645,12 +3638,14 @@ function Chat({ hideSidebar = false }) {
             />
           </Box>
 
-          {/* Input Area — hidden when welcome screen is showing (it has its own input) */}
+          {/* Input Area */}
           <Box sx={{
-            p: { xs: 1, md: 2 },
-            borderTop: `1px solid ${BRAND.border}`,
-            background: alpha(BRAND.bgCard, 0.8),
+            px: { xs: 1.5, md: 2 },
+            py: 1,
             display: messages.length === 0 ? 'none' : 'block',
+            maxWidth: 830,
+            mx: 'auto',
+            width: '100%',
           }}>
             {/* Image preview strip */}
             {attachedImages.length > 0 && (
