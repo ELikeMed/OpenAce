@@ -11,6 +11,7 @@
 import { getDatabase } from './CloudDatabase.js';
 import { isCloudMode } from './SupabaseClient.js';
 import { ProfileScraper } from './ProfileScraper.js';
+import { MagicLink } from './MagicLink.js';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
@@ -126,11 +127,17 @@ export class ProfileBuilder {
     let token = null;
 
     if (profile.email && !session.accountCreated) {
-      const result = this._createAccount(profile, sessionId);
+      const result = this._createAccount(profile);
       if (result) {
         session.accountCreated = true;
         accountCreated = true;
         token = result.token;
+
+        // Send magic link email so they can get back in later
+        const ml = new MagicLink();
+        const magicUrl = ml.generateLink(profile.email);
+        ml.sendEmail(profile.email, magicUrl).catch(() => {});
+        console.log(`[ProfileBuilder] Magic link sent to ${profile.email}`);
       }
     }
 

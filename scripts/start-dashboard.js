@@ -34,14 +34,43 @@ app.use('/api/projects/import/zip', express.raw({ limit: '100mb', type: ['applic
 // Cloud mode — auth middleware (passes through in local mode)
 import { authMiddleware, authRoutes } from '../src/core/cloud/authMiddleware.js';
 import { isCloudMode } from '../src/core/cloud/SupabaseClient.js';
+import { MagicLink } from '../src/core/cloud/MagicLink.js';
 app.use('/api/', authMiddleware);
 if (isCloudMode()) {
   authRoutes(app);
   console.log('☁️  Cloud mode enabled — SQLite + JWT auth active');
 }
 
-// Health check (used by Railway, Docker, etc.)
+// Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', cloud: isCloudMode(), version: '1.8.0' }));
+
+// Magic link auth — passwordless login
+const magicLink = new MagicLink();
+
+// Send magic link email
+app.post('/api/auth/magic-link', async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.json({ success: false, error: 'Email required' });
+  const url = magicLink.generateLink(email);
+  const sent = await magicLink.sendEmail(email, url);
+  res.json({ success: true, sent, message: sent ? 'Check your email for a login link.' : 'Login link generated (email not configured).' });
+});
+
+// Verify magic link — returns JWT
+app.get('/auth/verify', (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.redirect('/?error=missing_token');
+  const result = magicLink.verify(token);
+  if (!result.success) return res.redirect('/?error=' + encodeURIComponent(result.error));
+  // Set token via a page that stores it in localStorage then redirects
+  res.send(`<!DOCTYPE html><html><head><title>Signing in...</title></head><body style="background:#0A0A0A;color:#F0EDE8;font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh">
+    <div style="text-align:center"><p style="font-size:1.2rem">Signing you in...</p></div>
+    <script>
+      localStorage.setItem('ace_token','${result.token}');
+      localStorage.setItem('ace_user',${JSON.stringify(JSON.stringify(result.user))});
+      window.location.href='/';
+    </script></body></html>`);
+});
 
 // Admin training page
 app.get('/admin/training', (req, res) => {
