@@ -1,46 +1,49 @@
 import { createTheme, alpha } from '@mui/material';
 
 const CORE = {
-  primary: '#8B7EC8',
-  primaryLight: '#A99DE0',
-  primaryDark: '#6B5FA8',
-  secondary: '#5CB8B2',
-  secondaryLight: '#7DD4CE',
-  accent: '#C87DA8',
-  warning: '#D4B76A',
-  error: '#C87070',
-  success: '#5CB882',
-  info: '#6BAAD4',
+  primary: '#C9A96E',       // Warm gold
+  primaryLight: '#D4BA8A',
+  primaryDark: '#A88B4A',
+  secondary: '#9CA3AF',     // Neutral gray
+  secondaryLight: '#D1D5DB',
+  accent: '#C9A96E',
+  warning: '#D4A574',
+  error: '#B85C5C',
+  success: '#5C9E6F',
+  info: '#6B8CAE',
 };
 
 const DARK = {
   ...CORE,
-  bg: '#0C0B10',
-  bgSidebar: '#100F16',
-  bgCard: '#16151E',
-  bgSurface: '#1A1924',
-  bgElevated: '#201F2C',
-  bgHover: '#262535',
-  border: '#2A2840',
-  borderLight: '#363452',
-  textPrimary: '#E8E6F0',
-  textSecondary: '#B0ACCA',
-  textMuted: '#726E90',
+  bg: '#0A0A0A',
+  bgSidebar: '#0E0E0E',
+  bgCard: '#141414',
+  bgSurface: '#181818',
+  bgElevated: '#1C1C1C',
+  bgHover: '#222222',
+  border: '#1E1E1E',
+  borderLight: '#2A2A2A',
+  textPrimary: '#F0EDE8',     // Warm white
+  textSecondary: '#A09A90',   // Warm gray
+  textMuted: '#6B6560',       // Muted warm
 };
 
 const LIGHT = {
   ...CORE,
-  bg: '#F8F7FC',
+  primary: '#8B7340',
+  primaryLight: '#A08850',
+  primaryDark: '#6B5530',
+  bg: '#FAF8F5',
   bgSidebar: '#FFFFFF',
   bgCard: '#FFFFFF',
-  bgSurface: '#F2F1F8',
+  bgSurface: '#F5F2EE',
   bgElevated: '#FFFFFF',
-  bgHover: '#EEEDF5',
-  border: '#E0DEF0',
-  borderLight: '#D4D2E4',
-  textPrimary: '#1A1928',
-  textSecondary: '#5A587A',
-  textMuted: '#908EA8',
+  bgHover: '#F0ECE6',
+  border: '#E8E4DE',
+  borderLight: '#DCD6CC',
+  textPrimary: '#1A1814',
+  textSecondary: '#6B6560',
+  textMuted: '#9A9490',
 };
 
 function buildTheme(mode) {
@@ -75,11 +78,11 @@ function buildTheme(mode) {
             backgroundColor: B.bg,
             scrollbarWidth: 'thin',
             scrollbarColor: `${B.border} transparent`,
-            '&::-webkit-scrollbar': { width: 6 },
+            '&::-webkit-scrollbar': { width: 5 },
             '&::-webkit-scrollbar-track': { background: 'transparent' },
             '&::-webkit-scrollbar-thumb': { background: B.border, borderRadius: 3 },
           },
-          '*::-webkit-scrollbar': { width: 6 },
+          '*::-webkit-scrollbar': { width: 5 },
           '*::-webkit-scrollbar-track': { background: 'transparent' },
           '*::-webkit-scrollbar-thumb': { background: B.border, borderRadius: 3 },
         },
@@ -90,10 +93,10 @@ function buildTheme(mode) {
       },
       MuiButton: {
         styleOverrides: {
-          root: { textTransform: 'none', fontWeight: 600, borderRadius: 10, padding: '8px 20px' },
+          root: { textTransform: 'none', fontWeight: 600, borderRadius: 8, padding: '8px 20px' },
           contained: {
             background: B.primary,
-            color: '#fff',
+            color: '#0A0A0A',
             boxShadow: 'none',
             '&:hover': { background: B.primaryDark, boxShadow: 'none' },
           },
@@ -103,7 +106,7 @@ function buildTheme(mode) {
         styleOverrides: {
           root: {
             '& .MuiOutlinedInput-root': {
-              borderRadius: 10,
+              borderRadius: 8,
               '& fieldset': { borderColor: B.border },
               '&:hover fieldset': { borderColor: B.borderLight },
               '&.Mui-focused fieldset': { borderColor: B.primary },
@@ -116,17 +119,17 @@ function buildTheme(mode) {
           root: {
             borderRadius: 8, margin: '1px 8px', padding: '8px 12px',
             '&.Mui-selected': {
-              background: alpha(B.primary, 0.12),
-              '&:hover': { background: alpha(B.primary, 0.18) },
+              background: alpha(B.primary, 0.1),
+              '&:hover': { background: alpha(B.primary, 0.15) },
             },
-            '&:hover': { background: alpha(B.primary, 0.06) },
+            '&:hover': { background: alpha(B.textPrimary, 0.04) },
           },
         },
       },
       MuiChip: { styleOverrides: { root: { fontWeight: 500 } } },
       MuiLinearProgress: {
         styleOverrides: {
-          root: { borderRadius: 5, height: 6, backgroundColor: alpha(B.primary, 0.12) },
+          root: { borderRadius: 5, height: 2, backgroundColor: alpha(B.primary, 0.1) },
           bar: { borderRadius: 5, background: B.primary },
         },
       },

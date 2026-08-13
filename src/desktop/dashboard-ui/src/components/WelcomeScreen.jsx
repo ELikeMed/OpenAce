@@ -1,47 +1,31 @@
 import { useState, useRef } from 'react';
 import { Box, Typography, TextField, IconButton } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import SendIcon from '@mui/icons-material/Send';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import AceSpadeIcon from './AceSpadeIcon';
 
 export default function WelcomeScreen({ onSend, onAttach }) {
   const [input, setInput] = useState('');
   const fileRef = useRef(null);
 
-  // Check for returning user
   const storedUser = JSON.parse(localStorage.getItem('ace_user') || 'null');
   const userName = storedUser?.name;
   const isReturning = !!userName;
 
-  // Time-aware greeting
   const hour = new Date().getHours();
   const timeGreeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
   const handleSend = () => {
-    if (input.trim()) {
-      onSend?.(input.trim());
-      setInput('');
-    }
+    if (input.trim()) { onSend?.(input.trim()); setInput(''); }
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
   const suggestions = isReturning
-    ? [
-        'Find me new leads',
-        "What's in my pipeline?",
-        'Research my competitors',
-      ]
-    : [
-        'I need help finding leads',
-        'Research my competitors',
-        'What can you do for my business?',
-      ];
+    ? ['Find me new leads', "What's in my pipeline?", 'Research my competitors']
+    : ['I need help finding leads', 'Research my competitors', 'What can you do for my business?'];
 
   return (
     <Box sx={{
@@ -52,51 +36,48 @@ export default function WelcomeScreen({ onSend, onAttach }) {
       justifyContent: 'center',
       px: 2,
     }}>
-      {/* Icon */}
-      <AceSpadeIcon sx={{ fontSize: 28, color: '#8B7EC8', mb: 2, opacity: 0.7 }} />
+      {/* Logo mark */}
+      <AceSpadeIcon sx={{ fontSize: 24, color: '#C9A96E', mb: 3, opacity: 0.6 }} />
 
       {/* Greeting */}
       <Typography sx={{
-        fontSize: { xs: '1.3rem', md: '1.7rem' },
-        fontWeight: 600,
-        color: '#E8E6F0',
+        fontSize: { xs: '1.5rem', md: '2rem' },
+        fontWeight: 300,
+        color: '#F0EDE8',
         letterSpacing: '-0.02em',
         textAlign: 'center',
         mb: 0.5,
       }}>
-        {isReturning ? `${timeGreeting}, ${userName}` : 'Hey, tell me about your business'}
+        {isReturning ? `${timeGreeting}, ${userName}` : 'What does your business need?'}
       </Typography>
 
-      <Typography sx={{
-        fontSize: { xs: '0.85rem', md: '0.9rem' },
-        color: '#726E90',
-        textAlign: 'center',
-        mb: 3,
-        maxWidth: 400,
-      }}>
-        {isReturning
-          ? "What are we working on today?"
-          : "I'll help you find leads, research competitors, and grow."
-        }
-      </Typography>
+      {!isReturning && (
+        <Typography sx={{
+          fontSize: '0.88rem',
+          color: '#6B6560',
+          textAlign: 'center',
+          mb: 4,
+          fontWeight: 400,
+        }}>
+          Find leads. Close deals. Grow your business.
+        </Typography>
+      )}
+
+      {isReturning && <Box sx={{ mb: 4 }} />}
 
       {/* Input bar */}
-      <Box sx={{ width: '100%', maxWidth: 480, mb: 2.5 }}>
+      <Box sx={{ width: '100%', maxWidth: 520, mb: 3 }}>
         <Box sx={{
           display: 'flex',
           alignItems: 'center',
-          background: '#16151E',
-          border: '1px solid #2A2840',
-          borderRadius: 6,
+          background: '#141414',
+          border: '1px solid #1E1E1E',
+          borderRadius: 3,
           px: 1.5,
           py: 0.5,
-          transition: 'border-color 0.15s',
-          '&:focus-within': { borderColor: '#8B7EC8' },
+          transition: 'border-color 0.2s',
+          '&:focus-within': { borderColor: '#C9A96E' },
         }}>
-          <IconButton size="small" onClick={() => fileRef.current?.click()}
-            sx={{ color: '#726E90', '&:hover': { color: '#B0ACCA' }, display: { xs: 'none', md: 'flex' } }}>
-            <AddIcon sx={{ fontSize: 20 }} />
-          </IconButton>
           <input ref={fileRef} type="file" accept="image/*" multiple hidden
             onChange={(e) => { onAttach?.(Array.from(e.target.files)); e.target.value = ''; }}
           />
@@ -107,7 +88,7 @@ export default function WelcomeScreen({ onSend, onAttach }) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isReturning ? 'What do you need?' : 'My business is...'}
+            placeholder={isReturning ? 'What do you need?' : 'Tell me about your business...'}
             variant="standard"
             InputProps={{ disableUnderline: true }}
             autoFocus
@@ -115,23 +96,24 @@ export default function WelcomeScreen({ onSend, onAttach }) {
               mx: 1,
               '& .MuiInputBase-input': {
                 fontSize: '0.95rem',
-                color: '#E8E6F0',
-                py: 1,
-                '&::placeholder': { color: '#726E90', opacity: 1 },
+                color: '#F0EDE8',
+                py: 1.2,
+                '&::placeholder': { color: '#6B6560', opacity: 1 },
               },
             }}
           />
           <IconButton size="small" onClick={handleSend}
             disabled={!input.trim()}
             sx={{
-              width: 34, height: 34,
-              color: input.trim() ? '#fff' : '#726E90',
-              background: input.trim() ? '#8B7EC8' : 'transparent',
-              '&:hover': { background: input.trim() ? '#6B5FA8' : 'rgba(139,126,200,0.06)' },
-              '&.Mui-disabled': { color: '#726E90' },
+              width: 32, height: 32,
+              borderRadius: 2,
+              color: input.trim() ? '#0A0A0A' : '#6B6560',
+              background: input.trim() ? '#C9A96E' : 'transparent',
+              '&:hover': { background: input.trim() ? '#A88B4A' : 'rgba(201,169,110,0.08)' },
+              '&.Mui-disabled': { color: '#6B6560' },
               transition: 'all 0.15s ease',
             }}>
-            <SendIcon sx={{ fontSize: 16 }} />
+            <ArrowUpwardIcon sx={{ fontSize: 18 }} />
           </IconButton>
         </Box>
       </Box>
@@ -142,7 +124,7 @@ export default function WelcomeScreen({ onSend, onAttach }) {
         gap: 1,
         flexWrap: 'wrap',
         justifyContent: 'center',
-        maxWidth: 480,
+        maxWidth: 520,
       }}>
         {suggestions.map((text) => (
           <Box
@@ -150,15 +132,15 @@ export default function WelcomeScreen({ onSend, onAttach }) {
             onClick={() => onSend?.(text)}
             sx={{
               px: 1.8,
-              py: 0.8,
-              borderRadius: 4,
-              border: '1px solid #2A2840',
-              color: '#B0ACCA',
+              py: 0.7,
+              borderRadius: 2,
+              border: '1px solid #1E1E1E',
+              color: '#A09A90',
               fontSize: '0.8rem',
-              fontWeight: 500,
+              fontWeight: 400,
               cursor: 'pointer',
               transition: 'all 0.15s ease',
-              '&:hover': { borderColor: '#8B7EC8', color: '#E8E6F0' },
+              '&:hover': { borderColor: '#C9A96E', color: '#F0EDE8' },
             }}
           >
             {text}

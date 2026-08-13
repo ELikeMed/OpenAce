@@ -1977,12 +1977,9 @@ function MessageBubble({ msg, msgIndex, onConfirmActions, onCancelActions, onQue
     );
     // Ace avatar — spade icon (Clubs model)
     return (
-      <Avatar sx={{
-        width: 28, height: 28,
-        background: BRAND.primary,
-      }}>
-        <AceSpadeIcon sx={{ fontSize: 14 }} />
-      </Avatar>
+      <Box sx={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <AceSpadeIcon sx={{ fontSize: 18, color: BRAND.primary }} />
+      </Box>
     );
   };
 

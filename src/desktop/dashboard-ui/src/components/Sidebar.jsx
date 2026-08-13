@@ -112,16 +112,12 @@ export default function Sidebar({
       <Box sx={{ p: collapsed ? '12px 8px' : '16px 14px 8px', display: 'flex', flexDirection: 'column', gap: 1 }}>
         {/* Logo row */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: collapsed ? 0 : 0.5, justifyContent: collapsed ? 'center' : 'flex-start' }}>
-          <Avatar sx={{
-            width: 28, height: 28,
-            background: BRAND.primary,
-          }}>
-            <AceSpadeIcon sx={{ fontSize: 15 }} />
-          </Avatar>
+          <AceSpadeIcon sx={{ fontSize: 20, color: BRAND.primary }} />
           {!collapsed && (
             <Typography sx={{
-              fontSize: '0.95rem', fontWeight: 700, letterSpacing: '-0.01em',
+              fontSize: '0.9rem', fontWeight: 600, letterSpacing: '0.02em',
               color: BRAND.textPrimary,
+              textTransform: 'uppercase',
             }}>
               OpenAce
             </Typography>
