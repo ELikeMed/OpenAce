@@ -240,6 +240,55 @@ export class DatabaseAdapter {
     return this._removeFromJsonArray('pipeline/tasks.json', taskId);
   }
 
+  // ═══ Owner snapshot — everything the AI should know about this user ═══
+
+  /**
+   * One call that gathers what Ace knows about this owner: who they are,
+   * their business, and the live state of their pipeline. Powers the
+   * context-injected system prompt — the difference between "here are 3
+   * things I can do" and "you have 12 uncontacted leads, start with these".
+   */
+  getOwnerSnapshot() {
+    if (!this.cloud) return null;
+    try {
+      const user = this.db.prepare('SELECT name, email FROM users WHERE id = ?').get(this.userId);
+      const visitor = this.db.prepare('SELECT * FROM visitor_profiles WHERE owner_id = ?').get(this.userId);
+      const business = this.getBusinessProfile();
+
+      const leads = this.getLeads({ limit: 500 });
+      const byStage = {};
+      for (const l of leads) byStage[l.stage || 'new'] = (byStage[l.stage || 'new'] || 0) + 1;
+
+      // Leads going cold: not in a terminal stage, untouched for 14+ days
+      const cutoff = Date.now() - 14 * 86400000;
+      const stale = leads.filter(l =>
+        !['closed', 'lost'].includes(l.stage) &&
+        new Date(l.updated_at || l.created_at).getTime() < cutoff
+      ).slice(0, 5);
+
+      const notes = this.getNotes();
+      const provisional = user?.email?.endsWith('@anonymous.openace.local');
+
+      return {
+        name: (!provisional && user?.name) || visitor?.name || null,
+        email: (!provisional && user?.email) || visitor?.email || null,
+        businessName: business?.name || visitor?.business || null,
+        industry: business?.industry || visitor?.industry || null,
+        website: business?.website || visitor?.website || null,
+        location: visitor?.location || null,
+        leadCount: leads.length,
+        leadsByStage: byStage,
+        staleLeads: stale.map(l => ({ company: l.company || l.name, stage: l.stage })),
+        noteCount: notes.length,
+        recentNoteTitles: notes.slice(0, 3).map(n => n.title).filter(Boolean),
+        isActivated: !provisional && !!user?.email,
+      };
+    } catch (e) {
+      console.error('[DatabaseAdapter] getOwnerSnapshot failed:', e.message);
+      return null;
+    }
+  }
+
   // ═══ Business profile ═══
 
   getBusinessProfile() {

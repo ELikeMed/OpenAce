@@ -1021,20 +1021,98 @@ export class UnifiedAgent {
    * This is NOT routing — Gemini still decides which tools to call.
    * We just filter the menu so it sees fewer irrelevant options.
    */
+  /**
+   * System prompt for cloud users — intelligence through context.
+   *
+   * Everything Ace knows about THIS user is injected: who they are, their
+   * business, the live state of their pipeline, what's going cold. A small
+   * model with real context beats a big model with none — and this is the
+   * sovereign path: the smarts come from architecture, not an API.
+   */
+  _buildCloudSystemPrompt() {
+    const snap = this._scopedData()?.getOwnerSnapshot() || null;
+
+    // ── Voice (benchmark-validated: passes voice/restraint/honesty checks) ──
+    let prompt = `You are Ace, a business growth copilot. You talk like a sharp operator who has built companies — short, direct, useful. No filler, no "Great question!", no "I'd be happy to". Never open with a compliment. One thought at a time.
+
+Never volunteer a numbered menu of your own features. If asked what you can do, answer in one conversational sentence tied to THEIR business, then get back to them.
+
+Never mention AI, models, Ollama, or any technology names. You are Ace. That's all.`;
+
+    // ── What Ace knows about this user ──
+    if (snap && (snap.name || snap.businessName || snap.leadCount > 0)) {
+      prompt += `\n\nWHAT YOU KNOW ABOUT THIS USER:`;
+      if (snap.name) prompt += `\n- Name: ${snap.name}`;
+      if (snap.businessName) prompt += `\n- Business: ${snap.businessName}${snap.industry ? ` (${snap.industry})` : ''}`;
+      if (snap.location) prompt += `\n- Location: ${snap.location}`;
+      if (snap.website) prompt += `\n- Website: ${snap.website}`;
+
+      if (snap.leadCount > 0) {
+        const stages = Object.entries(snap.leadsByStage).map(([s, n]) => `${n} ${s}`).join(', ');
+        prompt += `\n- Pipeline: ${snap.leadCount} leads (${stages})`;
+        const uncontacted = snap.leadsByStage.new || 0;
+        if (uncontacted > 0) prompt += `\n- ${uncontacted} leads have never been contacted`;
+        if (snap.staleLeads.length) {
+          prompt += `\n- Going cold (no activity 14+ days): ${snap.staleLeads.map(l => l.company).join(', ')}`;
+        }
+      } else {
+        prompt += `\n- Pipeline: empty — no leads saved yet`;
+      }
+      if (snap.recentNoteTitles.length) {
+        prompt += `\n- Recent notes: ${snap.recentNoteTitles.join('; ')}`;
+      }
+      prompt += `\n\nUSE this. Reference their business and their numbers when relevant. When they ask what to focus on, ground the answer in their actual pipeline — never give generic advice when you have specifics.`;
+    }
+
+    // ── Getting to know them — goals, never gates ──
+    const missing = [];
+    if (!snap?.name) missing.push('their first name');
+    if (!snap?.businessName && !snap?.industry) missing.push('what their business does');
+    if (!snap?.email) missing.push("their email (so their work is saved when they come back — frame it as THEIR benefit)");
+    if (missing.length) {
+      prompt += `\n\nGETTING TO KNOW THEM:
+You don't yet know: ${missing.join(', ')}.
+Weave in AT MOST ONE natural question per message, only when it fits the flow. NEVER block an answer on it — help first, ask second. If they ask you to do something, do it.`;
+    }
+
+    // ── What Ace can actually do ──
+    prompt += `\n\nWHAT YOU CAN DO (real capabilities — use tools, never fake it):
+- Search for real businesses by industry + city (live data: names, phones, websites)
+- Save leads and track them through a pipeline; move leads between stages
+- Research any company or website and summarize what matters
+- Save and recall notes about their business
+- Give sharp, specific business advice: pricing, outreach, follow-up, positioning
+When a request matches a tool, call the tool. Present ONLY what the tool returned.`;
+
+    // ── Anti-fabrication (the non-negotiables) ──
+    prompt += `\n\nNEVER DO THESE:
+- NEVER invent business names, people, phone numbers, or emails. You don't know any.
+- NEVER present made-up leads or contacts. Real data comes from tools only.
+- If asked for leads and you can't search right now, say you'll pull real results and ask for industry + city.
+- If a tool returns nothing, say so. An honest "nothing found" beats a confident lie.`;
+
+    return prompt;
+  }
+
   _selectToolsForMessage(message) {
     const lower = message.toLowerCase();
     const allTools = this.toolDeclarations[0].functionDeclarations;
 
-    // Free tier: minimal tools only — no browser, desktop, email, social, code, SOPs
+    // Cloud: curated tool subset only. Everything that touches the operator's
+    // machine or accounts stays off — browser/desktop control, email/SMS/social
+    // (those send through the OPERATOR's Gmail/Twilio/accounts), deploy, SOPs.
     if (this._freeTierMode) {
-      // If it's a short/simple message, skip tools entirely — just chat
-      if (lower.length < 100 && !(/\b(find|search|lead|research|competitor)\b/).test(lower)) {
+      // Pure-chat turns skip the tool schema entirely — faster, and a small
+      // model can't misfire a tool it was never offered.
+      const wantsAction = /\b(find|search|lead|research|competitor|save|note|remember|recall|pipeline|move|stage|contact|follow.?up|website|look.?up|track|list|show)\b/.test(lower);
+      if (lower.length < 100 && !wantsAction) {
         this._freeTierMode = false;
         return [{ functionDeclarations: [] }]; // No tools = pure conversation
       }
       const freeTools = new Set([
         'web_search', 'read_webpage',
-        'find_leads', 'save_leads', 'get_pipeline',
+        'find_leads', 'save_leads', 'get_pipeline', 'move_lead',
+        'manage_contacts',
         'save_note', 'recall_notes',
       ]);
       const filtered = allTools.filter(t => freeTools.has(t.name));
@@ -2225,76 +2303,14 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
     // visitor's chat can never read or write the operator's leads, contacts or notes.
     this._ownerId = channelContext.ownerId || null;
 
-    // Free tier visitors: simple conversational prompt, NO business context, NO tools
+    // Cloud users get a context-injected prompt built from THEIR data.
+    // (This replaced a hardcoded 5-stage onboarding script keyed on message
+    // count — Stage 5 literally instructed the model to recite a 3-item menu,
+    // which is exactly what users got. Benchmarks showed even the 7B gives
+    // grounded, specific answers when handed real context.)
     let systemPrompt;
     if (this._freeTierMode) {
-      // Count how many messages have been exchanged to track conversation stage
-      const msgCount = conversationHistory.length;
-
-      systemPrompt = `You are Ace. You talk like a billionaire mentor who's built and sold multiple companies. You've done thousands of deals. You're sharp, casual, and you cut through BS instantly. You're not a chatbot — you're the smartest business mind in the room, and you genuinely want to help this person win.
-
-YOUR VOICE:
-- Talk like you're texting a friend about their business over drinks
-- Short. Punchy. One thought at a time.
-- You've seen every business problem before. Nothing surprises you.
-- Confident but not arrogant. You care about their success.
-- NEVER say "Great question!", "I'd be happy to", "Certainly!", "That's great to hear"
-- NEVER start with a compliment. Just respond.
-
-THE FLOW — follow this conversation arc naturally:
-
-${msgCount < 2 ? `STAGE 1 — LEARN THEIR BUSINESS (you're here now):
-Your ONLY job right now: find out what they do. Ask ONE short question.
-Examples:
-- "What's your business?"
-- "What do you do?"
-- "Tell me about your business — keep it simple."
-Do NOT offer help yet. Do NOT list what you can do. Just ask what they do.` :
-
-msgCount < 4 ? `STAGE 2 — DIG DEEPER:
-You know a bit about their business now. Ask ONE of these (whichever fits):
-- "Who's your ideal customer?"
-- "What's your biggest challenge — finding leads, closing, or something else?"
-- "How are you getting customers right now?"
-Keep it to ONE question. Short response + question.` :
-
-msgCount < 5 ? `STAGE 3 — GET THEIR WEBSITE:
-You know their business. Now ask for their website — this is the key. You'll research them.
-- "What's your website? I'll check it out and see what we're working with."
-- "Drop me your URL — I want to see your setup."
-Just ask. One question.` :
-
-msgCount < 7 ? `STAGE 4 — GET THEIR EMAIL:
-You know their business and maybe their website. Now get their email so you can save everything.
-- "What's the best email to reach you? I'll save everything so you don't have to start over next time."
-- "Drop your email — I'll keep all of this on file for you."
-Make it about THEIR benefit — saving their progress. Not about signing up.` :
-
-`STAGE 5 — SHOW WHAT YOU CAN DO:
-You know them now. Offer specific help based on what you've learned. List 3-4 things you can do RIGHT NOW:
-- "Alright, here's what I can do for you right now:"
-- "Find leads in [their industry/location]"
-- "Research your competitors and see what they're doing"
-- "Set up your pipeline so you can track deals"
-- "Draft outreach emails to your target customers"
-Pick the ones that match their challenge. Ask which one they want to start with.`}
-
-RULES:
-- ONE question per message. Never ask two things at once.
-- 1-3 sentences max until Stage 5.
-- If they ask what you can do early, give a quick answer then get back to learning about THEM.
-- If they jump ahead and ask you to find leads or research — do it. Don't force the flow.
-- Never mention AI, Ollama, Gemini, Claude, ChatGPT, or any model name.
-- You are Ace, powered by Ace Clubs. That's all.
-- Sound like someone who's made a billion dollars talking to a friend, not a customer service rep.
-
-CRITICAL — NEVER DO THESE:
-- NEVER make up business names, company names, or person names. You don't know them.
-- NEVER generate a list of leads, contacts, or businesses from your imagination.
-- NEVER say "here are some leads" and then list made-up names.
-- If someone asks for leads or contacts, tell them you'll search for real businesses and ask for their industry and city.
-- ONLY present data that came from an actual search tool. If you don't have real data, say "let me search for that" — don't make it up.
-- If you catch yourself about to list names of people or companies, STOP. Say "I'll pull up real results for you" instead.`;
+      systemPrompt = this._buildCloudSystemPrompt();
     } else {
       systemPrompt = await this._buildSystemPrompt(message);
     }
@@ -2302,7 +2318,7 @@ CRITICAL — NEVER DO THESE:
 
     // Include recent conversation history for context
     // Free tier: only use THIS conversation's history (max 10), not the owner's old chats
-    const historyLimit = this._freeTierMode ? 10 : 25;
+    const historyLimit = this._freeTierMode ? 25 : 25;
     const recentHistory = conversationHistory.slice(-historyLimit);
     let foundFirstUser = false;
     for (const msg of recentHistory) {
@@ -2552,7 +2568,7 @@ CRITICAL — NEVER DO THESE:
 
       // ═══ Tool calling loop (phase 1) ═══
       // Free tier: 3 iterations max, no auto-continuation. Paid: 25 iterations, 3 phases.
-      const MAX_ITERATIONS = this._freeTierMode ? 3 : 25;
+      const MAX_ITERATIONS = this._freeTierMode ? 6 : 25;
       const MAX_PHASES = this._freeTierMode ? 1 : 3;
       const toolsCalled = []; // Track which tools were called (shared across all phases)
       const failedToolCounts = new Map(); // Track failures by category for struggle detection
