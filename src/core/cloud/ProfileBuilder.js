@@ -1,203 +1,316 @@
 /**
- * ProfileBuilder — Extracts user profile data from chat conversations.
+ * ProfileBuilder — Builds a user profile out of ordinary conversation.
  *
- * Watches for name, email, website, business type, and location
- * in the conversation flow. When enough data is collected (at minimum
- * an email), auto-creates their account.
+ * The conversation IS the signup. Ace never blocks on "give me your name
+ * before we continue" — the visitor asks whatever they want, and we pick up
+ * name / email / business / website as they naturally mention them.
  *
- * The conversation IS the signup. No forms. No buttons.
+ * When we have enough, the account activates silently in the background and
+ * everything they already did comes with them. Next visit, they're known.
+ *
+ * Keyed on ownerId (from identityMiddleware) and persisted to SQLite, so a
+ * server restart no longer forgets who someone is.
  */
 
 import { getDatabase } from './CloudDatabase.js';
 import { isCloudMode } from './SupabaseClient.js';
 import { ProfileScraper } from './ProfileScraper.js';
 import { MagicLink } from './MagicLink.js';
+import { promoteAnonymousOwner, isProvisionalEmail } from './identity.js';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'openace-dev-secret-change-in-production';
 
-// Patterns to extract data from messages
 const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
 const WEBSITE_REGEX = /(?:https?:\/\/)?(?:www\.)?([a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\.[a-zA-Z]{2,})?)/i;
-const NAME_INDICATORS = /\b(?:my name is|i'm|i am|call me|it's|this is)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i;
+// Two parts on purpose. The lead-in is matched case-insensitively, but the name
+// itself must be matched case-SENSITIVELY — a single /i regex makes [A-Z] match
+// lowercase too, which turned "I'm Sam and I run a shop" into the name "Sam and".
+const NAME_LEAD_IN = /\b(?:my name is|i'm|i am|call me|this is)\s+/i;
+const NAME_CAPTURE = /^([A-Z][a-z'-]+(?:\s+[A-Z][a-z'-]+)?)/;
+const BUSINESS_INDICATORS = /\b(?:my (?:business|company|firm|agency|shop|practice) is(?: called)?|we(?:'re| are) called|business name is|company is(?: called)?)\s+([A-Z][\w&'.-]*(?:\s+[A-Z]?[\w&'.-]+){0,3})/i;
+
+// Words that look like names to a regex but aren't. "Hi" and "Hey" got saved
+// as real user names before this list existed.
+const NOT_A_NAME = new Set([
+  'hi', 'hey', 'hello', 'yo', 'sup', 'yes', 'no', 'ok', 'okay', 'sure', 'yeah', 'yep', 'nope',
+  'thanks', 'thank', 'bye', 'goodbye', 'morning', 'afternoon', 'evening', 'night',
+  'good', 'great', 'cool', 'nice', 'awesome', 'perfect', 'done', 'test', 'testing',
+  'help', 'stop', 'wait', 'maybe', 'please', 'sorry', 'here', 'there', 'what', 'who', 'how',
+  'and', 'but', 'the', 'a', 'an', 'just', 'still', 'also', 'from', 'with',
+]);
+
+function looksLikeName(candidate) {
+  if (!candidate) return false;
+  const trimmed = candidate.trim();
+  if (trimmed.length < 2 || trimmed.length > 40) return false;
+  // Every word must be alphabetic and not a filler word
+  return trimmed.split(/\s+/).every(w => /^[A-Za-z][a-z'-]*$/.test(w) && !NOT_A_NAME.has(w.toLowerCase()));
+}
 
 export class ProfileBuilder {
   constructor() {
-    this.sessions = new Map(); // sessionId → { profile, messages }
+    if (isCloudMode()) this._ensureTable();
+  }
+
+  _ensureTable() {
+    try {
+      getDatabase().exec(`
+        CREATE TABLE IF NOT EXISTS visitor_profiles (
+          owner_id TEXT PRIMARY KEY,
+          name TEXT, email TEXT, website TEXT, business TEXT,
+          industry TEXT, location TEXT, phone TEXT,
+          message_count INTEGER DEFAULT 0,
+          account_created INTEGER DEFAULT 0,
+          user_id TEXT,
+          updated_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_visitor_email ON visitor_profiles(email);
+      `);
+    } catch (e) {
+      console.error('[ProfileBuilder] table init failed:', e.message);
+    }
+  }
+
+  _load(ownerId) {
+    const row = getDatabase().prepare('SELECT * FROM visitor_profiles WHERE owner_id = ?').get(ownerId);
+    if (row) return row;
+    getDatabase().prepare('INSERT INTO visitor_profiles (owner_id) VALUES (?)').run(ownerId);
+    return getDatabase().prepare('SELECT * FROM visitor_profiles WHERE owner_id = ?').get(ownerId);
+  }
+
+  _save(ownerId, p) {
+    getDatabase().prepare(`
+      UPDATE visitor_profiles SET
+        name=?, email=?, website=?, business=?, industry=?, location=?, phone=?,
+        message_count=?, account_created=?, user_id=?, updated_at=datetime('now')
+      WHERE owner_id = ?
+    `).run(p.name, p.email, p.website, p.business, p.industry, p.location, p.phone,
+      p.message_count, p.account_created, p.user_id, ownerId);
   }
 
   /**
-   * Process a user message and extract profile data.
-   * Returns { profileUpdated, accountCreated, token, profile }
+   * Read a message for profile signals. Never blocks the conversation —
+   * whatever we learn, we learn; whatever we don't, we ask for later, in context.
+   *
+   * Returns { profileUpdated, accountCreated, token, profile }.
    */
-  processMessage(sessionId, userMessage, aceResponse) {
-    if (!isCloudMode()) return { profileUpdated: false };
-    console.log(`[ProfileBuilder] Processing message from session ${sessionId.substring(0, 12)}...: "${userMessage.substring(0, 50)}..."`);
+  processMessage(ownerId, userMessage, aceResponse) {
+    if (!isCloudMode() || !ownerId) return { profileUpdated: false };
 
-    // Get or create session profile
-    if (!this.sessions.has(sessionId)) {
-      this.sessions.set(sessionId, {
-        profile: { name: null, email: null, website: null, business: null, industry: null, location: null },
-        messageCount: 0,
-        accountCreated: false,
-      });
+    let p;
+    try {
+      p = this._load(ownerId);
+    } catch (e) {
+      console.error('[ProfileBuilder] load failed:', e.message);
+      return { profileUpdated: false };
     }
 
-    const session = this.sessions.get(sessionId);
-    session.messageCount++;
-    const profile = session.profile;
+    p.message_count = (p.message_count || 0) + 1;
+    const msg = (userMessage || '').trim();
     let updated = false;
 
-    console.log(`[ProfileBuilder] Session profile so far: name=${profile.name}, email=${profile.email}, website=${profile.website}`);
-
-    // Extract email
-    const emailMatch = userMessage.match(EMAIL_REGEX);
-    if (emailMatch && !profile.email) {
-      profile.email = emailMatch[0].toLowerCase();
+    // ── Email ──
+    const emailMatch = msg.match(EMAIL_REGEX);
+    if (emailMatch && !p.email) {
+      p.email = emailMatch[0].toLowerCase();
       updated = true;
     }
 
-    // Extract website — and auto-scrape to fill profile
-    const websiteMatch = userMessage.match(WEBSITE_REGEX);
-    if (websiteMatch && !profile.website) {
-      const domain = websiteMatch[0];
-      profile.website = domain.startsWith('http') ? domain : `https://${domain}`;
-      updated = true;
-
-      // Scrape the website in background to fill profile automatically
-      const scraper = new ProfileScraper();
-      scraper.scrape(profile.website).then(scraped => {
-        if (scraped) {
-          // Only use scraped name if we don't have a real one (not "Hi" etc)
-          if (scraped.businessName && (!profile.name || SKIP_WORDS.has(profile.name.toLowerCase()))) profile.name = scraped.businessName;
-          if (scraped.description && !profile.business) profile.business = scraped.description;
-          // User's own description of their industry wins over scraped
-          if (scraped.industry && !profile.industry) profile.industry = scraped.industry;
-          if (scraped.location && !profile.location) profile.location = scraped.location;
-          if (scraped.email && !profile.email) profile.email = scraped.email;
-          if (scraped.phone && !profile.phone) profile.phone = scraped.phone;
-          console.log(`[ProfileBuilder] Scraped ${profile.website}: name=${scraped.businessName}, industry=${scraped.industry}, location=${scraped.location}, email=${scraped.email}`);
-
-          // If we got an email from scraping, auto-create the account
-          if (profile.email && !session.accountCreated) {
-            const result = this._createAccount(profile);
-            if (result) {
-              session.accountCreated = true;
-              console.log(`[ProfileBuilder] Auto-created account from website scrape: ${profile.email}`);
-            }
-          }
+    // ── Name ──
+    if (!p.name) {
+      const leadIn = msg.match(NAME_LEAD_IN);
+      const after = leadIn ? msg.slice(leadIn.index + leadIn[0].length) : null;
+      const nameMatch = after ? after.match(NAME_CAPTURE) : null;
+      if (nameMatch && looksLikeName(nameMatch[1])) {
+        p.name = nameMatch[1].trim();
+        updated = true;
+      } else if (msg.length < 30) {
+        // A bare "Eric" in reply to "what should I call you?"
+        const words = msg.replace(/[.!,]/g, '').split(/\s+/);
+        if (words.length <= 2 && looksLikeName(words.join(' ')) && /^[A-Z]/.test(msg)) {
+          p.name = words.join(' ');
+          updated = true;
         }
-      }).catch(() => {});
+      }
     }
 
-    // Extract name
-    const nameMatch = userMessage.match(NAME_INDICATORS);
-    if (nameMatch && !profile.name) {
-      profile.name = nameMatch[1].trim();
+    // ── Business name ──
+    if (!p.business) {
+      const bizMatch = msg.match(BUSINESS_INDICATORS);
+      if (bizMatch) {
+        p.business = bizMatch[1].trim();
+        updated = true;
+      }
+    }
+
+    // ── Website (and background scrape to fill the rest) ──
+    const websiteMatch = msg.match(WEBSITE_REGEX);
+    if (websiteMatch && !p.website && !emailMatch) {
+      const domain = websiteMatch[0];
+      p.website = domain.startsWith('http') ? domain : `https://${domain}`;
       updated = true;
+      this._scrapeInBackground(ownerId, p.website);
     }
-    // Also check if the message is just a first name (1-2 words, capitalized, short)
-    // Skip common greetings and short words that aren't names
-    const SKIP_WORDS = new Set(['hi', 'hey', 'hello', 'yes', 'no', 'ok', 'okay', 'sure', 'thanks', 'bye', 'yo', 'sup']);
-    if (!profile.name && userMessage.length < 30) {
-      const words = userMessage.trim().split(/\s+/);
-      if (words.length <= 2 && words.every(w => /^[A-Z][a-z]+$/.test(w)) && !SKIP_WORDS.has(userMessage.trim().toLowerCase())) {
-        profile.name = userMessage.trim();
+
+    // ── What they do (free-text description from early messages) ──
+    if (!p.industry && p.message_count <= 4 && msg.length > 15 && msg.length < 300) {
+      if (!msg.includes('?') && !/^(find|search|help|can you|what|how|show|give|make)/i.test(msg)) {
+        p.industry = msg;
         updated = true;
       }
     }
 
-    // Extract business description (from early messages)
-    if (!profile.business && session.messageCount <= 3 && userMessage.length > 10 && userMessage.length < 200) {
-      // Skip if it looks like a question or command
-      if (!userMessage.includes('?') && !/^(find|search|help|can you|what|how|show)/i.test(userMessage)) {
-        profile.business = userMessage.trim();
-        updated = true;
-      }
-    }
-
-    if (updated) {
-      console.log(`[ProfileBuilder] Updated! name=${profile.name}, email=${profile.email}, website=${profile.website}, business=${profile.business?.substring(0, 30)}`);
-    }
-
-    // Auto-create account when we have an email
+    // ── Activation ──
+    // Email is required (it's how they get back in). We also want at least a
+    // name or a business so the account means something rather than being a
+    // bare address. Everything else keeps filling in afterwards.
     let accountCreated = false;
     let token = null;
 
-    if (profile.email && !session.accountCreated) {
-      const result = this._createAccount(profile);
+    if (p.email && !p.account_created && (p.name || p.business || this._emailHasAccount(p.email))) {
+      const result = this._createAccount(p, ownerId);
       if (result) {
-        session.accountCreated = true;
+        p.account_created = 1;
+        p.user_id = result.userId;
         accountCreated = true;
         token = result.token;
-
-        // Send magic link email so they can get back in later
-        const ml = new MagicLink();
-        const magicUrl = ml.generateLink(profile.email);
-        ml.sendEmail(profile.email, magicUrl).catch(() => {});
-        console.log(`[ProfileBuilder] Magic link sent to ${profile.email}`);
       }
+    }
+
+    try {
+      this._save(ownerId, p);
+    } catch (e) {
+      console.error('[ProfileBuilder] save failed:', e.message);
     }
 
     return {
       profileUpdated: updated,
       accountCreated,
       token,
-      profile: { ...profile },
+      profile: this._shape(p),
+    };
+  }
+
+  _scrapeInBackground(ownerId, website) {
+    new ProfileScraper().scrape(website).then(scraped => {
+      if (!scraped) return;
+      const p = this._load(ownerId);
+      if (scraped.businessName && !p.business) p.business = scraped.businessName;
+      if (scraped.industry && !p.industry) p.industry = scraped.industry;
+      if (scraped.location && !p.location) p.location = scraped.location;
+      if (scraped.email && !p.email) p.email = scraped.email;
+      if (scraped.phone && !p.phone) p.phone = scraped.phone;
+
+      if (p.email && !p.account_created && (p.name || p.business)) {
+        const result = this._createAccount(p, ownerId);
+        if (result) { p.account_created = 1; p.user_id = result.userId; }
+      }
+      this._save(ownerId, p);
+      console.log(`[ProfileBuilder] scraped ${website} → business=${p.business}, location=${p.location}`);
+    }).catch(() => {});
+  }
+
+  _shape(p) {
+    return {
+      name: p.name, email: p.email, website: p.website, business: p.business,
+      industry: p.industry, location: p.location, phone: p.phone,
     };
   }
 
   /**
-   * Get the current profile for a session.
+   * Does a real (activated) account already use this email?
+   *
+   * A returning visitor who just types their address should be logged straight
+   * back in — we already know their name, so there's no reason to ask again.
    */
-  getProfile(sessionId) {
-    return this.sessions.get(sessionId)?.profile || null;
+  _emailHasAccount(email) {
+    if (!email) return false;
+    try {
+      const row = getDatabase().prepare('SELECT id, email FROM users WHERE email = ?').get(email.toLowerCase());
+      return !!row && !isProvisionalEmail(row.email);
+    } catch { return false; }
+  }
+
+  /** What we already know about this owner — powers the "welcome back" greeting. */
+  getProfile(ownerId) {
+    if (!isCloudMode() || !ownerId) return null;
+    try {
+      const row = getDatabase().prepare('SELECT * FROM visitor_profiles WHERE owner_id = ?').get(ownerId);
+      return row ? this._shape(row) : null;
+    } catch { return null; }
   }
 
   /**
-   * Create an account from the collected profile data.
+   * Create the account and move the visitor's existing work onto it.
    */
-  _createAccount(profile, sessionId) {
+  _createAccount(profile, ownerId) {
     try {
       const db = getDatabase();
+      const email = profile.email.toLowerCase();
 
-      // Check if account already exists
-      const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(profile.email);
-      if (existing) {
-        // User exists — just issue a token (they're returning)
-        const token = jwt.sign({ userId: existing.id, email: profile.email }, JWT_SECRET, { expiresIn: '30d' });
-        return { token, userId: existing.id, isNew: false };
+      const byEmail = db.prepare('SELECT id, name FROM users WHERE email = ?').get(email);
+      const provisional = ownerId
+        ? db.prepare('SELECT id, email FROM users WHERE id = ?').get(ownerId)
+        : null;
+
+      // ── Returning user: an account with this email already exists ──
+      if (byEmail && byEmail.id !== ownerId) {
+        // Fold this session's work into the account they already have, then
+        // retire the provisional row so it doesn't linger.
+        promoteAnonymousOwner(ownerId, byEmail.id);
+        if (provisional && isProvisionalEmail(provisional.email)) {
+          try { db.prepare('DELETE FROM users WHERE id = ?').run(ownerId); } catch { /* rows moved already */ }
+        }
+        const token = jwt.sign({ userId: byEmail.id, email }, JWT_SECRET, { expiresIn: '30d' });
+        console.log(`[ProfileBuilder] recognized returning user ${email}`);
+        return { token, userId: byEmail.id, isNew: false };
       }
 
-      // Create new account
-      const userId = crypto.randomUUID();
-      // Generate a random password (user never sees it — they use magic link to return)
-      const tempPassword = crypto.randomBytes(32).toString('hex');
-      const passwordHash = bcrypt.hashSync(tempPassword, 10);
+      // ── Activation in place: fill in the provisional row this visitor
+      //    already owns. Nothing has to move — their data is attached to it.
+      let userId;
+      if (provisional && isProvisionalEmail(provisional.email)) {
+        db.prepare("UPDATE users SET email = ?, name = ?, updated_at = datetime('now') WHERE id = ?")
+          .run(email, profile.name || '', ownerId);
+        userId = ownerId;
+      } else if (byEmail) {
+        userId = byEmail.id; // already activated on an earlier message
+      } else {
+        // No provisional row (e.g. a non-HTTP caller) — create a fresh account.
+        userId = crypto.randomUUID();
+        db.prepare('INSERT INTO users (id, email, password_hash, name) VALUES (?, ?, ?, ?)')
+          .run(userId, email, bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 10), profile.name || '');
+        promoteAnonymousOwner(ownerId, userId);
+      }
 
-      db.prepare('INSERT INTO users (id, email, password_hash, name) VALUES (?, ?, ?, ?)')
-        .run(userId, profile.email, passwordHash, profile.name || '');
-
-      // Create their business profile
       if (profile.business || profile.website) {
-        const bizId = crypto.randomUUID();
-        db.prepare('INSERT INTO businesses (id, user_id, name, website, industry, is_active) VALUES (?, ?, ?, ?, ?, 1)')
-          .run(bizId, userId, profile.business || profile.name || 'My Business', profile.website || '', profile.industry || '');
+        const hasBiz = db.prepare('SELECT id FROM businesses WHERE user_id = ? LIMIT 1').get(userId);
+        if (!hasBiz) {
+          db.prepare('INSERT INTO businesses (id, user_id, name, website, industry, is_active) VALUES (?, ?, ?, ?, ?, 1)')
+            .run(crypto.randomUUID(), userId, profile.business || 'My Business',
+              profile.website || '', profile.industry || '');
+        }
       }
 
-      // Create trial credits
-      db.prepare("INSERT INTO credits (user_id, plan, total, trial_start) VALUES (?, 'trial', 0, datetime('now'))")
-        .run(userId);
+      const hasCredits = db.prepare('SELECT user_id FROM credits WHERE user_id = ?').get(userId);
+      if (!hasCredits) {
+        db.prepare("INSERT INTO credits (user_id, plan, total, trial_start) VALUES (?, 'trial', 0, datetime('now'))")
+          .run(userId);
+      }
 
-      const token = jwt.sign({ userId, email: profile.email }, JWT_SECRET, { expiresIn: '30d' });
+      const token = jwt.sign({ userId, email }, JWT_SECRET, { expiresIn: '30d' });
 
-      console.log(`[ProfileBuilder] Account created for ${profile.email} (${profile.name || 'unnamed'})`);
+      // Email them a way back in
+      const ml = new MagicLink();
+      ml.sendEmail(email, ml.generateLink(email)).catch(() => {});
 
+      console.log(`[ProfileBuilder] account activated for ${email} (${profile.name || 'unnamed'})`);
       return { token, userId, isNew: true };
     } catch (e) {
-      console.error(`[ProfileBuilder] Account creation failed:`, e.message);
+      console.error('[ProfileBuilder] account creation failed:', e.message);
       return null;
     }
   }
