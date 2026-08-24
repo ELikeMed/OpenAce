@@ -32,26 +32,19 @@ export function authMiddleware(req, res, next) {
     return next();
   }
 
-  // Public routes — no auth required (use originalUrl, not path, since middleware is mounted at /api/)
-  if (isPublicRoute(req.originalUrl || req.path)) {
-    req.userId = null;
-    return next();
-  }
+  // identityMiddleware runs first and has already resolved req.ownerId /
+  // req.isAuthed (JWT if present, otherwise a signed anonymous cookie).
 
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
+  // Anonymous visitors may reach a small, explicit set of routes. Everything
+  // else requires a real account. Deny by default — a new route is private
+  // until someone deliberately adds it here.
+  if (isAnonAllowed(req.originalUrl || req.path)) return next();
+
+  if (!req.isAuthed) {
     return res.status(401).json({ success: false, error: 'Authentication required' });
   }
 
-  try {
-    const token = authHeader.slice(7);
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.userId = decoded.userId;
-    req.userEmail = decoded.email;
-    next();
-  } catch {
-    return res.status(401).json({ success: false, error: 'Invalid or expired token' });
-  }
+  next();
 }
 
 export function authRoutes(app) {
@@ -145,32 +138,33 @@ export function authRoutes(app) {
   });
 }
 
-const PUBLIC_ROUTES = [
-  '/api/auth/',
+/**
+ * Routes an anonymous visitor may reach.
+ *
+ * DENY BY DEFAULT — anything not listed here needs a real account. Adding a
+ * route to this list makes it reachable by the entire internet, so the bar is:
+ * "a first-time visitor genuinely cannot use the product without it."
+ *
+ * Anonymous requests still get their own isolated data bucket via the signed
+ * ace_sid cookie, so "public" here means "no login required", NOT "shared".
+ */
+const ANON_ALLOWED = [
+  '/api/auth/',            // signup, login, magic link — the way in
+  '/api/chat',             // talking to Ace IS the onboarding
+  '/api/chat-stream',
+  '/api/conversations',    // their own chat history (cookie-scoped)
   '/api/onboarding-status',
-  '/api/chat',
-  '/api/conversations',
-  '/api/businesses',
-  '/api/business-profile',
-  '/api/tools',
-  '/api/billing',
-  '/api/system',
-  '/api/setup',
-  '/api/sops',
-  '/api/pipeline',
-  '/api/contacts',
-  '/api/forms',
-  '/api/projects',
-  '/api/workload',
-  '/api/integrations',
-  '/api/scheduled',
-  '/api/desktop',
-  '/api/feedback',
-  '/api/events',
-  '/forms/',
+  '/api/me',               // the caller's own identity only — scoped to req.ownerId
+  '/api/usage',            // free-message counter for the trial
+  '/api/events',           // SSE stream that backs chat
+  '/api/feedback',         // anyone may report a problem
+  '/api/billing/webhook',  // Stripe calls this; verified by signature, not JWT
+  '/forms/',               // published forms accept submissions from the open web
   '/health',
 ];
 
-function isPublicRoute(path) {
-  return PUBLIC_ROUTES.some(r => path.startsWith(r));
+function isAnonAllowed(path) {
+  // Compare against the path only — a query string must never widen access
+  const clean = (path || '').split('?')[0];
+  return ANON_ALLOWED.some(r => clean === r || clean.startsWith(r.endsWith('/') ? r : r + '/') || clean === r);
 }

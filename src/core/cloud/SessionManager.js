@@ -41,23 +41,17 @@ export class SessionManager {
   }
 
   /**
-   * Get session ID from request — uses JWT userId if logged in, otherwise IP+UA fingerprint
+   * Session ID = the request's resolved owner.
+   *
+   * identityMiddleware sets req.ownerId — the JWT userId when logged in, or a
+   * signed per-browser anonymous id otherwise. The previous IP+User-Agent hash
+   * was replaced because it collided: visitors sharing an office IP and browser
+   * landed in the same bucket and saw each other's conversations.
    */
   getSessionId(req) {
-    // Logged in user → use their userId
-    if (req.userId && req.userId !== 'local' && req.userId !== null) {
-      return req.userId;
-    }
-    // Anonymous → fingerprint
-    const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
-    const ua = req.headers['user-agent'] || 'unknown';
-    let hash = 0;
-    const str = ip + ua;
-    for (let i = 0; i < str.length; i++) {
-      hash = ((hash << 5) - hash) + str.charCodeAt(i);
-      hash |= 0;
-    }
-    return `session_${Math.abs(hash).toString(36)}`;
+    if (req.ownerId) return req.ownerId;
+    // identityMiddleware didn't run — refuse rather than guess and risk a shared bucket
+    throw new Error('getSessionId called before identityMiddleware — no ownerId on request');
   }
 
   /**
