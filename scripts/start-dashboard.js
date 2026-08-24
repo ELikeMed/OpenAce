@@ -33,8 +33,14 @@ app.use('/api/projects/import/zip', express.raw({ limit: '100mb', type: ['applic
 
 // Cloud mode — auth middleware (passes through in local mode)
 import { authMiddleware, authRoutes } from '../src/core/cloud/authMiddleware.js';
+import { identityMiddleware, promoteAnonymousOwner, clearAnonymousCookie } from '../src/core/cloud/identity.js';
 import { isCloudMode } from '../src/core/cloud/SupabaseClient.js';
 import { MagicLink } from '../src/core/cloud/MagicLink.js';
+
+// Identity FIRST — resolves req.ownerId (JWT userId, else signed anon cookie)
+// and attaches req.data, the per-owner storage adapter. Everything downstream
+// depends on this having run.
+app.use(identityMiddleware);
 app.use('/api/', authMiddleware);
 if (isCloudMode()) {
   authRoutes(app);
@@ -49,26 +55,60 @@ const magicLink = new MagicLink();
 
 // Send magic link email
 app.post('/api/auth/magic-link', async (req, res) => {
-  const { email } = req.body;
-  if (!email) return res.json({ success: false, error: 'Email required' });
-  const url = magicLink.generateLink(email);
-  const sent = await magicLink.sendEmail(email, url);
-  res.json({ success: true, sent, message: sent ? 'Check your email for a login link.' : 'Login link generated (email not configured).' });
+  const email = (req.body?.email || '').trim().toLowerCase();
+  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    return res.json({ success: false, error: 'Enter a valid email address.' });
+  }
+
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || null;
+  const limited = magicLink.checkRateLimit(email, ip);
+  if (limited) return res.status(429).json({ success: false, error: limited });
+
+  if (!MagicLink.isConfigured()) {
+    // Say so plainly rather than claiming an email is on its way.
+    console.warn('[auth] magic link requested but email is not configured');
+    return res.json({
+      success: false,
+      error: "Email isn't set up on this server yet, so I can't send a login link.",
+    });
+  }
+
+  const url = magicLink.generateLink(email, ip);
+  const { sent, error } = await magicLink.sendEmail(email, url);
+
+  if (!sent) {
+    return res.status(502).json({ success: false, error: error || 'Could not send the login link.' });
+  }
+  // Same response whether or not an account exists — don't leak who's registered.
+  res.json({ success: true, sent: true, message: 'Check your email for a login link.' });
 });
 
-// Verify magic link — returns JWT
+// Verify magic link — issues a JWT and drops the user into the app
 app.get('/auth/verify', (req, res) => {
   const { token } = req.query;
   if (!token) return res.redirect('/?error=missing_token');
+
   const result = magicLink.verify(token);
   if (!result.success) return res.redirect('/?error=' + encodeURIComponent(result.error));
-  // Set token via a page that stores it in localStorage then redirects
-  res.send(`<!DOCTYPE html><html><head><title>Signing in...</title></head><body style="background:#0A0A0A;color:#F0EDE8;font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh">
+
+  // Carry across anything they did anonymously in this browser before signing in.
+  if (req.ownerId && req.ownerId.startsWith('anon_') && req.ownerId !== result.user.id) {
+    try {
+      promoteAnonymousOwner(req.ownerId, result.user.id);
+      console.log(`[auth] merged anonymous session ${req.ownerId} into ${result.user.email}`);
+    } catch (e) {
+      console.error('[auth] anon merge failed:', e.message);
+    }
+  }
+  // The anon cookie has served its purpose — the JWT is the identity now.
+  clearAnonymousCookie(res);
+
+  res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Signing in...</title></head><body style="background:#0A0A0A;color:#F0EDE8;font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh">
     <div style="text-align:center"><p style="font-size:1.2rem">Signing you in...</p></div>
     <script>
-      localStorage.setItem('ace_token','${result.token}');
+      localStorage.setItem('ace_token',${JSON.stringify(result.token)});
       localStorage.setItem('ace_user',${JSON.stringify(JSON.stringify(result.user))});
-      window.location.href='/';
+      window.location.replace('/');
     </script></body></html>`);
 });
 
