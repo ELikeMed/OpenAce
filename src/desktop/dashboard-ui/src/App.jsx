@@ -41,6 +41,10 @@ function App() {
   const [themeMode, setThemeMode] = useState(() => localStorage.getItem('ace_theme') || 'dark');
   const [isCloudMode, setIsCloudMode] = useState(false);
   const [authed, setAuthed] = useState(false);
+  // Sign-in overlay + who the server thinks we are (drives "Welcome back, Eric")
+  const [showAuth, setShowAuth] = useState(false);
+  const [me, setMe] = useState(null);
+  const [authNotice, setAuthNotice] = useState('');
 
   // Conversations for sidebar
   const [conversations, setConversations] = useState([]);
@@ -117,6 +121,30 @@ function App() {
       .then(r => r.json())
       .then(res => setNeedsOnboarding(res.data?.needsOnboarding ?? false))
       .catch(() => setNeedsOnboarding(false));
+  }, []);
+
+  // Who does the server think we are? Powers the welcome-back greeting.
+  const refreshMe = useCallback(() => {
+    fetch(`${API}/api/me`)
+      .then(r => r.json())
+      .then(res => { if (res.success) setMe(res.data); })
+      .catch(() => {});
+  }, []);
+  useEffect(() => { refreshMe(); }, [refreshMe]);
+
+  // A failed magic link redirects to /?error=... — surface it instead of
+  // silently dropping the user on the home screen wondering what happened.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const err = params.get('error');
+    if (err) {
+      setAuthNotice(err === 'missing_token' ? 'That login link was incomplete. Request a new one.' : err);
+      setShowAuth(true);
+      params.delete('error');
+      const qs = params.toString();
+      window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''));
+    }
+    if (params.get('signin') !== null) setShowAuth(true);
   }, []);
 
   useEffect(() => {
@@ -343,6 +371,46 @@ function App() {
 
   const showChat = selectedTool === null;
 
+  // Cloud visitors aren't forced to log in — the conversation is the signup.
+  // This is just a way back in for people who already have an account.
+  const signInBar = isCloudMode && !authed && (
+    <Box sx={{
+      px: 3, py: 0.9,
+      display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1.5,
+      borderBottom: `1px solid ${BRAND.border}`,
+    }}>
+      <Typography sx={{ fontSize: '0.78rem', color: BRAND.textMuted }}>
+        Already have an account?
+      </Typography>
+      <Button
+        size="small"
+        onClick={() => { setAuthNotice(''); setShowAuth(true); }}
+        sx={{ fontSize: '0.75rem', textTransform: 'none', minWidth: 0, py: 0.2, px: 1.5, color: BRAND.primaryLight }}
+      >
+        Sign in
+      </Button>
+    </Box>
+  );
+
+  if (showAuth) {
+    return (
+      <ThemeProvider theme={activeTheme}>
+        <CssBaseline />
+        <AuthPage
+          notice={authNotice}
+          onClose={() => { setShowAuth(false); setAuthNotice(''); }}
+          onAuth={(data) => {
+            setAuthed(true);
+            setShowAuth(false);
+            setAuthNotice('');
+            if (data?.user) setMe({ known: !!data.user.name, isAuthed: true, name: data.user.name, email: data.user.email });
+            refreshMe();
+          }}
+        />
+      </ThemeProvider>
+    );
+  }
+
   return (
     <ThemeProvider theme={activeTheme}>
       <CssBaseline />
@@ -368,6 +436,7 @@ function App() {
 
         {/* Main Content */}
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', overflow: 'hidden' }}>
+          {signInBar}
           {/* Update Banner */}
           {!isCloudMode && updateInfo?.updateAvailable && !updateDismissed && updateInfo.latestVersion !== updateInfo.dismissedVersion && (
             <Box sx={{

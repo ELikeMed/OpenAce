@@ -12,13 +12,22 @@ import { BRAND } from '../theme';
 
 const API = window.location.origin;
 
-export default function AuthPage({ onAuth }) {
-  const [mode, setMode] = useState('login'); // 'login' | 'signup'
+export default function AuthPage({ onAuth, onClose, notice }) {
+  // 'magic' is the default — passwordless is the way in. Password login stays
+  // available for anyone who already set one.
+  const [mode, setMode] = useState('magic'); // 'magic' | 'login' | 'signup'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(notice || '');
+  const [linkSent, setLinkSent] = useState(false);
+
+  const switchMode = (next) => {
+    setMode(next);
+    setError('');
+    setLinkSent(false);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -26,6 +35,22 @@ export default function AuthPage({ onAuth }) {
     setLoading(true);
 
     try {
+      if (mode === 'magic') {
+        const res = await fetch(`${API}/api/auth/magic-link`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        });
+        const data = await res.json();
+        if (!data.success) {
+          setError(data.error || 'Could not send the login link.');
+        } else {
+          setLinkSent(true);
+        }
+        setLoading(false);
+        return;
+      }
+
       const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/signup';
       const body = mode === 'login'
         ? { email, password }
@@ -54,6 +79,12 @@ export default function AuthPage({ onAuth }) {
       setLoading(false);
     }
   };
+
+  const heading = linkSent
+    ? 'Check your email'
+    : mode === 'signup' ? 'Create your account' : 'Welcome back';
+
+  const submitDisabled = loading || !email || (mode !== 'magic' && !password);
 
   return (
     <Box sx={{
@@ -96,7 +127,7 @@ export default function AuthPage({ onAuth }) {
             OpenAce
           </Typography>
           <Typography sx={{ fontSize: '0.85rem', color: BRAND.textMuted, mt: 0.5 }}>
-            {mode === 'login' ? 'Welcome back' : 'Create your account'}
+            {heading}
           </Typography>
         </Box>
 
@@ -106,6 +137,27 @@ export default function AuthPage({ onAuth }) {
           </Alert>
         )}
 
+        {linkSent ? (
+          <>
+            <Alert severity="success" sx={{ mb: 2, borderRadius: 2, fontSize: '0.85rem' }}>
+              We sent a login link to <strong>{email}</strong>. It expires in 15 minutes
+              and works once.
+            </Alert>
+            <Typography sx={{ textAlign: 'center', fontSize: '0.8rem', color: BRAND.textMuted, mb: 2 }}>
+              Didn't get it? Check spam, or{' '}
+              <Box
+                component="span"
+                onClick={() => setLinkSent(false)}
+                sx={{ color: BRAND.primaryLight, cursor: 'pointer', fontWeight: 600,
+                  '&:hover': { textDecoration: 'underline' } }}
+              >
+                try again
+              </Box>
+              .
+            </Typography>
+          </>
+        ) : (
+        <>
         {/* Name field (signup only) */}
         {mode === 'signup' && (
           <TextField
@@ -130,50 +182,100 @@ export default function AuthPage({ onAuth }) {
           autoFocus
         />
 
-        <TextField
-          fullWidth
-          label="Password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          sx={{ mb: 3 }}
-          autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-          inputProps={{ minLength: 6 }}
-        />
+        {mode !== 'magic' && (
+          <TextField
+            fullWidth
+            label="Password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            sx={{ mb: 3 }}
+            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+            inputProps={{ minLength: 6 }}
+          />
+        )}
 
         <Button
           type="submit"
           fullWidth
           variant="contained"
-          disabled={loading || !email || !password}
+          disabled={submitDisabled}
           sx={{
             py: 1.3,
             fontSize: '0.95rem',
             fontWeight: 700,
             borderRadius: 2.5,
             mb: 2,
+            mt: mode === 'magic' ? 1 : 0,
           }}
         >
-          {loading ? <CircularProgress size={22} sx={{ color: '#fff' }} /> : mode === 'login' ? 'Log In' : 'Create Account'}
+          {loading
+            ? <CircularProgress size={22} sx={{ color: '#fff' }} />
+            : mode === 'magic' ? 'Email me a login link'
+            : mode === 'login' ? 'Log In' : 'Create Account'}
         </Button>
 
-        {/* Toggle login/signup */}
+        {mode === 'magic' && (
+          <Typography sx={{ textAlign: 'center', fontSize: '0.78rem', color: BRAND.textMuted, mb: 1.5 }}>
+            No password needed. We'll email you a link that signs you in.
+          </Typography>
+        )}
+
+        {/* Mode switching */}
         <Typography sx={{ textAlign: 'center', fontSize: '0.85rem', color: BRAND.textMuted }}>
-          {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
-          <Box
-            component="span"
-            onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(''); }}
-            sx={{
-              color: BRAND.primaryLight,
-              cursor: 'pointer',
-              fontWeight: 600,
-              '&:hover': { textDecoration: 'underline' },
-            }}
-          >
-            {mode === 'login' ? 'Sign up' : 'Log in'}
-          </Box>
+          {mode === 'magic' ? (
+            <Box
+              component="span"
+              onClick={() => switchMode('login')}
+              sx={{ color: BRAND.primaryLight, cursor: 'pointer', fontWeight: 600,
+                '&:hover': { textDecoration: 'underline' } }}
+            >
+              Use a password instead
+            </Box>
+          ) : (
+            <>
+              {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
+              <Box
+                component="span"
+                onClick={() => switchMode(mode === 'login' ? 'signup' : 'login')}
+                sx={{
+                  color: BRAND.primaryLight,
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  '&:hover': { textDecoration: 'underline' },
+                }}
+              >
+                {mode === 'login' ? 'Sign up' : 'Log in'}
+              </Box>
+              <Box sx={{ mt: 1 }}>
+                <Box
+                  component="span"
+                  onClick={() => switchMode('magic')}
+                  sx={{ color: BRAND.primaryLight, cursor: 'pointer', fontWeight: 600,
+                    '&:hover': { textDecoration: 'underline' } }}
+                >
+                  Email me a login link instead
+                </Box>
+              </Box>
+            </>
+          )}
         </Typography>
+        </>
+        )}
+
+        {/* Back to the app — signing in is optional, not a gate */}
+        {onClose && (
+          <Typography sx={{ textAlign: 'center', fontSize: '0.8rem', color: BRAND.textMuted, mt: 2 }}>
+            <Box
+              component="span"
+              onClick={onClose}
+              sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+            >
+              ← Back to Ace
+            </Box>
+          </Typography>
+        )}
 
         {/* Download option */}
         <Box sx={{
