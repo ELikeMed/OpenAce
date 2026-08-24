@@ -85,3 +85,10 @@ scripts/test-*.js
 src/desktop/renderer/
 src/core/agents/departments/index.js
 src/desktop/dashboard-ui/data/
+
+# Training data, model weights and captured conversations.
+# captured/ holds real user chat transcripts and the adapters are multi-GB —
+# neither belongs in a public repo.
+training/
+!training/generate-data.js
+!training/*.example.jsonl
