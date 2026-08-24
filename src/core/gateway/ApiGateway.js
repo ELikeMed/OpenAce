@@ -30,6 +30,8 @@ import { UsageTracker } from '../cloud/UsageTracker.js';
 import { ConversationCapture } from '../cloud/ConversationCapture.js';
 import { ProfileBuilder } from '../cloud/ProfileBuilder.js';
 import { SessionManager } from '../cloud/SessionManager.js';
+import { getDatabase } from '../cloud/CloudDatabase.js';
+import { isProvisionalEmail } from '../cloud/identity.js';
 
 export class ApiGateway {
   constructor(app, options = {}) {
@@ -56,6 +58,10 @@ export class ApiGateway {
 
     // Session manager — per-user conversation isolation
     this._sessionManager = new SessionManager();
+
+    // Cloud mode routes all data access through req.data (the per-owner
+    // adapter) instead of the shared subsystem singletons.
+    this.isCloud = process.env.OPENACE_CLOUD === 'true';
   }
 
   /**
@@ -635,7 +641,7 @@ export class ApiGateway {
         chatMessage = `[Studio Project: ${req.body.project}] ${chatMessage}`;
       }
 
-      const response = await this.ace.chat(chatMessage, { images, conversationId });
+      const response = await this.ace.chat(chatMessage, { images, conversationId, ownerId: req.ownerId });
 
       if (this.activityLogger) {
         const logContent = images.length > 0
@@ -822,10 +828,10 @@ export class ApiGateway {
             break;
           case 'coo':
             res.write(`data: ${JSON.stringify({ type: 'thinking', content: '⚙️ COO Mode: Focusing on operations & efficiency...' })}\n\n`);
-            response = await this.ace.chat(message, { images, conversationId });
+            response = await this.ace.chat(message, { images, conversationId, ownerId: req.ownerId });
             break;
           default:
-            response = await this.ace.chat(message, { images, conversationId });
+            response = await this.ace.chat(message, { images, conversationId, ownerId: req.ownerId });
         }
         
         if (this.activityLogger && message) {
@@ -938,12 +944,42 @@ export class ApiGateway {
 
   registerPipelineRoutes() {
     this.app.get('/api/pipeline', this.wrap(async (req, res) => {
+      // Cloud mode: build the board from this owner's rows only. ace.getPipeline()
+      // reads the shared singleton and would hand back everyone's leads.
+      if (this.isCloud) {
+        return res.json({
+          success: true,
+          data: {
+            stages: defaultLeadStages,
+            taskStages: defaultTaskStages,
+            leads: req.data.getLeads(),
+            tasks: req.data.getTasks(),
+          },
+        });
+      }
       if (!this.requireAce(res)) return;
       const pipeline = await this.ace.getPipeline();
       res.json({ success: true, data: pipeline });
     }));
 
     this.app.get('/api/pipeline-stats', this.wrap(async (req, res) => {
+      if (this.isCloud) {
+        const leads = req.data.getLeads();
+        const tasks = req.data.getTasks();
+        const countBy = (rows) => rows.reduce((acc, r) => {
+          acc[r.stage] = (acc[r.stage] || 0) + 1;
+          return acc;
+        }, {});
+        return res.json({
+          success: true,
+          data: {
+            totalLeads: leads.length,
+            totalTasks: tasks.length,
+            leadsByStage: countBy(leads),
+            tasksByStage: countBy(tasks),
+          },
+        });
+      }
       if (!this.requireAce(res)) return;
       const stats = this.ace.getPipelineStats();
       res.json({ success: true, data: stats });
@@ -976,17 +1012,31 @@ export class ApiGateway {
       res.json({ success: true, data: this.ace.pipelineManager.getLeadStages() });
     });
 
+    // Cloud mode: tasks and leads live per-owner in SQLite via req.data.
+    // The pipelineManager singleton stays the desktop/local path.
+    const pipe = (req) => (this.isCloud ? req.data : null);
+
     this.app.get('/api/pipeline/tasks', this.wrap(async (req, res) => {
+      const db = pipe(req);
+      if (db) return res.json({ success: true, data: db.getTasks() });
       if (!this.ace?.pipelineManager) return res.json({ success: true, data: [] });
       res.json({ success: true, data: await this.ace.pipelineManager.getTasks() });
     }));
 
     this.app.get('/api/pipeline/leads', this.wrap(async (req, res) => {
+      const db = pipe(req);
+      if (db) return res.json({ success: true, data: db.getLeads() });
       if (!this.ace?.pipelineManager) return res.json({ success: true, data: [] });
       res.json({ success: true, data: await this.ace.pipelineManager.getLeads() });
     }));
 
     this.app.post('/api/pipeline/tasks', this.wrap(async (req, res) => {
+      const db = pipe(req);
+      if (db) {
+        const task = db.saveTask(req.body);
+        eventBus.emit(EVENTS.TASK_ADDED, { task });
+        return res.json({ success: true, data: task });
+      }
       if (!this.ace?.pipelineManager) return res.json({ success: false, error: 'Pipeline not initialized' });
       const task = await this.ace.pipelineManager.addTask(req.body);
       eventBus.emit(EVENTS.TASK_ADDED, { task });
@@ -994,6 +1044,12 @@ export class ApiGateway {
     }));
 
     this.app.post('/api/pipeline/leads', this.wrap(async (req, res) => {
+      const db = pipe(req);
+      if (db) {
+        const lead = db.saveLead(req.body);
+        eventBus.emit(EVENTS.LEAD_ADDED, { lead });
+        return res.json({ success: true, data: lead });
+      }
       if (!this.ace?.pipelineManager) return res.json({ success: false, error: 'Pipeline not initialized' });
       const lead = await this.ace.pipelineManager.addLead(req.body);
       eventBus.emit(EVENTS.LEAD_ADDED, { lead });
@@ -1001,6 +1057,15 @@ export class ApiGateway {
     }));
 
     this.app.post('/api/pipeline/tasks/:id/move', this.wrap(async (req, res) => {
+      const db = pipe(req);
+      if (db) {
+        // Scoped update — a task belonging to another owner simply won't match
+        if (!db.moveTask(req.params.id, req.body.stage)) {
+          return res.status(404).json({ success: false, error: 'Task not found' });
+        }
+        eventBus.emit(EVENTS.TASK_MOVED, { taskId: req.params.id, stage: req.body.stage });
+        return res.json({ success: true });
+      }
       if (!this.ace?.pipelineManager) return res.json({ success: false, error: 'Pipeline not initialized' });
       await this.ace.pipelineManager.moveTask(req.params.id, req.body.stage);
       eventBus.emit(EVENTS.TASK_MOVED, { taskId: req.params.id, stage: req.body.stage });
@@ -1008,6 +1073,12 @@ export class ApiGateway {
     }));
 
     this.app.post('/api/pipeline/leads/:id/move', this.wrap(async (req, res) => {
+      const db = pipe(req);
+      if (db) {
+        db.moveLead(req.params.id, req.body.stage);
+        eventBus.emit(EVENTS.LEAD_MOVED, { leadId: req.params.id, stage: req.body.stage });
+        return res.json({ success: true });
+      }
       if (!this.ace?.pipelineManager) return res.json({ success: false, error: 'Pipeline not initialized' });
       await this.ace.pipelineManager.moveLead(req.params.id, req.body.stage);
       eventBus.emit(EVENTS.LEAD_MOVED, { leadId: req.params.id, stage: req.body.stage });
@@ -1016,6 +1087,11 @@ export class ApiGateway {
 
     // Delete task
     this.app.delete('/api/pipeline/tasks/:id', this.wrap(async (req, res) => {
+      const db = pipe(req);
+      if (db) {
+        db.deleteTask(req.params.id); // idempotent, and scoped to this owner
+        return res.json({ success: true });
+      }
       if (!this.ace?.pipelineManager) return res.json({ success: false, error: 'Pipeline not initialized' });
       try {
         await this.ace.pipelineManager.deleteTask(req.params.id);
@@ -1837,6 +1913,10 @@ export class ApiGateway {
   registerBusinessProfileRoutes() {
     // ── GET /api/businesses — list all businesses ──
     this.app.get('/api/businesses', this.wrap(async (req, res) => {
+      if (this.isCloud) {
+        const own = req.data.getBusinessProfile();
+        return res.json({ success: true, data: { businesses: own ? [own] : [], activeId: own?.id || null } });
+      }
       const bm = this.ace?.businessProfile;
       if (!bm) return res.json({ success: true, data: { businesses: [], activeId: null } });
       res.json({
@@ -1850,6 +1930,7 @@ export class ApiGateway {
 
     // ── GET /api/businesses/active — active business profile ──
     this.app.get('/api/businesses/active', this.wrap(async (req, res) => {
+      if (this.isCloud) return res.json({ success: true, data: req.data.getBusinessProfile() || {} });
       const bm = this.ace?.businessProfile;
       if (!bm) return res.json({ success: true, data: {} });
       res.json({ success: true, data: bm.getActive() || {} });
@@ -1892,12 +1973,20 @@ export class ApiGateway {
 
     // ── LEGACY: /api/business-profile (keeps onboarding + existing code working) ──
     this.app.get('/api/business-profile', this.wrap(async (req, res) => {
+      // Cloud mode: the caller's own business row. The businessProfile singleton
+      // holds the server operator's profile and was being served to everyone.
+      if (this.isCloud) {
+        return res.json({ success: true, data: req.data.getBusinessProfile() || {} });
+      }
       const bm = this.ace?.businessProfile;
       if (!bm) return res.json({ success: true, data: {} });
       res.json({ success: true, data: bm.getActive() || {} });
     }));
 
     this.app.post('/api/business-profile', this.wrap(async (req, res) => {
+      if (this.isCloud) {
+        return res.json({ success: true, data: req.data.saveBusinessProfile(req.body) });
+      }
       const bm = this.ace?.businessProfile;
       if (!bm) return res.json({ success: false, error: 'BusinessManager not initialized' });
 
@@ -2324,6 +2413,43 @@ export class ApiGateway {
     this.app.get('/api/usage', this.wrap(async (req, res) => {
       const info = this._usageTracker.getUsageInfo(req);
       res.json({ success: true, data: info });
+    }));
+
+    // GET /api/me — who is this? Powers the "welcome back, Eric" greeting.
+    // Scoped to req.ownerId, so it can only ever describe the caller.
+    this.app.get('/api/me', this.wrap(async (req, res) => {
+      if (process.env.OPENACE_CLOUD !== 'true') {
+        return res.json({ success: true, data: { known: false, isAuthed: true, local: true } });
+      }
+
+      const profile = this._profileBuilder.getProfile(req.ownerId) || {};
+      let name = profile.name;
+      let email = profile.email;
+
+      // A logged-in account is the better source of truth than the visitor row
+      if (req.isAuthed) {
+        try {
+          const user = getDatabase().prepare('SELECT name, email FROM users WHERE id = ?').get(req.ownerId);
+          if (user) {
+            name = user.name || name;
+            // Never surface the placeholder address of a not-yet-activated visitor
+            if (user.email && !isProvisionalEmail(user.email)) email = user.email;
+          }
+        } catch { /* fall back to the visitor profile */ }
+      }
+
+      res.json({
+        success: true,
+        data: {
+          known: !!name,
+          returning: !!name && req.isAuthed,
+          isAuthed: !!req.isAuthed,
+          name: name || null,
+          email: email || null,
+          business: profile.business || null,
+          industry: profile.industry || null,
+        },
+      });
     }));
 
     // GET /api/onboarding-status — check if first-run setup is needed
@@ -3152,11 +3278,31 @@ export class ApiGateway {
       return cm;
     };
 
+    // In cloud mode every contact read/write goes through req.data, the
+    // per-owner adapter. The shared ContactManager singleton is desktop-only —
+    // routing cloud traffic through it is what leaked one user's contacts to
+    // everyone else.
+    const scoped = (req) => (this.isCloud ? req.data : null);
+
     // GET /api/contacts — List contacts with optional search/tag filter
     this.app.get('/api/contacts', this.wrap(async (req, res) => {
+      const { tag, search, limit, offset } = req.query;
+      const db = scoped(req);
+      if (db) {
+        let contacts = db.getContacts();
+        if (search) {
+          const q = String(search).toLowerCase();
+          contacts = contacts.filter(c =>
+            [c.name, c.email, c.company, c.phone].some(v => (v || '').toLowerCase().includes(q)));
+        }
+        if (tag) contacts = contacts.filter(c => (c.tags || []).includes(tag));
+        const total = contacts.length;
+        const start = offset ? parseInt(offset) : 0;
+        const page = contacts.slice(start, start + (limit ? parseInt(limit) : 100));
+        return res.json({ success: true, contacts: page, total });
+      }
       const cm = getContactManager(res);
       if (!cm) return;
-      const { tag, search, limit, offset } = req.query;
       const result = cm.listContacts({
         tag, search,
         limit: limit ? parseInt(limit) : 100,
@@ -3167,20 +3313,30 @@ export class ApiGateway {
 
     // GET /api/contacts/follow-ups — Contacts needing follow-up
     this.app.get('/api/contacts/follow-ups', this.wrap(async (req, res) => {
+      const days = parseInt(req.query.days) || 7;
+      const db = scoped(req);
+      if (db) {
+        const cutoff = Date.now() - days * 86400000;
+        const contacts = db.getContacts().filter(c => {
+          const last = c.last_contacted || c.lastContacted;
+          return !last || new Date(last).getTime() < cutoff;
+        });
+        return res.json({ success: true, contacts, total: contacts.length });
+      }
       const cm = getContactManager(res);
       if (!cm) return;
-      const days = parseInt(req.query.days) || 7;
       const contacts = cm.getContactsNeedingFollowUp(days);
       res.json({ success: true, contacts, total: contacts.length });
     }));
 
     // POST /api/contacts — Add a contact
     this.app.post('/api/contacts', this.wrap(async (req, res) => {
-      const cm = getContactManager(res);
-      if (!cm) return;
+      const db = scoped(req);
       try {
-        const contact = cm.addContact(req.body);
-        res.json({ success: true, contact });
+        if (db) return res.json({ success: true, contact: db.saveContact(req.body) });
+        const cm = getContactManager(res);
+        if (!cm) return;
+        res.json({ success: true, contact: cm.addContact(req.body) });
       } catch (err) {
         res.status(400).json({ success: false, error: err.message });
       }
@@ -3188,11 +3344,17 @@ export class ApiGateway {
 
     // PUT /api/contacts/:id — Update a contact
     this.app.put('/api/contacts/:id', this.wrap(async (req, res) => {
-      const cm = getContactManager(res);
-      if (!cm) return;
+      const db = scoped(req);
       try {
-        const contact = cm.updateContact(req.params.id, req.body);
-        res.json({ success: true, contact });
+        if (db) {
+          // saveContact is scoped to this owner, so a foreign id simply won't match
+          const existing = db.getContacts().find(c => c.id === req.params.id);
+          if (!existing) return res.status(404).json({ success: false, error: 'Contact not found' });
+          return res.json({ success: true, contact: db.saveContact({ ...existing, ...req.body, id: req.params.id }) });
+        }
+        const cm = getContactManager(res);
+        if (!cm) return;
+        res.json({ success: true, contact: cm.updateContact(req.params.id, req.body) });
       } catch (err) {
         res.status(404).json({ success: false, error: err.message });
       }
@@ -3200,9 +3362,15 @@ export class ApiGateway {
 
     // DELETE /api/contacts/:id — Delete a contact
     this.app.delete('/api/contacts/:id', this.wrap(async (req, res) => {
-      const cm = getContactManager(res);
-      if (!cm) return;
+      const db = scoped(req);
       try {
+        if (db) {
+          const removed = db.deleteContact(req.params.id);
+          if (!removed) return res.status(404).json({ success: false, error: 'Contact not found' });
+          return res.json({ success: true, message: 'Contact deleted' });
+        }
+        const cm = getContactManager(res);
+        if (!cm) return;
         cm.deleteContact(req.params.id);
         res.json({ success: true, message: 'Contact deleted' });
       } catch (err) {
@@ -3212,14 +3380,19 @@ export class ApiGateway {
 
     // POST /api/contacts/import — Bulk import contacts
     this.app.post('/api/contacts/import', this.wrap(async (req, res) => {
-      const cm = getContactManager(res);
-      if (!cm) return;
       const { contacts } = req.body;
       if (!Array.isArray(contacts)) {
         return res.status(400).json({ success: false, error: 'Expected { contacts: [...] }' });
       }
-      const result = cm.importContacts(contacts);
-      res.json({ success: true, ...result });
+      const db = scoped(req);
+      if (db) {
+        let imported = 0;
+        for (const c of contacts) { try { db.saveContact(c); imported++; } catch { /* skip bad row */ } }
+        return res.json({ success: true, imported, total: contacts.length });
+      }
+      const cm = getContactManager(res);
+      if (!cm) return;
+      res.json({ success: true, ...cm.importContacts(contacts) });
     }));
   }
 

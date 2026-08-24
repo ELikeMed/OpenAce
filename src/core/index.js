@@ -569,9 +569,9 @@ export class OpenAce {
       if (this.pipelineManager) this.autonomousScheduler.setPipelineManager(this.pipelineManager);
       if (this.goalTracker) this.autonomousScheduler.setGoalTracker(this.goalTracker);
 
-      // Start the autonomous scheduler
-      this.autonomousScheduler.start();
-      this.log.info('Autonomous scheduler started');
+      // Autonomous scheduler disabled — routines should only run when explicitly triggered
+      // this.autonomousScheduler.start();
+      // this.log.info('Autonomous scheduler started');
 // Start the persistent task queue processing loop
 this.taskQueue.startProcessing(3000, this.executeTask.bind(this)); // Check every 3 seconds
 this.log.info('Task queue processing started');
@@ -963,7 +963,10 @@ this.log.info('Task queue processing started');
         const brainResult = await this.brain.think(channelId, userMessage, {
           userName: 'Boss',
           source: 'dashboard',
-          mode: options.mode
+          mode: options.mode,
+          // Whose data may this turn touch? Set by the API layer from the
+          // authenticated request. Tools scope their reads/writes to it.
+          ownerId: options.ownerId || null
         });
 
         // ── Handle markers from IntentRouter ──

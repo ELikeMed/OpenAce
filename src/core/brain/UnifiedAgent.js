@@ -9,6 +9,7 @@
 import { ResponseParser } from './ResponseParser.js';
 import { GmailSMTPService } from '../integrations/GmailSMTPService.js';
 import { SOPParser } from '../automation/SOPParser.js';
+import { DatabaseAdapter } from '../cloud/DatabaseAdapter.js';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -2220,6 +2221,9 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
     this._createdProject = null; // Track project creation for client notification
     const thinking = ['🧠 UnifiedAgent processing...'];
     this._currentConversationId = channelContext.channelId || channelContext.conversationId || '';
+    // Whose data this turn may touch. Data tools scope to it in cloud mode so a
+    // visitor's chat can never read or write the operator's leads, contacts or notes.
+    this._ownerId = channelContext.ownerId || null;
 
     // Free tier visitors: simple conversational prompt, NO business context, NO tools
     let systemPrompt;
@@ -3407,8 +3411,82 @@ CRITICAL — NEVER DO THESE:
     }
   }
 
+  /**
+   * Per-owner storage for the current turn, or null in local/desktop mode.
+   *
+   * In cloud mode the subsystem singletons hold the server operator's data, so
+   * any tool that reads or writes business data must go through this instead.
+   * Returns null when there's no ownerId, and callers then refuse rather than
+   * silently falling back to the shared store.
+   */
+  _scopedData() {
+    if (process.env.OPENACE_CLOUD !== 'true') return null;
+    if (!this._ownerId) return null;
+    if (!this.__adapterCache || this.__adapterCache.userId !== this._ownerId) {
+      this.__adapterCache = new DatabaseAdapter(this._ownerId);
+    }
+    return this.__adapterCache;
+  }
+
+  /** True when we're in cloud mode but have no owner — never touch shared data. */
+  _cloudWithoutOwner() {
+    return process.env.OPENACE_CLOUD === 'true' && !this._ownerId;
+  }
+
   // ── Save Leads ──
   async _toolSaveLeads(args) {
+    if (this._cloudWithoutOwner()) {
+      return JSON.stringify({ error: 'No account context for this request — cannot save leads.' });
+    }
+
+    const db = this._scopedData();
+    if (db) {
+      const leads = args.leads || [];
+      const saved = [];
+      const existingLeads = db.getLeads();
+
+      for (const lead of leads) {
+        const rejection = this._validateLead(lead);
+        if (rejection) {
+          saved.push({ status: 'rejected', company: lead.company || '(no name)', reason: rejection });
+          continue;
+        }
+        const normName = (lead.company || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const isDupe = existingLeads.some(existing => {
+          const existingNorm = (existing.company || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (normName && existingNorm && normName === existingNorm) return true;
+          if (lead.email && existing.email && lead.email.toLowerCase() === existing.email.toLowerCase()) return true;
+          return false;
+        });
+        if (isDupe) {
+          saved.push({ status: 'skipped', company: lead.company, reason: 'duplicate' });
+          continue;
+        }
+        try {
+          const result = db.saveLead({
+            company: lead.company,
+            name: lead.contact_name || '',
+            email: lead.email || '',
+            phone: lead.phone || '',
+            website: lead.website || '',
+            stage: 'new',
+            source: lead.source || 'research',
+            notes: lead.notes || '',
+          });
+          saved.push({
+            status: 'saved', id: result.id,
+            company: lead.company, email: lead.email || '',
+            contact_name: lead.contact_name || '',
+          });
+        } catch (e) {
+          saved.push({ status: 'failed', company: lead.company, error: e.message });
+        }
+      }
+      this.onProgress(`Processed ${saved.length} leads`);
+      const actualSaved = saved.filter(s => s.status === 'saved').length;
+      return JSON.stringify({ saved, total: saved.length, savedCount: actualSaved });
+    }
+
     const pm = this.subsystems.pipelineManager;
     if (!pm) return JSON.stringify({ error: 'Pipeline not available' });
 
@@ -3498,6 +3576,28 @@ CRITICAL — NEVER DO THESE:
 
   // ── Get Pipeline ──
   async _toolGetPipeline(args) {
+    if (this._cloudWithoutOwner()) {
+      return JSON.stringify({ error: 'No account context for this request — cannot read the pipeline.' });
+    }
+
+    const scoped = this._scopedData();
+    if (scoped) {
+      const type = args.type || 'all';
+      const leads = scoped.getLeads();
+      const tasks = scoped.getTasks();
+      const fmt = (l) => ({
+        id: l.id, company: l.company, contact_name: l.name || '',
+        email: l.email || '', phone: l.phone || '', website: l.website || '',
+        stage: l.stage || 'new', notes: l.notes || '',
+      });
+      if (type === 'leads') return JSON.stringify({ leads: leads.slice(0, 30).map(fmt), totalLeads: leads.length });
+      if (type === 'tasks') return JSON.stringify({ tasks: tasks.slice(0, 20), totalTasks: tasks.length });
+      return JSON.stringify({
+        tasks: tasks.slice(0, 10), leads: leads.slice(0, 20).map(fmt),
+        totalTasks: tasks.length, totalLeads: leads.length,
+      });
+    }
+
     const pm = this.subsystems.pipelineManager;
     if (!pm) return JSON.stringify({ error: 'Pipeline not available' });
 
@@ -3534,14 +3634,37 @@ CRITICAL — NEVER DO THESE:
 
   // ── Move Lead ──
   async _toolMoveLead(args) {
-    const pm = this.subsystems.pipelineManager;
-    if (!pm) return JSON.stringify({ error: 'Pipeline not available' });
+    if (this._cloudWithoutOwner()) {
+      return JSON.stringify({ error: 'No account context for this request — cannot move leads.' });
+    }
 
     const { lead_id, stage, note } = args;
     const validStages = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost'];
     if (!validStages.includes(stage)) {
       return JSON.stringify({ error: `Invalid stage "${stage}". Valid: ${validStages.join(', ')}` });
     }
+
+    const scoped = this._scopedData();
+    if (scoped) {
+      // The cloud schema's CHECK constraint predates 'negotiation'/'won' and
+      // rejects them outright, so map onto the stages it actually allows.
+      const CLOUD_STAGE = { negotiation: 'proposal', won: 'closed' };
+      const dbStage = CLOUD_STAGE[stage] || stage;
+      // Resolve by id, else by company name — but only within this owner's leads
+      let target = scoped.getLeads().find(l => l.id === lead_id);
+      if (!target) {
+        const q = String(lead_id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        target = scoped.getLeads().find(l =>
+          (l.company || '').toLowerCase().replace(/[^a-z0-9]/g, '').includes(q));
+      }
+      if (!target) return JSON.stringify({ error: `No lead found matching "${lead_id}"` });
+      scoped.moveLead(target.id, dbStage);
+      this.onProgress(`Moved ${target.company || target.id} → ${stage}`);
+      return JSON.stringify({ success: true, id: target.id, company: target.company, stage, note: note || '' });
+    }
+
+    const pm = this.subsystems.pipelineManager;
+    if (!pm) return JSON.stringify({ error: 'Pipeline not available' });
 
     // Allow finding lead by company name if lead_id doesn't look like an ID
     let resolvedId = lead_id;
@@ -3598,10 +3721,38 @@ CRITICAL — NEVER DO THESE:
 
   // ── Manage Contacts ──
   async _toolManageContacts(args) {
-    const cm = this.subsystems.contactManager;
-    if (!cm) return JSON.stringify({ error: 'Contact manager not available' });
+    if (this._cloudWithoutOwner()) {
+      return JSON.stringify({ error: 'No account context for this request — cannot access contacts.' });
+    }
 
     const { action, name, email, phone, query } = args;
+
+    const scoped = this._scopedData();
+    if (scoped) {
+      if (action === 'add') {
+        if (!name || !email) return JSON.stringify({ error: 'Name and email required to add contact' });
+        try {
+          const contact = scoped.saveContact({ name, email, phone: phone || null });
+          return JSON.stringify({ success: true, contact: { name: contact.name, email: contact.email } });
+        } catch (e) {
+          return JSON.stringify({ error: e.message });
+        }
+      }
+      if (action === 'search') {
+        const q = String(query || name || '').toLowerCase();
+        const results = scoped.getContacts().filter(c =>
+          [c.name, c.email, c.company].some(v => (v || '').toLowerCase().includes(q)));
+        return JSON.stringify({ results: results.slice(0, 10).map(c => ({ name: c.name, email: c.email, phone: c.phone })) });
+      }
+      if (action === 'list') {
+        const all = scoped.getContacts();
+        return JSON.stringify({ contacts: all.slice(0, 20).map(c => ({ name: c.name, email: c.email })), total: all.length });
+      }
+      return JSON.stringify({ error: `Unknown action: ${action}` });
+    }
+
+    const cm = this.subsystems.contactManager;
+    if (!cm) return JSON.stringify({ error: 'Contact manager not available' });
 
     if (action === 'add') {
       if (!name || !email) return JSON.stringify({ error: 'Name and email required to add contact' });
@@ -4597,6 +4748,17 @@ CRITICAL — NEVER DO THESE:
     const { title, content, category } = args;
     if (!title || !content) return JSON.stringify({ error: 'title and content are required' });
 
+    if (this._cloudWithoutOwner()) {
+      return JSON.stringify({ error: 'No account context for this request — cannot save notes.' });
+    }
+
+    const scoped = this._scopedData();
+    if (scoped) {
+      const note = scoped.saveNote({ title, content, tags: category ? [category] : [] });
+      this.onProgress(`Saved: "${title}"`);
+      return JSON.stringify({ success: true, id: note.id, title, category: category || 'reference' });
+    }
+
     const notesDir = path.join(PROJECT_ROOT, 'data', 'memory', 'notes');
     await fs.mkdir(notesDir, { recursive: true });
 
@@ -4619,6 +4781,21 @@ CRITICAL — NEVER DO THESE:
 
   async _toolRecallNotes(args) {
     const query = (args.query || '').toLowerCase();
+
+    if (this._cloudWithoutOwner()) {
+      return JSON.stringify({ error: 'No account context for this request — cannot recall notes.' });
+    }
+
+    const scoped = this._scopedData();
+    if (scoped) {
+      const notes = scoped.getNotes(args.query || undefined);
+      if (!notes.length) return JSON.stringify({ notes: [], message: 'No saved notes found.' });
+      return JSON.stringify({
+        notes: notes.slice(0, 10).map(n => ({ id: n.id, title: n.title, content: n.content })),
+        total: notes.length,
+      });
+    }
+
     const notesDir = path.join(PROJECT_ROOT, 'data', 'memory', 'notes');
 
     try {
