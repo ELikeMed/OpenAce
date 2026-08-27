@@ -196,6 +196,7 @@ const MEDIA_TYPE_MAP = {
 const EMBED_URL = process.env.OLLAMA_EMBED_URL || 'http://localhost:11434/api/embeddings';
 const EMBED_MODEL = process.env.OLLAMA_EMBED_MODEL || 'nomic-embed-text';
 const EMBED_CONCURRENCY = 4;
+const EMBED_REPROBE_MS = 60_000;
 
 // Weight on semantic similarity when blending with the keyword score. Swept on a
 // 36-question set: top-1 accuracy was 18/36 at 0 (keyword only), 20/36 at 0.7, 26/36 at
@@ -272,10 +273,34 @@ export class WorkloadStore {
   async _probeEmbeddings() {
     try {
       await embedText('probe', 'query');
+      if (!this.embeddingsEnabled) console.log('\u2705 Workload: semantic search active');
       this.embeddingsEnabled = true;
     } catch {
       this.embeddingsEnabled = false;
       console.log(`\u2139\uFE0F  Workload: embedding model "${EMBED_MODEL}" unavailable, using keyword search`);
+    }
+    this._lastProbe = Date.now();
+  }
+
+  // Ollama runs as a desktop app in the same login session as the server, so on a reboot
+  // the two race — probing once at startup can lose and leave the store permanently on
+  // keyword search. Retry occasionally so it recovers on its own once Ollama is up.
+  async _maybeReprobe() {
+    if (this.embeddingsEnabled) return;
+    if (this._lastProbe && Date.now() - this._lastProbe < EMBED_REPROBE_MS) return;
+    await this._probeEmbeddings();
+    // Documents ingested while embeddings were down have no vectors; backfill them so
+    // semantic search covers the whole corpus rather than whatever arrived after recovery.
+    if (this.embeddingsEnabled) await this._backfillMissingEmbeddings();
+  }
+
+  async _backfillMissingEmbeddings() {
+    for (const source of this.sources) {
+      const chunks = await this._loadChunks(source.id);
+      if (chunks.length === 0 || chunks.every(c => c.embedding)) continue;
+      await this._embedChunks(chunks);
+      await fs.writeFile(path.join(this.chunksDir, `${source.id}.json`), JSON.stringify(chunks, null, 2));
+      console.log(`[Workload] backfilled embeddings for ${source.name}`);
     }
   }
 
@@ -320,9 +345,30 @@ export class WorkloadStore {
     try {
       const data = await fs.readFile(path.join(this.chunksDir, `${sourceId}.json`), 'utf-8');
       return JSON.parse(data);
-    } catch {
+    } catch (err) {
+      // An indexed source whose chunks have vanished means this instance is serving a
+      // stale index — typically because something re-ingested out of process while the
+      // server was running. Silence here turns that into "the knowledge base is empty"
+      // with no indication why, so say it once per source.
+      if (!this._warnedMissingChunks) this._warnedMissingChunks = new Set();
+      if (!this._warnedMissingChunks.has(sourceId)) {
+        this._warnedMissingChunks.add(sourceId);
+        console.warn(`[Workload] chunks missing for indexed source ${sourceId} (${err.code || err.message}). ` +
+                     `The in-memory index is stale — reload() or restart to pick up on-disk changes.`);
+      }
       return [];
     }
+  }
+
+  // Re-read the index from disk. Lets a running instance pick up an out-of-process
+  // re-ingest without a restart.
+  async reload() {
+    await this._loadIndex();
+    await this._rebuildIDF();
+    this._warnedMissingChunks = null;
+    const chunks = this.sources.reduce((n, s) => n + (s.chunkCount || 0), 0);
+    console.log(`\u2705 Workload store reloaded (${this.sources.length} sources, ${chunks} chunks)`);
+    return { sources: this.sources.length, chunks };
   }
 
   async _saveChunks(sourceId, chunks) {
@@ -630,13 +676,15 @@ export class WorkloadStore {
     }
   }
 
-  async ingestUploadedBuffer(buffer, filename, sourceName) {
+  async ingestUploadedBuffer(buffer, filename, sourceName, options = {}) {
     // Save raw file for re-ingestion
     const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
     const savedPath = path.join(this.filesDir, `${Date.now()}_${safeName}`);
     await fs.writeFile(savedPath, buffer);
 
-    const sourceId = `src_${Date.now()}`;
+    // A caller re-ingesting a document it already owns can pin the id, so re-seeding
+    // replaces chunks in place instead of orphaning whatever a running server has loaded.
+    const sourceId = options.sourceId || `src_${Date.now()}`;
     const ext = path.extname(filename).toLowerCase();
 
     const source = {
@@ -957,6 +1005,8 @@ export class WorkloadStore {
     const queryTerms = tokenize(query);
     // With embeddings, a query of pure stopwords is still meaningful semantically.
     if (queryTerms.length === 0 && !this.embeddingsEnabled) return [];
+
+    await this._maybeReprobe();
 
     // Semantic half of the hybrid. Falls back to keyword-only if the embed call fails.
     let queryVec = null;

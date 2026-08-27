@@ -47,11 +47,17 @@ for (const [filename, sourceName] of PUBLIC_DOCS) {
     continue;
   }
 
-  for (const existing of store.sources.filter(s => s.originalFilename === filename)) {
+  // A stable id derived from the filename, so re-seeding replaces a document in place.
+  // With generated ids, a re-seed orphans whatever a running server already has loaded:
+  // its in-memory index still points at the old chunk files, which no longer exist, and
+  // every search silently returns nothing.
+  const sourceId = 'src_kb_' + filename.replace(/\.md$/, '').toLowerCase().replace(/[^a-z0-9]+/g, '_');
+
+  for (const existing of store.sources.filter(s => s.originalFilename === filename || s.id === sourceId)) {
     await store.removeSource(existing.id);
   }
 
-  const result = await store.ingestUploadedBuffer(buffer, filename, sourceName);
+  const result = await store.ingestUploadedBuffer(buffer, filename, sourceName, { sourceId });
   console.log(`  seeded   ${String(result.chunkCount).padStart(3)} chunks  ${sourceName}`);
   seeded++;
 }
@@ -61,3 +67,14 @@ await store._rebuildIDF();
 const stats = store.getStats();
 console.log(`\n${seeded}/${PUBLIC_DOCS.length} documents · ${stats.totalChunks} chunks · ${stats.totalSizeFormatted}`);
 console.log(`retrieval: ${store.embeddingsEnabled ? 'hybrid semantic + keyword' : 'keyword only'}`);
+
+// Ids are stable, so a running server's index stays valid — but it still holds the old
+// chunk counts and IDF table until it re-reads them.
+const port = process.env.PORT || 4000;
+try {
+  const res = await fetch(`http://localhost:${port}/api/health`, { signal: AbortSignal.timeout(2000) });
+  if (res.status !== 0) {
+    console.log(`\n\u26A0\uFE0F  A server is running on port ${port}. Restart it so it picks up this index:`);
+    console.log('   launchctl kickstart -k gui/$(id -u)/com.openace.server');
+  }
+} catch { /* nothing listening, nothing to warn about */ }

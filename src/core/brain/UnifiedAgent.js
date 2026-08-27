@@ -21,6 +21,9 @@ const WORKLOAD_MIN_RELEVANCE = 0.03;
 // the first few; measured on a 36-question set, recall was 30/36 at 3, 31/36 at 5, and
 // 33/36 at 8. Eight buys most of the gain for roughly 1.8k tokens of context.
 const WORKLOAD_TOP_N = 8;
+// Character ceiling for the injected block. See the note at the injection site — this
+// exists to keep the whole prompt inside the model's context window.
+const WORKLOAD_CHAR_BUDGET = 4000;
 
 const PROJECT_ROOT = process.cwd();
 
@@ -2362,18 +2365,37 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
         // The store sets its own floor — relevance is on a different scale depending on
         // whether semantic search is available.
         const minRelevance = this.subsystems.workloadStore.getMinRelevance?.() ?? WORKLOAD_MIN_RELEVANCE;
-        if (workloadResults.length > 0 && workloadResults[0].relevance > minRelevance) {
-          // Chunks are built up to 800 chars plus a heading prefix. The previous 500-char
-          // limit cut the answer off the end of otherwise correct hits, so pass the whole
-          // chunk through.
-          const contextChunks = workloadResults.map(r =>
-            `[${r.sourceName} — ${r.filePath}]: ${r.content.substring(0, 1000)}`
-          ).join('\n---\n');
-          // Retrieval cannot reliably tell an off-topic question from an on-topic one, so
-          // this is framed as reference material the model may ignore rather than as fact
-          // it must use. Without that, an unrelated question pulls in business passages and
-          // the model tries to answer from them.
-          userContent += `\n\n[REFERENCE MATERIAL — retrieved from the knowledge base because it may relate to the question. It may be irrelevant; if so, ignore it entirely and do not mention it. If it is relevant, use it and cite the source name.\n${contextChunks}]`;
+        const topRelevance = workloadResults[0]?.relevance ?? 0;
+        if (workloadResults.length > 0 && topRelevance > minRelevance) {
+          // Chunks arrive whole — the old 500-char slice cut the answer off the end of
+          // otherwise correct hits. Injection must still fit the model's context window alongside the system prompt,
+          // tool definitions and history. ace-clubs pins num_ctx to 8192 and the app talks
+          // to Ollama over the OpenAI-compatible endpoint, which cannot override it — so an
+          // unbounded injection silently truncated the prompt and the model returned
+          // nothing at all. Fill to a character budget instead of a fixed per-chunk slice.
+          const budget = Number(process.env.WORKLOAD_CHAR_BUDGET || WORKLOAD_CHAR_BUDGET);
+          const parts = [];
+          let used = 0;
+          for (const r of workloadResults) {
+            const piece = `[${r.sourceName}]: ${r.content}`;
+            if (used + piece.length > budget) break;
+            parts.push(piece);
+            used += piece.length;
+          }
+          if (parts.length === 0) parts.push(`[${workloadResults[0].sourceName}]: ${workloadResults[0].content.substring(0, budget)}`);
+          const contextChunks = parts.join('\n---\n');
+          console.log(`[Workload] injected ${parts.length}/${workloadResults.length} chunks, ${used} chars (top ${topRelevance}) for: ${message.slice(0, 60)}`);
+
+          // Instruction strength scales with the score rather than being fixed. A
+          // permissive "ignore this if irrelevant" is right for a borderline match, but
+          // applied to a strong one it invited the model — a 7B running locally — to skip
+          // the knowledge and answer from its own weights, or reach for a tool instead.
+          // Off-topic queries topped out at 0.698 in calibration, so above 0.70 the
+          // material is treated as the answer; below it, as optional context.
+          const directive = topRelevance >= 0.70
+            ? 'This is from your own knowledge base and answers the question. Answer directly from it, in your own words, as your own expertise. Do not call any tool to look elsewhere, and do not mention the knowledge base or say you were given reference material.'
+            : 'This may or may not relate to the question. Use it only if it genuinely answers what was asked; otherwise ignore it and do not mention it.';
+          userContent += `\n\n[KNOWLEDGE BASE — ${directive}\n${contextChunks}]`;
         }
       } catch (e) { /* workload search failed, continue without it */ }
     }
