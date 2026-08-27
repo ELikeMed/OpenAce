@@ -34,13 +34,28 @@ const STOP_WORDS = new Set([
   'null', 'undefined', 'else', 'try', 'catch', 'throw'
 ]);
 
+// Light suffix stripping so a query for "restaurant" matches indexed "restaurants".
+// Applied to documents and queries alike, so exactness matters less than consistency.
+// Identifier-ish tokens are left alone — stemming "index.js" would strip the "s".
+function stem(word) {
+  if (/[./\\@]/.test(word)) return word;
+  if (word.length > 4 && word.endsWith('ing')) return word.slice(0, -3);
+  if (word.length > 4 && word.endsWith('ed')) return word.slice(0, -2);
+  if (word.length > 3 && word.endsWith('s') && !word.endsWith('ss') && !word.endsWith('us')) return word.slice(0, -1);
+  return word;
+}
+
 function tokenize(text) {
   if (!text) return [];
   return text
     .toLowerCase()
     .replace(/[^\w\s@./\\-]/g, ' ')
     .split(/\s+/)
-    .filter(word => word.length > 2 && !STOP_WORDS.has(word));
+    // Trim punctuation the sentence left attached ("seo." -> "seo") while keeping it
+    // inside the token, so filenames and domains still index as "index.js".
+    .map(word => word.replace(/^[./\\-]+|[./\\-]+$/g, ''))
+    .filter(word => word.length > 2 && !STOP_WORDS.has(word))
+    .map(stem);
 }
 
 function termFrequency(terms) {
@@ -174,6 +189,49 @@ const MEDIA_TYPE_MAP = {
   '.mp3': 'audio', '.wav': 'audio', '.ogg': 'audio', '.m4a': 'audio'
 };
 
+// ═══════════════════════════════════════════════════════
+// EMBEDDINGS — local, via Ollama. No external service.
+// ═══════════════════════════════════════════════════════
+
+const EMBED_URL = process.env.OLLAMA_EMBED_URL || 'http://localhost:11434/api/embeddings';
+const EMBED_MODEL = process.env.OLLAMA_EMBED_MODEL || 'nomic-embed-text';
+const EMBED_CONCURRENCY = 4;
+
+// Weight on semantic similarity when blending with the keyword score. Swept on a
+// 36-question set: top-1 accuracy was 18/36 at 0 (keyword only), 20/36 at 0.7, 26/36 at
+// 0.9, and 24/36 at 1.0 — the small keyword term is what keeps exact tokens like "BANT"
+// competitive, which pure vector search loses.
+//
+// Cosine is deliberately left un-normalised here. Min-max scaling the vector scores across
+// the candidate set ranked marginally better, but it makes the top hit score ~1.0 even when
+// every candidate is poor, which would destroy the absolute threshold in getMinRelevance().
+const VECTOR_WEIGHT = 0.9;
+
+// nomic-embed-text is trained with task prefixes; using them widened the gap between a
+// matching and a non-matching passage from 0.19 to 0.27 in local testing.
+const EMBED_PREFIX = { document: 'search_document: ', query: 'search_query: ' };
+
+async function embedText(text, kind = 'document') {
+  const res = await fetch(EMBED_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: EMBED_MODEL, prompt: (EMBED_PREFIX[kind] || '') + text })
+  });
+  if (!res.ok) throw new Error(`embed failed: ${res.status}`);
+  const json = await res.json();
+  if (!Array.isArray(json.embedding) || json.embedding.length === 0) throw new Error('embed returned no vector');
+  // 5 decimals keeps the chunk files a manageable size without measurably affecting cosine.
+  return json.embedding.map(v => Math.round(v * 1e5) / 1e5);
+}
+
+function cosineSimilarity(a, b) {
+  if (!a || !b || a.length !== b.length) return 0;
+  let dot = 0, na = 0, nb = 0;
+  for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+  if (na === 0 || nb === 0) return 0;
+  return dot / (Math.sqrt(na) * Math.sqrt(nb));
+}
+
 export class WorkloadStore {
   constructor(dataDir) {
     this.dataDir = dataDir;
@@ -187,6 +245,7 @@ export class WorkloadStore {
     this.idf = {};
     this.totalChunks = 0;
     this._allTokenSets = []; // For IDF rebuilding
+    this.embeddingsEnabled = false; // set by initialize() after probing Ollama
   }
 
   async initialize() {
@@ -197,14 +256,42 @@ export class WorkloadStore {
 
     await this._loadIndex();
     await this._rebuildIDF();
+    await this._probeEmbeddings();
     await this.scanMedia(); // Auto-scan media folder on startup
 
     const totalChunks = this.sources.reduce((sum, s) => sum + (s.chunkCount || 0), 0);
-    console.log(`\u2705 Workload store loaded (${this.sources.length} sources, ${totalChunks} chunks, ${this.media.length} media files)`);
+    const mode = this.embeddingsEnabled ? 'hybrid semantic + keyword' : 'keyword only';
+    console.log(`\u2705 Workload store loaded (${this.sources.length} sources, ${totalChunks} chunks, ${this.media.length} media files, ${mode})`);
     return this;
   }
 
   // ── Index Management ──
+
+  // Semantic search is a local Ollama call. If the model or the daemon is unavailable the
+  // store silently stays on keyword search rather than failing to load.
+  async _probeEmbeddings() {
+    try {
+      await embedText('probe', 'query');
+      this.embeddingsEnabled = true;
+    } catch {
+      this.embeddingsEnabled = false;
+      console.log(`\u2139\uFE0F  Workload: embedding model "${EMBED_MODEL}" unavailable, using keyword search`);
+    }
+  }
+
+  // Relevance is on a different scale in each mode, so the caller asks rather than guessing.
+  //
+  // 0.55 was calibrated against on- and off-topic query sets. It admits every on-topic
+  // question measured (the lowest scored 0.572) and rejects roughly half the off-topic ones
+  // — "hello", "who won the world cup", "capital of France", "write me a python script".
+  // It cannot separate the rest: nomic-embed-text has a high similarity floor, so an
+  // unrelated short query still scores ~0.5 against a topical corpus, and neither a z-score
+  // nor a top-minus-mean margin separated the two sets any better. Queries like "send an
+  // email to John" still clear the bar, which is why the injected block is framed as
+  // possibly-irrelevant reference material rather than as authoritative context.
+  getMinRelevance() {
+    return this.embeddingsEnabled ? 0.55 : 0.03;
+  }
 
   async _loadIndex() {
     try {
@@ -239,7 +326,30 @@ export class WorkloadStore {
   }
 
   async _saveChunks(sourceId, chunks) {
+    // Every ingest path funnels through here, so embedding at this point covers files,
+    // uploads, folders, and codebases without touching each one.
+    if (this.embeddingsEnabled) await this._embedChunks(chunks);
     await fs.writeFile(path.join(this.chunksDir, `${sourceId}.json`), JSON.stringify(chunks, null, 2));
+  }
+
+  // Embeds in small concurrent batches. A failure downgrades that chunk to keyword-only
+  // rather than aborting the whole ingest.
+  async _embedChunks(chunks) {
+    const pending = chunks.filter(c => !c.embedding && c.content);
+    if (pending.length === 0) return;
+
+    let failures = 0;
+    for (let i = 0; i < pending.length; i += EMBED_CONCURRENCY) {
+      const batch = pending.slice(i, i + EMBED_CONCURRENCY);
+      await Promise.all(batch.map(async (chunk) => {
+        try {
+          chunk.embedding = await embedText(chunk.content, 'document');
+        } catch {
+          failures++;
+        }
+      }));
+    }
+    if (failures > 0) console.warn(`[Workload] ${failures}/${pending.length} chunks could not be embedded`);
   }
 
   // ── IDF Rebuilding ──
@@ -336,21 +446,35 @@ export class WorkloadStore {
     // Split at paragraph boundaries
     const paragraphs = text.split(/\n\s*\n/);
     let current = '';
+    let heading = '';       // most recent markdown heading seen
+    let chunkHeading = '';  // heading in force when `current` began
+
+    // Prefix each chunk with its section heading. A chunk split away from its heading
+    // otherwise loses the very words a question asks for — "Pricing Strategy" content
+    // that never repeats the word "pricing" is unreachable by a query about pricing.
+    const push = (body) => {
+      const t = body.trim();
+      if (!t) return;
+      chunks.push(chunkHeading && !t.startsWith(chunkHeading) ? `${chunkHeading}\n\n${t}` : t);
+    };
 
     for (const para of paragraphs) {
       const trimmed = para.trim();
       if (!trimmed) continue;
+      if (trimmed.startsWith('#')) heading = trimmed.split('\n')[0].trim();
 
       if (current.length + trimmed.length + 2 > maxChars && current.length > 0) {
-        chunks.push(current.trim());
+        push(current);
         // Overlap: keep last portion
         const overlapText = current.slice(-overlap);
+        chunkHeading = heading;
         current = overlapText + '\n\n' + trimmed;
       } else {
+        if (!current) chunkHeading = heading;
         current += (current ? '\n\n' : '') + trimmed;
       }
     }
-    if (current.trim()) chunks.push(current.trim());
+    if (current.trim()) push(current);
 
     // If no paragraph breaks, split by character
     if (chunks.length === 0 && text.trim().length > 0) {
@@ -831,7 +955,18 @@ export class WorkloadStore {
 
   async search(query, limit = 5) {
     const queryTerms = tokenize(query);
-    if (queryTerms.length === 0) return [];
+    // With embeddings, a query of pure stopwords is still meaningful semantically.
+    if (queryTerms.length === 0 && !this.embeddingsEnabled) return [];
+
+    // Semantic half of the hybrid. Falls back to keyword-only if the embed call fails.
+    let queryVec = null;
+    if (this.embeddingsEnabled) {
+      try {
+        queryVec = await embedText(query, 'query');
+      } catch {
+        queryVec = null;
+      }
+    }
 
     const allResults = [];
 
@@ -862,7 +997,9 @@ export class WorkloadStore {
         const pathOverlap = queryTerms.filter(t => pathTerms.includes(t)).length;
         if (pathOverlap > 0) score *= 1 + pathOverlap * 0.2;
 
-        if (score > 0.01) {
+        const vecScore = queryVec ? cosineSimilarity(queryVec, chunk.embedding) : 0;
+
+        if (score > 0.01 || vecScore > 0) {
           allResults.push({
             id: chunk.id,
             sourceId: chunk.sourceId,
@@ -871,11 +1008,25 @@ export class WorkloadStore {
             fileType: chunk.fileType,
             content: chunk.content,
             relevance: Math.round(score * 1000) / 1000,
+            keywordScore: score,
+            vectorScore: vecScore,
             metadata: chunk.metadata,
             chunkIndex: chunk.chunkIndex,
             totalChunks: chunk.totalChunks
           });
         }
+      }
+    }
+
+    // Hybrid ranking. Keyword scores are unbounded and vary by corpus, so they are
+    // normalised against the best hit in this result set before being blended. Semantic
+    // similarity carries most of the weight; the keyword term is what keeps exact tokens
+    // like "BANT" or "EBITDA" competitive, which pure vector search tends to lose.
+    if (queryVec) {
+      const maxKw = Math.max(...allResults.map(r => r.keywordScore), 0);
+      for (const r of allResults) {
+        const kw = maxKw > 0 ? r.keywordScore / maxKw : 0;
+        r.relevance = Math.round((VECTOR_WEIGHT * r.vectorScore + (1 - VECTOR_WEIGHT) * kw) * 1000) / 1000;
       }
     }
 

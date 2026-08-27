@@ -13,6 +13,15 @@ import { DatabaseAdapter } from '../cloud/DatabaseAdapter.js';
 import fs from 'fs/promises';
 import path from 'path';
 
+// Fallback floor for auto-injecting workload knowledge, used only if the store predates
+// getMinRelevance(). TF-IDF scores run small, and a 0.1 floor discarded correct
+// top-ranked hits (an SEO question scored 0.081).
+const WORKLOAD_MIN_RELEVANCE = 0.03;
+// How many chunks to inject. Retrieval ranks the right chunk correctly but not always in
+// the first few; measured on a 36-question set, recall was 30/36 at 3, 31/36 at 5, and
+// 33/36 at 8. Eight buys most of the gain for roughly 1.8k tokens of context.
+const WORKLOAD_TOP_N = 8;
+
 const PROJECT_ROOT = process.cwd();
 
 export class UnifiedAgent {
@@ -2349,12 +2358,22 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
     // Auto-search workload store for relevant context
     if (this.subsystems.workloadStore) {
       try {
-        const workloadResults = await this.subsystems.workloadStore.search(message, 3);
-        if (workloadResults.length > 0 && workloadResults[0].relevance > 0.1) {
+        const workloadResults = await this.subsystems.workloadStore.search(message, WORKLOAD_TOP_N);
+        // The store sets its own floor — relevance is on a different scale depending on
+        // whether semantic search is available.
+        const minRelevance = this.subsystems.workloadStore.getMinRelevance?.() ?? WORKLOAD_MIN_RELEVANCE;
+        if (workloadResults.length > 0 && workloadResults[0].relevance > minRelevance) {
+          // Chunks are built up to 800 chars plus a heading prefix. The previous 500-char
+          // limit cut the answer off the end of otherwise correct hits, so pass the whole
+          // chunk through.
           const contextChunks = workloadResults.map(r =>
-            `[${r.sourceName} — ${r.filePath}]: ${r.content.substring(0, 500)}`
+            `[${r.sourceName} — ${r.filePath}]: ${r.content.substring(0, 1000)}`
           ).join('\n---\n');
-          userContent += `\n\n[WORKLOAD KNOWLEDGE: Relevant content from ingested files:\n${contextChunks}\nUse this knowledge to inform your response. Reference specific file paths when helpful.]`;
+          // Retrieval cannot reliably tell an off-topic question from an on-topic one, so
+          // this is framed as reference material the model may ignore rather than as fact
+          // it must use. Without that, an unrelated question pulls in business passages and
+          // the model tries to answer from them.
+          userContent += `\n\n[REFERENCE MATERIAL — retrieved from the knowledge base because it may relate to the question. It may be irrelevant; if so, ignore it entirely and do not mention it. If it is relevant, use it and cite the source name.\n${contextChunks}]`;
         }
       } catch (e) { /* workload search failed, continue without it */ }
     }
