@@ -95,6 +95,20 @@ function App() {
     return () => { window.removeEventListener('ace:recording-start', onStart); window.removeEventListener('ace:recording-stop', onStop); };
   }, []);
 
+  // The fetch wrapper raises this when a request comes back 401 while we were holding a
+  // token — the token is dead, so drop back to the sign-in screen instead of leaving a
+  // fully rendered dashboard where every panel silently fails to load.
+  useEffect(() => {
+    const onUnauthorized = () => {
+      setAuthed(false);
+      setMe({ known: false, isAuthed: false });
+      setAuthNotice('Your session expired. Please sign in again.');
+      setShowAuth(true);
+    };
+    window.addEventListener('ace:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('ace:unauthorized', onUnauthorized);
+  }, []);
+
   // Detect cloud mode from server health endpoint
   useEffect(() => {
     fetch(`${API}/health`)
