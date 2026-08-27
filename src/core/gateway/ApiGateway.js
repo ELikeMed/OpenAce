@@ -384,6 +384,70 @@ export class ApiGateway {
     return true;
   }
 
+  // Helper: read a raw upload body, transparently unwrapping multipart/form-data.
+  // The upload routes take raw bytes, but a client posting with `curl -F` or a FormData
+  // sends a MIME-wrapped body. Storing that verbatim puts the boundary markers and
+  // Content-Disposition headers into the file as if they were content.
+  async readUploadBody(req) {
+    const chunks = [];
+    req.on('data', chunk => chunks.push(chunk));
+    await new Promise((resolve, reject) => { req.on('end', resolve); req.on('error', reject); });
+    let buffer = Buffer.concat(chunks);
+    let filename = null;
+
+    const boundary = this.multipartBoundary(req, buffer);
+    if (boundary) {
+      const part = this.firstFilePart(buffer, boundary);
+      if (part) {
+        buffer = part.body;
+        filename = part.filename;
+      }
+    }
+
+    return { buffer, filename };
+  }
+
+  // Returns the multipart boundary as a Buffer, or null if the body isn't multipart.
+  multipartBoundary(req, buffer) {
+    const declared = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(req.headers['content-type'] || '');
+    if (declared) return Buffer.from(`--${(declared[1] || declared[2]).trim()}`);
+
+    // No usable content-type header, so sniff a leading boundary line off the body.
+    const firstBreak = buffer.indexOf('\r\n');
+    if (firstBreak <= 2 || firstBreak > 200) return null;
+    const head = buffer.subarray(0, firstBreak);
+    if (!head.subarray(0, 2).equals(Buffer.from('--'))) return null;
+    // Only a boundary if a part header follows it — otherwise it's a file starting in `--`.
+    if (buffer.indexOf('Content-Disposition: form-data', firstBreak) === -1) return null;
+    return head;
+  }
+
+  // Extracts the first part carrying a filename. Works on bytes so binary uploads
+  // (PDF, DOCX) survive intact.
+  firstFilePart(buffer, boundary) {
+    let cursor = buffer.indexOf(boundary);
+    while (cursor !== -1) {
+      const headerEnd = buffer.indexOf('\r\n\r\n', cursor + boundary.length);
+      if (headerEnd === -1) return null;
+
+      const headers = buffer.subarray(cursor + boundary.length, headerEnd).toString('utf-8');
+      const bodyStart = headerEnd + 4;
+      const next = buffer.indexOf(boundary, bodyStart);
+      if (next === -1) return null;
+
+      const name = /filename\*?=(?:"([^"]*)"|([^;\r\n]+))/i.exec(headers);
+      if (name) {
+        // Drop the CRLF the sender writes before the closing boundary.
+        return {
+          body: buffer.subarray(bodyStart, Math.max(bodyStart, next - 2)),
+          filename: (name[1] || name[2] || '').trim() || null
+        };
+      }
+      cursor = next;
+    }
+    return null;
+  }
+
   // ═══════════════════════════════════════════════════════
   // HEALTH & MONITORING
   // ═══════════════════════════════════════════════════════
@@ -1501,14 +1565,9 @@ export class ApiGateway {
 
     // ── Upload SOP Document: parse PDF/DOCX/TXT into SOP steps ──
     this.app.post('/api/training/upload-sop-document', this.wrap(async (req, res) => {
-      const filename = decodeURIComponent(req.headers['x-filename'] || 'uploaded.txt');
+      const { buffer, filename: partFilename } = await this.readUploadBody(req);
+      const filename = decodeURIComponent(req.headers['x-filename'] || '') || partFilename || 'uploaded.txt';
       const ext = path.extname(filename).toLowerCase();
-
-      // Collect raw file bytes
-      const chunks = [];
-      req.on('data', chunk => chunks.push(chunk));
-      await new Promise((resolve, reject) => { req.on('end', resolve); req.on('error', reject); });
-      const buffer = Buffer.concat(chunks);
 
       if (!buffer.length) {
         return res.json({ success: false, error: 'Empty file' });
@@ -3716,14 +3775,9 @@ export class ApiGateway {
       const store = this.ace?.workloadStore;
       if (!store) return res.json({ success: false, error: 'WorkloadStore not initialized' });
 
-      const filename = decodeURIComponent(req.headers['x-filename'] || 'uploaded.txt');
-      const sourceName = decodeURIComponent(req.headers['x-source-name'] || filename);
-
-      // Collect raw bytes (same pattern as SOP upload)
-      const chunks = [];
-      req.on('data', chunk => chunks.push(chunk));
-      await new Promise((resolve, reject) => { req.on('end', resolve); req.on('error', reject); });
-      const buffer = Buffer.concat(chunks);
+      const { buffer, filename: partFilename } = await this.readUploadBody(req);
+      const filename = decodeURIComponent(req.headers['x-filename'] || '') || partFilename || 'uploaded.txt';
+      const sourceName = decodeURIComponent(req.headers['x-source-name'] || '') || filename;
 
       if (!buffer.length) return res.json({ success: false, error: 'Empty file' });
 
