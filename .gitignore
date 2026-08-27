@@ -89,6 +89,12 @@ src/desktop/dashboard-ui/data/
 # Training data, model weights and captured conversations.
 # captured/ holds real user chat transcripts and the adapters are multi-GB —
 # neither belongs in a public repo.
-training/
+# Note: training/* not training/ — git will not descend into an excluded directory, so
+# the negations below would never be reached.
+training/*
 !training/generate-data.js
 !training/*.example.jsonl
+# The public knowledge bases are Ace's source of truth and carry no personal or client
+# data. data/ is ignored too, so without these a fresh deploy has no knowledge at all —
+# scripts/seed-knowledge.js rebuilds the index from them.
+!training/Ace-*.md
