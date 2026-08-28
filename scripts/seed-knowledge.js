@@ -29,6 +29,8 @@ const PUBLIC_DOCS = [
   ['Ace-Compliance-Admin-Knowledge.md',  'Ace Business Forms, Compliance & Admin'],
   ['Ace-Customers-Demand-Knowledge.md',  'Ace Customers & Demand'],
   ['Ace-Marketing-Offers-Knowledge.md',  'Ace Marketing, Offers & Copywriting'],
+  ['Ace-Coding-Knowledge.md',            'Ace Software Engineering'],
+  ['Ace-Design-Knowledge.md',            'Ace Design — UI/UX, Visual & Documents'],
 ];
 
 const store = new WorkloadStore(path.join(ROOT, 'data', 'workload'));
