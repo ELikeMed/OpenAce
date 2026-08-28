@@ -3761,6 +3761,40 @@ export class ApiGateway {
 
   registerWorkloadRoutes() {
     // List all ingested sources + stats
+    // ── Documents ──
+    this.app.get('/api/documents', this.wrap(async (req, res) => {
+      const gen = this.ace?.documentGenerator;
+      if (!gen) return res.json({ success: false, error: 'Document generator not initialized' });
+      res.json({ success: true, data: await gen.listDocuments(req.ownerId) });
+    }));
+
+    // Serves a generated document for download. The filename is confined to the documents
+    // directory by basename() and an explicit extension check — a request must not be able
+    // to walk out of it with a path like ../../data/cloud/openace.db.
+    this.app.get('/api/documents/:file', this.wrap(async (req, res) => {
+      const gen = this.ace?.documentGenerator;
+      if (!gen) return res.status(404).json({ success: false, error: 'Document generator not initialized' });
+
+      const name = path.basename(req.params.file || '');
+      if (!/^[\w.\-]+\.(pdf|html)$/i.test(name)) {
+        return res.status(400).json({ success: false, error: 'Not a document filename' });
+      }
+
+      const full = path.join(gen.docsDir, name);
+      if (path.dirname(path.resolve(full)) !== path.resolve(gen.docsDir)) {
+        return res.status(400).json({ success: false, error: 'Invalid path' });
+      }
+
+      try {
+        await fs.access(full);
+      } catch {
+        return res.status(404).json({ success: false, error: 'Document not found' });
+      }
+
+      res.type(name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'text/html');
+      res.sendFile(path.resolve(full));
+    }));
+
     this.app.get('/api/workload/sources', this.wrap(async (req, res) => {
       const store = this.ace?.workloadStore;
       if (!store) return res.json({ success: false, error: 'WorkloadStore not initialized' });

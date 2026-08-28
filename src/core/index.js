@@ -16,6 +16,7 @@ import { Logger, configureLogging, flushLogs } from './logging/Logger.js';
 import { SkillsManager, DEFAULT_SKILLS } from './skills/SkillsManager.js';
 import { KnowledgeBase } from './knowledge/KnowledgeBase.js';
 import { WorkloadStore } from './knowledge/WorkloadStore.js';
+import { DocumentGenerator } from './documents/DocumentGenerator.js';
 import { HeartbeatMonitor } from './HeartbeatMonitor.js';
 import { PermissionsManager } from './permissions/PermissionsManager.js';
 import { ResearchAgent } from './agents/ResearchAgent.js';
@@ -216,6 +217,10 @@ export class OpenAce {
       console.log('📦 Loading workload store...');
       this.workloadStore = new WorkloadStore(path.join(this.dataDir, 'workload'));
       await this.workloadStore.initialize();
+
+      // Initialize Document Generator
+      this.documentGenerator = new DocumentGenerator(this.dataDir);
+      await this.documentGenerator.initialize();
 
       // Initialize Permissions Manager
       console.log('🔐 Loading permissions...');
@@ -487,6 +492,7 @@ export class OpenAce {
         actionEngine: this.actionEngine,
         knowledgeBase: this.knowledgeBase,
         workloadStore: this.workloadStore,
+        documentGenerator: this.documentGenerator,
         businessProfile: this.businessProfile,
         sopManager: this.sopManager,
         skillsManager: this.skillsManager,

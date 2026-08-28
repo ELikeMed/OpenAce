@@ -123,6 +123,7 @@ export class UnifiedAgent {
       projects:  { name: 'Projects',           tools: ['create_project', 'write_project_file', 'list_projects', 'read_project_file', 'edit_project_file'], description: 'Code projects in Ace Studio' },
       forms:     { name: 'Forms & Quizzes',    tools: ['create_form', 'list_forms', 'get_form_submissions', 'get_form', 'update_form'], description: 'Create and manage forms' },
       workload:  { name: 'Workload / Knowledge', tools: ['search_workload', 'list_workload_sources', 'list_media'], description: 'Search ingested files and media' },
+      documents: { name: 'Documents',           tools: ['create_document'], description: 'Create printable PDF and HTML documents' },
       deploy:    { name: 'Deploy',             tools: ['deploy_project'], description: 'Deploy projects to Netlify, Firebase, SFTP' },
       gdrive:    { name: 'Google Drive',       tools: ['create_google_doc', 'list_google_drive_files', 'upload_to_google_drive'], description: 'Google Drive file management' },
       goals:     { name: 'Goals',              tools: ['manage_goals'], description: 'Track missions and goals' },
@@ -508,6 +509,32 @@ export class UnifiedAgent {
             accepted: { type: 'BOOLEAN', description: 'For record_suggestion: true if user accepted the goal suggestion, false if declined' }
           },
           required: ['action']
+        }
+      });
+    }
+
+    // Document generation (printable HTML / PDF)
+    if (this.subsystems.documentGenerator) {
+      declarations.push({
+        name: 'create_document',
+        description: 'Create a printable document — invoice, quote, proposal, contract, report, letter, agenda, one-pager, checklist, flyer. Produces a PDF the user can print, plus the HTML. Use whenever the user asks for a document, a PDF, something "to print", "on letterhead", "written up", or a formal version of something. RULES: (1) Never invent business details. Do not make up a company name, address, email, phone number or logo for the sender — use the real details from the business context or the conversation, and if you do not have them, leave a clearly marked blank like [Your business address] or ask the user, never a fictional placeholder such as "Acme Corp" or "123 Main St". (2) Use the real date from your context for any date, never a remembered or example date. (3) Carry through every specific the user gave you — reference numbers, names, amounts, terms. (4) Put a totals row inside the table using <tr class="total">, not as a loose paragraph after it. (5) After creating it, tell the user the document is ready and give them the download link returned by this tool.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            title: { type: 'STRING', description: 'Document title, also used for the filename. E.g. "Invoice 1042", "Proposal — Northside Dental". Optional for invoices and quotes, where it is derived from the number.' },
+            kind: { type: 'STRING', description: 'For money documents set this to "invoice" or "quote" and fill the invoice_* fields below INSTEAD of html — the layout, arithmetic and date are then handled for you. Omit for any other document type.' },
+            invoice_number: { type: 'STRING', description: 'Invoice or quote number exactly as the user gave it, e.g. "1046"' },
+            invoice_to: { type: 'STRING', description: 'Who it is billed to — name and address, exactly as the user gave it' },
+            invoice_terms: { type: 'STRING', description: 'Payment terms, e.g. "Net 30"' },
+            invoice_items: { type: 'STRING', description: 'REQUIRED for an invoice or quote. One line item per line, fields separated by a pipe: "description | quantity | unit price". Quantity may be omitted for a flat amount. Include ONLY what the user actually specified — never invent services. Example:\nStrategy retainer | 1 | 2400\nCampaign build | 1 | 1300' },
+            invoice_tax_rate: { type: 'NUMBER', description: 'Tax percentage, e.g. 7 for 7%. Omit if there is no tax' },
+            invoice_notes: { type: 'STRING', description: 'Optional note printed under the table' },
+            html: { type: 'STRING', description: 'The document body as semantic HTML. Required unless you are using `invoice`. Write only the content — headings, paragraphs, tables, lists. A professional print stylesheet is applied automatically, so do NOT include <html>, <head>, <style> or CSS unless you deliberately want to override the whole design. Useful classes: header.doc for the masthead, footer.doc for the footer, td.num/th.num to right-align figures, tr.total for a totals row, .muted for secondary text, .page-break to force a new page.' },
+            format: { type: 'STRING', description: '"pdf" (default, also saves HTML) or "html" for HTML only' },
+            paper: { type: 'STRING', description: 'Letter (default), Legal, Tabloid, A3, A4, or A5' },
+            landscape: { type: 'BOOLEAN', description: 'True for landscape orientation. Default false' }
+          },
+          required: ['title']
         }
       });
     }
@@ -1147,6 +1174,7 @@ When a request matches a tool, call the tool. Present ONLY what the tool returne
       projects:  ['create_project', 'write_project_file', 'list_projects', 'list_project_files', 'read_project_file', 'edit_project_file'],
       forms:     ['create_form', 'list_forms', 'get_form_submissions', 'get_form', 'update_form'],
       workload:  ['search_workload', 'list_workload_sources', 'list_media'],
+      documents: ['create_document'],
       deploy:    ['deploy_project'],
       gdrive:    ['create_google_doc', 'list_google_drive_files', 'upload_to_google_drive'],
       goals:     ['manage_goals'],
@@ -1167,6 +1195,7 @@ When a request matches a tool, call the tool. Present ONLY what the tool returne
       { group: 'projects',  patterns: [/\bproject\b/, /\bcode\b/, /\bbuild\b/, /\bcreate\s*(an?\s*)?(app|website|page|site)\b/, /\[Studio Project:/, /\bseo\b/, /\bhtml\b/, /\bcss\b/, /\bfile\b/, /\bupdate\b.*\b(page|site|app)\b/, /\bedit\b/, /\bchange\b.*\b(heading|title|text|color|style|section|button)\b/, /\bfix\b.*\b(bug|error|issue)\b/, /\bmetadata\b/] },
       { group: 'forms',     patterns: [/\bform\b/, /\bquiz\b/, /\bsurvey\b/, /\bsubmission/i] },
       { group: 'workload',  patterns: [/\bworkload\b/, /\bfile\b/, /\bdocument\b/, /\bmedia\b/, /\bupload\b/, /\bingest/i] },
+      { group: 'documents', patterns: [/\bpdf\b/i, /\bprint(able|out)?\b/i, /\binvoice\b/i, /\bquote\b/i, /\bproposal\b/i, /\bcontract\b/i, /\bagreement\b/i, /\bletter\b/i, /\breport\b/i, /\bone.?pager\b/i, /\bflyer\b/i, /\bagenda\b/i, /\bletterhead\b/i, /\bwrite (me |up )?(a|an|the)\b/i, /\bdocument\b/i] },
       { group: 'deploy',    patterns: [/\bdeploy\b/, /\bpublish\b/, /\blaunch\b/, /\bship\b/, /\bnetlify\b/, /\bfirebase\b/] },
       { group: 'gdrive',    patterns: [/\bdrive\b/, /\bgoogle\s*doc\b/, /\bupload.*drive\b/] },
       { group: 'goals',     patterns: [/\bgoal/i, /\btarget\b/, /\bmission\b/, /\bobjective\b/, /\bper\s*(day|week|month)\b/, /\b\d+\s*(leads?|emails?|contacts?|calls?)\s*(a|per)\b/i, /\bevery\s*(day|week|morning|evening)\b/] },
@@ -2366,7 +2395,19 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
         // whether semantic search is available.
         const minRelevance = this.subsystems.workloadStore.getMinRelevance?.() ?? WORKLOAD_MIN_RELEVANCE;
         const topRelevance = workloadResults[0]?.relevance ?? 0;
-        if (workloadResults.length > 0 && topRelevance > minRelevance) {
+
+        // Skip weak matches on action requests. Asking for an invoice pulled in 3.8KB of
+        // loosely-related business reading, and the model followed the reading instead of
+        // the instruction — in one case saving an unrelated note about a stored SOP rather
+        // than creating the document. A command needs its tools, not an essay. Strong
+        // matches still go through, since those are genuinely about the task, and anything
+        // phrased as a question is always treated as a question.
+        const looksLikeQuestion = /\?\s*$/.test(message) ||
+          /^\s*(how|what|why|when|where|who|which|should|can|could|would|is|are|does|do|tell me|explain)\b/i.test(message);
+        const looksLikeCommand = /^\s*(create|make|build|generate|draft|write|send|email|call|text|find|search|schedule|post|add|update|delete|remove|deploy|run|open|download|export)\b/i.test(message);
+        const skipWeakOnCommand = looksLikeCommand && !looksLikeQuestion && topRelevance < 0.70;
+
+        if (workloadResults.length > 0 && topRelevance > minRelevance && !skipWeakOnCommand) {
           // Chunks arrive whole — the old 500-char slice cut the answer off the end of
           // otherwise correct hits. Injection must still fit the model's context window alongside the system prompt,
           // tool definitions and history. ace-clubs pins num_ctx to 8192 and the app talks
@@ -2430,6 +2471,8 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
           const selectedTools = this._selectToolsForMessage(message);
+          const offered = selectedTools[0]?.functionDeclarations || [];
+          console.log(`[Tools] ${offered.length} offered: ${offered.map(t => t.name).join(', ')}`);
           result = await this.aiManager.chatWithTools(messages, {
             systemPrompt,
             tools: selectedTools,
@@ -2837,6 +2880,7 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
       case 'schedule_task': return await this._toolScheduleTask(args);
       case 'manage_goals': return await this._toolManageGoals(args);
       case 'recall_research': return await this._toolRecallResearch(args);
+      case 'create_document': return await this._toolCreateDocument(args);
       case 'search_workload': return await this._toolSearchWorkload(args);
       case 'list_workload_sources': return await this._toolListWorkloadSources(args);
       case 'list_media': return await this._toolListMedia(args);
@@ -4026,6 +4070,96 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
     } catch (e) {
       return JSON.stringify({ error: e.message });
     }
+  }
+
+  // ── Documents ──
+  async _toolCreateDocument(args) {
+    const gen = this.subsystems.documentGenerator;
+    if (!gen) return JSON.stringify({ error: 'Document generator not available' });
+
+    try {
+      // Derive a title when the model omits one. Failing the call over a missing filename
+      // wastes a whole generation cycle on something we can infer.
+      const kindLabel = /quote|estimate/i.test(args.kind || '') ? 'Quote' : 'Invoice';
+      const title = String(args.title || '').trim() ||
+        (args.invoice_items || /invoice|quote|estimate/i.test(args.kind || '')
+          ? `${kindLabel}${args.invoice_number ? ' ' + args.invoice_number : ''}`
+          : 'Document');
+
+      this.onProgress(`Creating document: ${title}`);
+
+      // Money documents render from structured data so the arithmetic, the layout and the
+      // date are correct regardless of how well the model writes markup.
+      const isMoneyDoc = /invoice|quote|estimate/i.test(args.kind || '') || !!args.invoice_items;
+
+      let html;
+      if (isMoneyDoc) {
+        // "description | qty | rate" per line, with qty optional. A flat string rather than
+        // a nested array because the local model reliably fills the former and reliably
+        // leaves the latter empty, which produced blank invoices.
+        const items = String(args.invoice_items || '').split('\n')
+          .map(line => line.trim()).filter(Boolean)
+          .map(line => {
+            const parts = line.split('|').map(p => p.trim());
+            const nums = parts.slice(1).map(p => parseFloat(p.replace(/[^0-9.\-]/g, ''))).filter(Number.isFinite);
+            if (nums.length >= 2) return { description: parts[0], quantity: nums[0], rate: nums[1] };
+            if (nums.length === 1) return { description: parts[0], amount: nums[0] };
+            return { description: parts[0], amount: 0 };
+          });
+
+        if (items.length === 0) {
+          return JSON.stringify({ error: 'invoice_items is empty. Provide one line item per line as "description | quantity | unit price", using only what the user specified.' });
+        }
+
+        html = gen.renderInvoice({
+          kind: /quote|estimate/i.test(args.kind || '') ? 'Quote' : 'Invoice',
+          number: args.invoice_number, to: args.invoice_to, from: args.invoice_from,
+          from: this._senderIdentity(),
+          terms: args.invoice_terms, taxRate: args.invoice_tax_rate, notes: args.invoice_notes,
+          items
+        });
+      } else {
+        html = args.html;
+      }
+
+      if (!html) return JSON.stringify({ error: 'Provide either `html` for a general document, or kind="invoice" with invoice_items for an invoice or quote.' });
+
+      const doc = await gen.createDocument({
+        title,
+        html,
+        format: args.format || 'pdf',
+        paper: args.paper || 'Letter',
+        landscape: !!args.landscape,
+        ownerId: this._ownerId
+      });
+      return JSON.stringify({
+        success: true,
+        title: doc.title,
+        pdf: doc.pdfFile,
+        html: doc.htmlFile,
+        // The download route the dashboard exposes, so the reply can link straight to it.
+        download: doc.pdfFile ? `/api/documents/${encodeURIComponent(doc.pdfFile)}` : `/api/documents/${encodeURIComponent(doc.htmlFile)}`,
+        warning: doc.warning
+      });
+    } catch (err) {
+      return JSON.stringify({ error: `Could not create the document: ${err.message}` });
+    }
+  }
+
+  /**
+   * The "from" block on a money document, taken from the configured business profile.
+   *
+   * The model is not given a field for this. Told to use real details or omit them, it
+   * invented "Acme Consulting" instead — so the sender is filled in from configuration or
+   * left off the document entirely, and never guessed.
+   */
+  _senderIdentity() {
+    const profile = this.subsystems.businessProfile;
+    if (!profile?.get) return null;
+    const parts = [profile.get('name'), profile.get('location'), profile.get('website')]
+      .map(v => (typeof v === 'string' ? v.trim() : ''))
+      .filter(Boolean);
+    return parts.length ? parts.join('\n') : null;
   }
 
   // ── Workload Store ──

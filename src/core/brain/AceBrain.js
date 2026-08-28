@@ -280,6 +280,7 @@ export class AceBrain {
         pipelineManager: systems.pipelineManager || this.pipelineManager,
         knowledgeBase: systems.knowledgeBase || this.knowledgeBase,
         workloadStore: systems.workloadStore,
+        documentGenerator: systems.documentGenerator,
         businessProfile: systems.businessProfile || this.businessProfile,
         skillsManager: systems.skillsManager || this.skillsManager,
         codeAgent: this.codeAgent || systems.codeAgent,
