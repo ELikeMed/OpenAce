@@ -33,6 +33,11 @@ const PUBLIC_DOCS = [
   ['Ace-Design-Knowledge.md',            'Ace Design — UI/UX, Visual & Documents'],
   ['Ace-Web-App-Development-Knowledge.md',      'Ace Web & App Development'],
   ['Ace-Shipping-Infrastructure-Knowledge.md',  'Ace Shipping & Infrastructure'],
+  ['Ace-Legal-IP-Knowledge.md',          'Ace Legal & Intellectual Property'],
+  ['Ace-Ecommerce-Knowledge.md',         'Ace Ecommerce'],
+  ['Ace-Operations-People-Knowledge.md', 'Ace Operations, People & Customer Service'],
+  ['Ace-AI-Automation-Knowledge.md',     'Ace AI & Automation'],
+  ['Ace-Content-Media-Knowledge.md',     'Ace Content & Media'],
 ];
 
 const store = new WorkloadStore(path.join(ROOT, 'data', 'workload'));

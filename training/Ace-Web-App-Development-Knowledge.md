@@ -134,6 +134,36 @@ broken.
 **Touch targets around 44px** with space between them, and no hover-only interactions, since
 there is no hover on touch.
 
+## CSS Frameworks and Design Systems
+
+**Tailwind CSS** is a utility-first framework: instead of writing CSS classes that describe a
+component, you compose small single-purpose classes in the markup — `flex items-center gap-4
+rounded-lg px-4 py-2`. The advantages are that you never invent class names, styles cannot leak
+between components, the design stays consistent because everything comes from a fixed scale of
+spacing, colour and type, and unused CSS is stripped at build time so the shipped file is small.
+The cost is verbose markup and a build step, and it is genuinely divisive on readability. It is
+the most widely adopted current approach for application interfaces.
+
+**Component libraries** — Bootstrap, Material UI, Chakra, shadcn/ui and similar — ship
+ready-made buttons, forms, modals and navigation. They save real time and give you accessibility
+work you would otherwise have to do yourself. The trade is that sites built on them look like
+each other unless you invest in theming, which frequently costs more than the library saved.
+
+**Plain CSS is more capable than it used to be.** Custom properties (`--brand: #0f766e`) give you
+design tokens natively, nesting is now supported, and Grid and Flexbox removed most of the reason
+frameworks existed. For a landing page or a small site, plain CSS with a handful of custom
+properties is often the better engineering decision — no build step, no dependency, nothing to
+upgrade.
+
+**A design system is the tokens plus the components plus the rules** — the spacing scale, the
+type scale, the colour ramp, the component variants, and when to use each. It matters once more
+than one person is building screens; before that, a consistent set of CSS variables does the same
+job with none of the overhead.
+
+**Choosing:** plain CSS with custom properties for sites and small projects, a utility framework
+for applications with many screens, a component library when you need breadth quickly and can
+live with looking conventional.
+
 ## Web Performance
 
 Speed is a conversion and ranking factor, and images are almost always the problem.

@@ -138,8 +138,17 @@ people, developing a product — you are competing against a smaller field.
 
 ## Reading Your Own Financials
 
-Three statements, three questions. **Income statement:** are we profitable? **Balance
-sheet:** are we solvent? **Cash flow statement:** are we liquid? Profitable businesses fail
+Three statements, three questions. **Income statement — also called the P&L, or profit and
+loss:** are we profitable? **Balance sheet:** are we solvent? **Cash flow statement:** are we
+liquid?
+
+**Reading a P&L, top to bottom:** revenue at the top, minus cost of goods sold gives gross
+profit; minus operating expenses gives operating profit; minus interest and tax gives net profit
+at the bottom. Read it as percentages of revenue rather than as absolute figures, and compare
+against the same month last year rather than against last month, so seasonality does not mislead
+you. The two lines worth watching hardest are gross margin, which tells you whether pricing and
+delivery are working, and operating expenses as a share of revenue, which tells you whether
+overhead is creeping. Profitable businesses fail
 regularly because the answers diverge — profit is an opinion shaped by accounting choices,
 cash is a fact.
 
