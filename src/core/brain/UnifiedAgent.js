@@ -10,6 +10,7 @@ import { ResponseParser } from './ResponseParser.js';
 import { GmailSMTPService } from '../integrations/GmailSMTPService.js';
 import { SOPParser } from '../automation/SOPParser.js';
 import { DatabaseAdapter } from '../cloud/DatabaseAdapter.js';
+import { LandingPageBuilder } from '../sites/LandingPageBuilder.js';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -124,6 +125,7 @@ export class UnifiedAgent {
       forms:     { name: 'Forms & Quizzes',    tools: ['create_form', 'list_forms', 'get_form_submissions', 'get_form', 'update_form'], description: 'Create and manage forms' },
       workload:  { name: 'Workload / Knowledge', tools: ['search_workload', 'list_workload_sources', 'list_media'], description: 'Search ingested files and media' },
       documents: { name: 'Documents',           tools: ['create_document'], description: 'Create printable PDF and HTML documents' },
+      sites:     { name: 'Site Builder',        tools: ['build_landing_page'], description: 'Build designed landing pages and marketing sites' },
       deploy:    { name: 'Deploy',             tools: ['deploy_project'], description: 'Deploy projects to Netlify, Firebase, SFTP' },
       gdrive:    { name: 'Google Drive',       tools: ['create_google_doc', 'list_google_drive_files', 'upload_to_google_drive'], description: 'Google Drive file management' },
       goals:     { name: 'Goals',              tools: ['manage_goals'], description: 'Track missions and goals' },
@@ -730,7 +732,7 @@ export class UnifiedAgent {
     if (this.subsystems.codeAgent) {
       declarations.push({
         name: 'create_project',
-        description: 'Create a new web project in Ace Studio. Follow the PROJECT BUILDER PROTOCOL: use business context for real content, include full SEO (meta tags, OG, JSON-LD schema, semantic HTML), and split code into separate files. ALWAYS provide the "files" parameter. The system auto-generates robots.txt and sitemap.xml.',
+        description: 'Create a new web project in Ace Studio. Do NOT use this for a landing page, marketing page or simple website — build_landing_page produces a finished, designed page for those and this only scaffolds. Use this for apps, tools, multi-page sites and anything build_landing_page does not cover. WORKFLOW: call this first with just name, project_type and description to create the project, then call write_project_file once per file — index.html, then styles.css, then script.js. One file per call produces complete, working files; trying to pass every file at once in the `files` array tends to produce empty or truncated content. Use the business context for real content — never placeholder text like "Lorem ipsum" or "Your Company Here". Include a proper SEO head (title, meta description, OG tags), one h1, and semantic elements. The system auto-generates robots.txt and sitemap.xml.',
         parameters: {
           type: 'OBJECT',
           properties: {
@@ -739,7 +741,7 @@ export class UnifiedAgent {
             description: { type: 'STRING', description: 'Detailed description of what to build. Be specific about features, layout, and functionality.' },
             files: {
               type: 'ARRAY',
-              description: 'REQUIRED. Array of files to create. Minimum 3: index.html, styles.css, script.js. Use BUSINESS CONTEXT for real content. Include title, meta description, OG tags, JSON-LD schema, one h1, semantic elements. NEVER placeholder text.',
+              description: 'OPTIONAL fast path. Only use this if you can supply every file complete in one call; otherwise omit it and call write_project_file per file instead, which is more reliable. Never placeholder text.',
               items: {
                 type: 'OBJECT',
                 properties: {
@@ -751,6 +753,30 @@ export class UnifiedAgent {
             }
           },
           required: ['name', 'project_type', 'description']
+        }
+      });
+
+      declarations.push({
+        name: 'build_landing_page',
+        description: 'Build a complete, professionally designed landing page as a project — hero, benefits, about, testimonial, contact form, footer, responsive and accessible. PREFER THIS over create_project whenever the user wants a landing page, marketing page, or simple website: you supply the words and the design is handled, so the result is publishable rather than a scaffold. Write real, specific copy from the conversation and the business context — never "Lorem ipsum", never "Your Company Here", and never restate the request back as the headline.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            name: { type: 'STRING', description: 'Project name, kebab-case, e.g. "dental-demo"' },
+            business: { type: 'STRING', description: 'Business name shown in the nav and footer' },
+            headline: { type: 'STRING', description: 'The main h1. State the outcome the customer gets, not the service category. Good: "More patients booked, without the guesswork". Bad: "Dental Marketing Agency".' },
+            subheadline: { type: 'STRING', description: 'One supporting sentence saying who it is for and what result they get' },
+            benefits: { type: 'STRING', description: 'Three to six benefits, ONE PER LINE, each written as "Short title :: one sentence of detail". Benefits are outcomes for the customer, not features.' },
+            about: { type: 'STRING', description: 'Optional short paragraph about the business' },
+            testimonial: { type: 'STRING', description: 'Optional quote. Use a real one if the user supplied it; if not, omit this rather than inventing a fake customer.' },
+            testimonial_by: { type: 'STRING', description: 'Attribution for the quote, e.g. "Practice owner, Tamarac FL"' },
+            cta_text: { type: 'STRING', description: 'Button label, e.g. "Book a free audit"' },
+            cta_note: { type: 'STRING', description: 'One reassuring line above the contact form' },
+            email: { type: 'STRING', description: 'Contact email, if known' },
+            phone: { type: 'STRING', description: 'Contact phone, if known' },
+            accent: { type: 'STRING', description: 'Accent colour as a hex code, e.g. "#0f766e". Pick something appropriate to the industry.' }
+          },
+          required: ['name', 'business', 'headline']
         }
       });
 
@@ -1175,6 +1201,7 @@ When a request matches a tool, call the tool. Present ONLY what the tool returne
       forms:     ['create_form', 'list_forms', 'get_form_submissions', 'get_form', 'update_form'],
       workload:  ['search_workload', 'list_workload_sources', 'list_media'],
       documents: ['create_document'],
+      sites: ['build_landing_page'],
       deploy:    ['deploy_project'],
       gdrive:    ['create_google_doc', 'list_google_drive_files', 'upload_to_google_drive'],
       goals:     ['manage_goals'],
@@ -1195,6 +1222,7 @@ When a request matches a tool, call the tool. Present ONLY what the tool returne
       { group: 'projects',  patterns: [/\bproject\b/, /\bcode\b/, /\bbuild\b/, /\bcreate\s*(an?\s*)?(app|website|page|site)\b/, /\[Studio Project:/, /\bseo\b/, /\bhtml\b/, /\bcss\b/, /\bfile\b/, /\bupdate\b.*\b(page|site|app)\b/, /\bedit\b/, /\bchange\b.*\b(heading|title|text|color|style|section|button)\b/, /\bfix\b.*\b(bug|error|issue)\b/, /\bmetadata\b/] },
       { group: 'forms',     patterns: [/\bform\b/, /\bquiz\b/, /\bsurvey\b/, /\bsubmission/i] },
       { group: 'workload',  patterns: [/\bworkload\b/, /\bfile\b/, /\bdocument\b/, /\bmedia\b/, /\bupload\b/, /\bingest/i] },
+      { group: 'sites',     patterns: [/\blanding page\b/i, /\bweb ?site\b/i, /\bweb ?page\b/i, /\bmarketing page\b/i, /\bsales page\b/i, /\bhomepage\b/i, /\bsplash page\b/i] },
       { group: 'documents', patterns: [/\bpdf\b/i, /\bprint(able|out)?\b/i, /\binvoice\b/i, /\bquote\b/i, /\bproposal\b/i, /\bcontract\b/i, /\bagreement\b/i, /\bletter\b/i, /\breport\b/i, /\bone.?pager\b/i, /\bflyer\b/i, /\bagenda\b/i, /\bletterhead\b/i, /\bwrite (me |up )?(a|an|the)\b/i, /\bdocument\b/i] },
       { group: 'deploy',    patterns: [/\bdeploy\b/, /\bpublish\b/, /\blaunch\b/, /\bship\b/, /\bnetlify\b/, /\bfirebase\b/] },
       { group: 'gdrive',    patterns: [/\bdrive\b/, /\bgoogle\s*doc\b/, /\bupload.*drive\b/] },
@@ -2405,9 +2433,13 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
         const looksLikeQuestion = /\?\s*$/.test(message) ||
           /^\s*(how|what|why|when|where|who|which|should|can|could|would|is|are|does|do|tell me|explain)\b/i.test(message);
         const looksLikeCommand = /^\s*(create|make|build|generate|draft|write|send|email|call|text|find|search|schedule|post|add|update|delete|remove|deploy|run|open|download|export)\b/i.test(message);
-        const skipWeakOnCommand = looksLikeCommand && !looksLikeQuestion && topRelevance < 0.70;
+        // Originally this only skipped weak matches, on the theory that a strong one was
+        // worth injecting anyway. It is not: "Build a landing page" scores 0.705 against the
+        // marketing chapter on landing pages, and injecting it made the model discuss
+        // conversion copy instead of calling create_project. A command wants its tools.
+        const skipOnCommand = looksLikeCommand && !looksLikeQuestion;
 
-        if (workloadResults.length > 0 && topRelevance > minRelevance && !skipWeakOnCommand) {
+        if (workloadResults.length > 0 && topRelevance > minRelevance && !skipOnCommand) {
           // Chunks arrive whole — the old 500-char slice cut the answer off the end of
           // otherwise correct hits. Injection must still fit the model's context window alongside the system prompt,
           // tool definitions and history. ace-clubs pins num_ctx to 8192 and the app talks
@@ -2880,6 +2912,7 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
       case 'schedule_task': return await this._toolScheduleTask(args);
       case 'manage_goals': return await this._toolManageGoals(args);
       case 'recall_research': return await this._toolRecallResearch(args);
+      case 'build_landing_page': return await this._toolBuildLandingPage(args);
       case 'create_document': return await this._toolCreateDocument(args);
       case 'search_workload': return await this._toolSearchWorkload(args);
       case 'list_workload_sources': return await this._toolListWorkloadSources(args);
@@ -4072,6 +4105,43 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
     }
   }
 
+  // ── Site builder ──
+  async _toolBuildLandingPage(args) {
+    const codeAgent = this.subsystems.codeAgent;
+    const projectName = (codeAgent?.sanitizeProjectName?.(args.name) || String(args.name || 'landing-page'))
+      .toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '') || `landing-page-${Date.now()}`;
+
+    const content = {
+      business: args.business, headline: args.headline, subheadline: args.subheadline,
+      benefits: args.benefits, about: args.about,
+      testimonial: args.testimonial, testimonialBy: args.testimonial_by,
+      ctaText: args.cta_text, ctaNote: args.cta_note,
+      email: args.email, phone: args.phone, accent: args.accent
+    };
+
+    try {
+      const dir = path.join(PROJECT_ROOT, 'projects', projectName);
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(path.join(dir, 'index.html'), LandingPageBuilder.build(content), 'utf-8');
+      await fs.writeFile(path.join(dir, 'styles.css'), LandingPageBuilder.styles(content), 'utf-8');
+      await fs.writeFile(path.join(dir, 'script.js'), LandingPageBuilder.script(), 'utf-8');
+      await fs.writeFile(path.join(dir, 'robots.txt'), 'User-agent: *\nAllow: /\n', 'utf-8');
+      await fs.writeFile(path.join(dir, 'project.json'), JSON.stringify({
+        name: projectName, type: 'landing-page', createdAt: new Date().toISOString(), builtBy: 'build_landing_page'
+      }, null, 2), 'utf-8');
+
+      this.onProgress(`Built landing page: ${projectName}`);
+      return JSON.stringify({
+        success: true, project: projectName,
+        files: ['index.html', 'styles.css', 'script.js'],
+        preview: `/projects/${projectName}/`,
+        note: 'The page is live at the preview path. Give the user that link, and offer to change the copy, colour or sections.'
+      });
+    } catch (err) {
+      return JSON.stringify({ error: `Could not build the landing page: ${err.message}` });
+    }
+  }
+
   // ── Documents ──
   async _toolCreateDocument(args) {
     const gen = this.subsystems.documentGenerator;
@@ -5033,6 +5103,20 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
     const { project_type, description, files } = args;
     // Defensive: ensure name is never null (Gemini occasionally omits required params)
     const projectName = codeAgent.sanitizeProjectName(args.name) || `project-${Date.now()}`;
+
+    // The model sometimes calls build_landing_page and then create_project for the same
+    // project, and the generic scaffold overwrites the designed page with one whose headline
+    // is the project name. A finished page wins over a scaffold.
+    try {
+      const marker = JSON.parse(await fs.readFile(path.join(PROJECT_ROOT, 'projects', projectName, 'project.json'), 'utf-8'));
+      if (marker.builtBy === 'build_landing_page') {
+        return JSON.stringify({
+          success: true, project: projectName, already_built: true,
+          preview: `/projects/${projectName}/`,
+          note: 'This project was already built by build_landing_page and has been left as it is. Do not scaffold over it — to change something, use write_project_file or build_landing_page again with updated copy.'
+        });
+      }
+    } catch { /* no existing project, carry on */ }
     this.onProgress(`Creating project: ${projectName} (${project_type || 'landing-page'})`);
 
     try {
