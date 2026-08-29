@@ -20,10 +20,17 @@ const run = promisify(execFile);
 // Chosen over the novelty voices that ship alongside them. Ordered by quality; the first one
 // actually installed wins. Premium and Enhanced variants are downloads, so most machines will
 // fall through to the plain names.
+// American first — Ace is not British. Premium and Enhanced variants are free downloads
+// and are preferred when present; the plain US voices below are what ships by default.
+// Override with OPENACE_VOICE to use any installed voice by name.
 const VOICE_PREFERENCE = [
-  'Jamie (Premium)', 'Ava (Premium)', 'Zoe (Premium)', 'Evan (Premium)', 'Nathan (Premium)',
-  'Ava (Enhanced)', 'Allison (Enhanced)', 'Samantha (Enhanced)', 'Tom (Enhanced)',
-  'Jamie', 'Ava', 'Allison', 'Samantha', 'Tom', 'Evan', 'Daniel', 'Karen',
+  // US, best quality first
+  'Evan (Premium)', 'Nathan (Premium)', 'Ava (Premium)', 'Zoe (Premium)',
+  'Tom (Enhanced)', 'Evan (Enhanced)', 'Allison (Enhanced)', 'Ava (Enhanced)', 'Samantha (Enhanced)',
+  'Reed (English (US))', 'Rocko (English (US))', 'Eddy (English (US))',
+  'Tom', 'Evan', 'Allison', 'Ava', 'Samantha',
+  // Non-US only if nothing American is installed
+  'Jamie (Premium)', 'Daniel', 'Karen',
 ];
 
 const MAX_CHARS = 2500;
@@ -39,14 +46,25 @@ export class SpeechService {
     try {
       const { stdout } = await run('say', ['-v', '?'], { timeout: 10_000 });
       const installed = stdout.split('\n')
-        .map(l => l.match(/^(.+?)\s{2,}([a-z]{2}_[A-Z]{2})/))
+        // Long names like "Reed (English (US))" leave only a single space before the
+        // language code, so requiring two dropped exactly the US voices we want.
+        .map(l => l.match(/^(.+?)\s+([a-z]{2}_[A-Z]{2})(?:\s|$)/))
         .filter(Boolean)
         .map(m => ({ name: m[1].trim(), lang: m[2] }));
 
       const english = installed.filter(v => v.lang.startsWith('en'));
-      this.voice = VOICE_PREFERENCE.find(p => english.some(v => v.name === p))
-        || english.find(v => /premium|enhanced/i.test(v.name))?.name
-        || english[0]?.name
+      const override = process.env.OPENACE_VOICE;
+
+      // Novelty voices ship alongside the real ones and must never be chosen by accident.
+      const NOVELTY = /^(bad news|good news|bahh|bells|boing|bubbles|cellos|jester|organ|superstar|wobble|trinoids|whisper|zarvox|albert|junior|grandma|grandpa|bruce|hysterical|deranged|princess|ralph|kathy|fred|agnes|victoria)/i;
+      const usable = english.filter(v => !NOVELTY.test(v.name));
+
+      this.voice = (override && english.some(v => v.name === override) ? override : null)
+        || VOICE_PREFERENCE.find(p => usable.some(v => v.name === p))
+        || usable.find(v => /premium|enhanced/i.test(v.name) && v.lang === 'en_US')?.name
+        || usable.find(v => v.lang === 'en_US')?.name
+        || usable.find(v => /premium|enhanced/i.test(v.name))?.name
+        || usable[0]?.name
         || null;
 
       this.available = !!this.voice;
