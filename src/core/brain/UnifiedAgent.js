@@ -4804,11 +4804,49 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
     return sopData;
   }
 
+  /**
+   * Where this caller's procedures live.
+   *
+   * In cloud mode each account gets its own rows in the sops table, which already carries a
+   * user_id — previously nothing used it, so every cloud user shared the operator's file-based
+   * procedures. On the desktop the file-backed SOPManager remains the store.
+   */
+  _sopStore() {
+    const scoped = this._scopedData();
+    if (scoped) {
+      return {
+        scoped: true,
+        list: () => scoped.getSOPs().map(r => ({
+          ...r,
+          steps: r.steps || [],
+          triggers: r.triggers || [],
+          category: r.metadata?.category || 'custom',
+          keywords: r.metadata?.keywords || [],
+        })),
+        save: (sop) => scoped.saveSOP({
+          id: sop.id,
+          name: sop.name,
+          description: sop.description || '',
+          triggers: sop.triggers || [],
+          steps: sop.steps || [],
+          metadata: { category: sop.category || 'custom', keywords: sop.keywords || [] },
+        }),
+      };
+    }
+    if (!this.sopManager) return null;
+    return {
+      scoped: false,
+      list: () => this.sopManager.getAllSOPs?.() || [...this.sopManager.sops.values()],
+      save: (sop) => this.sopManager.createSOP(sop),
+    };
+  }
+
   async _toolListSOPs() {
-    if (!this.sopManager) return JSON.stringify({ error: 'SOP Manager not available' });
+    const store = this._sopStore();
+    if (!store) return JSON.stringify({ error: 'SOP Manager not available' });
 
     try {
-      const allSOPs = this.sopManager.getAllSOPs?.() || [...this.sopManager.sops.values()];
+      const allSOPs = store.list();
       const summary = allSOPs.map(sop => ({
         id: sop.id,
         name: sop.name,
@@ -4912,12 +4950,13 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
   async _toolExportSOP(args) {
     const gen = this.subsystems.documentGenerator;
     if (!gen) return JSON.stringify({ error: 'Document generator not available' });
-    if (!this.sopManager) return JSON.stringify({ error: 'SOP Manager not available' });
+    const store = this._sopStore();
+    if (!store) return JSON.stringify({ error: 'SOP Manager not available' });
 
     const wanted = String(args.sop || '').trim().toLowerCase();
     if (!wanted) return JSON.stringify({ error: 'Which procedure should I export?' });
 
-    const all = this.sopManager.getAllSOPs();
+    const all = store.list();
     const sop = all.find(s => String(s.id).toLowerCase() === wanted)
       || all.find(s => String(s.name || '').toLowerCase() === wanted)
       || all.find(s => String(s.name || '').toLowerCase().includes(wanted));
@@ -5111,13 +5150,14 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
   }
 
   async _toolCreateSOP(args) {
-    if (!this.sopManager) return JSON.stringify({ error: 'SOP Manager not available' });
+    const store = this._sopStore();
+    if (!store) return JSON.stringify({ error: 'SOP Manager not available' });
 
     // ═══ Best path: use the pending draft from draft_sop (already parsed by SOPParser) ═══
     if (this._pendingSOPDraft && !args.steps) {
       const draft = this._pendingSOPDraft;
       try {
-        const sop = await this.sopManager.createSOP({
+        const sop = await store.save({
           name: args.name || draft.name,
           description: args.description || draft.description || '',
           steps: draft.steps,
@@ -5189,7 +5229,7 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
     const cleaned = this._cleanupSOPSteps({ name, steps: parsedSteps, triggers, keywords });
 
     try {
-      const sop = await this.sopManager.createSOP({
+      const sop = await store.save({
         name,
         description: args.description || '',
         steps: cleaned.steps,
