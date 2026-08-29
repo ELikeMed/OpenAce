@@ -380,9 +380,22 @@ initialize().then(() => {
     res.sendFile(path.join(baseDir, 'src', 'studio', 'dist', 'index.html'));
   });
 
+  // A build asset that no longer exists must 404, not fall through to the SPA below.
+  // Bundle filenames are content-hashed, so a browser holding a cached index.html asks for
+  // a hash that was deleted by the next build. Answering that with index.html hands the
+  // browser HTML where it expects JavaScript: the module fails to parse, React never
+  // mounts, and the user gets a white screen with no indication why. A 404 makes it fail
+  // loudly and fetch the current index.html instead.
+  app.get(/^\/assets\/.+\.(js|css|map)$/, (req, res) => {
+    res.status(404).type('text/plain').send('Asset not found — this build is out of date.');
+  });
+
   // SPA fallback for the main dashboard. This must be the last route.
   // It handles all routes that were not caught by static files or API routes.
   app.get(/./, (req, res) => {
+    // index.html itself must never be cached, or the browser keeps requesting the bundle
+    // hashes from a build that no longer exists.
+    res.set('Cache-Control', 'no-cache, must-revalidate');
     res.sendFile(path.join(baseDir, 'src/desktop/dashboard-ui/dist/index.html'));
   });
 

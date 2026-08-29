@@ -2408,7 +2408,7 @@ function Chat({ hideSidebar = false }) {
   // ═══ Text-to-Speech (TTS) setup ═══
   useEffect(() => {
     // Ask once whether the server can speak; if it can, its voice is used in preference.
-    fetch(`${API}/api/speak/voice`)
+    fetch('/api/speak/voice')
       .then(r => r.json())
       .then(r => { serverVoiceRef.current = !!r?.data?.available; })
       .catch(() => { serverVoiceRef.current = false; });
@@ -2459,7 +2459,7 @@ function Chat({ hideSidebar = false }) {
   // back to Apple's "compact" voices on iOS, which are the robotic ones, so this is used
   // whenever the server can do it and browser speech is kept only as a fallback.
   const speakViaServer = useCallback(async (cleanText, messageIndex) => {
-    const res = await fetch(`${API}/api/speak`, {
+    const res = await fetch('/api/speak', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: cleanText }),
