@@ -86,6 +86,16 @@ export class DocumentGenerator {
       createdAt: new Date().toISOString()
     };
 
+    // Record who this was made for. Without it the download route cannot tell the person
+    // who asked for the document from anyone else, so it fell back to demanding a login —
+    // and an anonymous visitor got a raw JSON error where their PDF should have been.
+    // A sidecar per document rather than a shared index, so concurrent writes cannot race.
+    await fs.writeFile(
+      path.join(this.docsDir, `${base}.meta.json`),
+      JSON.stringify({ ownerId: ownerId || null, title, createdAt: result.createdAt }),
+      'utf-8'
+    );
+
     if (format === 'html') return result;
 
     if (!this.chromePath) {
@@ -406,12 +416,27 @@ ${triggers.map(t => `      <li>${esc(t)}</li>`).join('\n')}
 </style>`;
   }
 
+  /** Who a generated document belongs to, or null if it predates ownership tracking. */
+  async ownerOf(filename) {
+    const base = String(filename).replace(/\.(pdf|html)$/i, '');
+    try {
+      const meta = JSON.parse(await fs.readFile(path.join(this.docsDir, `${base}.meta.json`), 'utf-8'));
+      return meta.ownerId || null;
+    } catch {
+      return null;
+    }
+  }
+
   async listDocuments(ownerId = null) {
     let names;
     try { names = await fs.readdir(this.docsDir); } catch { return []; }
     const docs = [];
     for (const name of names) {
       if (!name.endsWith('.pdf') && !name.endsWith('.html')) continue;
+      if (ownerId) {
+        const owner = await this.ownerOf(name);
+        if (owner && owner !== ownerId) continue;
+      }
       const stat = await fs.stat(path.join(this.docsDir, name)).catch(() => null);
       if (!stat) continue;
       docs.push({ file: name, size: stat.size, createdAt: stat.mtime.toISOString() });

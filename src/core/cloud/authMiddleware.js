@@ -161,6 +161,7 @@ const ANON_ALLOWED = [
   '/api/billing/webhook',  // Stripe calls this; verified by signature, not JWT
   '/api/speak',            // reading a reply aloud, for visitors as well as accounts
   '/api/attachments/',     // reading a document attached to a message, same as chat itself
+  '/api/documents/',       // a generated file — the route itself checks it belongs to the caller
   '/forms/',               // the rendered public form page
   '/health',
 ];

@@ -2043,7 +2043,14 @@ function MessageBubble({ msg, msgIndex, onConfirmActions, onCancelActions, onQue
             isAce ? (
               <Box sx={{ '& > *:first-of-type': { mt: 0 }, '& > *:last-child': { mb: 0 }, wordBreak: 'break-word' }}>
                 <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                  {msg.text}
+                  {/* The model sometimes writes a download as image syntax — ![Download](…)
+                      — which renders as a broken image instead of something tappable.
+                      Demote those to ordinary links so the file is always reachable. */}
+                  {msg.text.replace(
+                    /!\[([^\]]*)\]\((\/(?:api\/documents|projects|forms)\/[^)]+)\)/g,
+                    // An empty label leaves a link with nothing to tap, so name it.
+                    (_m, label, href) => `[${label || (href.includes('/api/documents/') ? 'Download' : 'Open')}](${href})`
+                  )}
                 </ReactMarkdown>
               </Box>
             ) : (

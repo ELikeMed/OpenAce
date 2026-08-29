@@ -3849,7 +3849,38 @@ export class ApiGateway {
         return res.status(404).json({ success: false, error: 'Document not found' });
       }
 
+      // A document belongs to whoever asked Ace for it, including an anonymous visitor —
+      // they have a stable signed-cookie identity. Anything else is refused. Documents
+      // created before ownership was recorded have no owner and stay behind a login.
+      const owner = await gen.ownerOf(name);
+      const allowed = owner ? owner === req.ownerId : !!req.isAuthed;
+
+      if (!allowed) {
+        // This link is opened by tapping it in a chat message, so the answer has to be a
+        // page a person can read. Returning JSON put {"success":false,...} on screen where
+        // their PDF should have been.
+        return res.status(403).type('html').send(`<!doctype html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign in to open this</title>
+<style>
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0A0A0A;color:#F0EDE8;
+       font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       text-align:center;padding:24px}
+  h1{font-size:1.3rem;margin:0 0 .5em;font-weight:500}
+  p{color:#A09A90;margin:0 0 1.6em;max-width:30em}
+  a{display:inline-block;background:#C9A96E;color:#0A0A0A;text-decoration:none;
+    padding:12px 22px;border-radius:10px;font-weight:600}
+</style>
+<div>
+  <h1>Sign in to open this document</h1>
+  <p>This file belongs to a different session. Sign in to the account it was made for and open the link again.</p>
+  <a href="/?signin">Sign in</a>
+</div>`);
+      }
+
       res.type(name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'text/html');
+      // Tapping the link in chat should hand back the file, not render it in the tab.
+      res.set('Content-Disposition', `attachment; filename="${name}"`);
       res.sendFile(path.resolve(full));
     }));
 
