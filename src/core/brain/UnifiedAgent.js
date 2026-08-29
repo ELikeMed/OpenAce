@@ -372,22 +372,10 @@ export class UnifiedAgent {
           type: 'OBJECT',
           properties: {
             leads: {
-              type: 'ARRAY',
-              items: {
-                type: 'OBJECT',
-                properties: {
-                  company: { type: 'STRING', description: 'Company or business name' },
-                  contact_name: { type: 'STRING', description: 'Contact person name' },
-                  email: { type: 'STRING', description: 'Email address' },
-                  phone: { type: 'STRING', description: 'Phone number' },
-                  website: { type: 'STRING', description: 'Website URL' },
-                  notes: { type: 'STRING', description: 'Additional notes' },
-                  source: { type: 'STRING', description: 'Where this lead came from' }
-                },
-                required: ['company']
-              },
-              description: 'Array of leads to save'
-            }
+              type: 'STRING',
+              description: 'REQUIRED. One lead per line, fields separated by a pipe, in this order:\ncompany | contact name | email | phone | website | notes\nOnly the company is required — leave a field empty if you do not have it, but keep the pipes so the columns line up. Never invent a company, contact or email; a short honest list is the correct result when there are only a few. Example:\nNorthside Dental | Dr Amara Patel | hello@northsidedental.com | (954) 555-0142 | northsidedental.com | Asked about whitening\nOak Ave Family Dentistry | | info@oakave.com | (954) 555-0177 | oakave.com |',
+            },
+            source: { type: 'STRING', description: 'Where these leads came from, applied to all of them, e.g. "Google Places search" or "referral"' }
           },
           required: ['leads']
         }
@@ -2300,6 +2288,17 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
         try {
           const toolResult = await this._executeTool(call.name, call.args || {});
 
+          // Some tools produce output meant for the user to read — draft_sop returns a
+          // formatted preview of the procedure. If the model then ends the turn with no
+          // text, that preview is lost and the user sees a generic fallback instead, which
+          // is what happened when a procedure was drafted twice and never shown.
+          try {
+            const parsed = typeof toolResult === 'string' ? JSON.parse(toolResult) : toolResult;
+            if (parsed && typeof parsed.preview === 'string' && parsed.preview.trim()) {
+              this._lastToolPreview = parsed.preview.trim();
+            }
+          } catch { /* not JSON, nothing to surface */ }
+
           // Track soft failures (tool returned but with success: false or error)
           if (failedToolCounts) {
             const resultStr = typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult || '');
@@ -2386,6 +2385,7 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
   async process(message, conversationHistory, channelContext = {}) {
     this.resetAbort(); // Clear any previous abort signal
     this._createdProject = null; // Track project creation for client notification
+    this._lastToolPreview = null; // User-facing preview a tool produced this turn
     const thinking = ['🧠 UnifiedAgent processing...'];
     this._currentConversationId = channelContext.channelId || channelContext.conversationId || '';
     // Whose data this turn may touch. Data tools scope to it in cloud mode so a
@@ -2820,6 +2820,17 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
         }
       }
       // Context-aware fallback instead of bare "Done."
+      // A preview is the deliverable, not a detail. If the model produced nothing, or wrote
+      // something that clearly is not the preview — in one run it asked which function to
+      // call and printed example JSON — show the preview itself rather than that.
+      if (this._lastToolPreview) {
+        const firstLine = this._lastToolPreview.split('\n')[0].replace(/[*_`]/g, '').trim();
+        const relayed = firstLine.length > 3 && finalText && finalText.includes(firstLine);
+        if (!relayed) {
+          finalText = `${this._lastToolPreview}\n\nWant me to save this, or change anything first?`;
+        }
+      }
+
       if (!finalText) {
         if (toolsCalled.length > 0) {
           const uniqueTools = [...new Set(toolsCalled)].map(t => t.replace(/_/g, ' ')).join(', ');
@@ -3599,10 +3610,39 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
   }
 
   // ── Save Leads ──
+  /**
+   * Parse leads given as "company | contact | email | phone | website | notes" lines.
+   *
+   * The parameter used to be a nested array of objects, which the local model leaves empty
+   * — the same shape that produced blank invoices and empty projects. An array is still
+   * accepted so nothing that already passes objects breaks.
+   */
+  _parseLeadLines(raw, source) {
+    if (Array.isArray(raw)) return raw;
+
+    const COLUMNS = ['company', 'contact_name', 'email', 'phone', 'website', 'notes'];
+    return String(raw || '')
+      .split(/\r?\n/)
+      .map(l => l.trim().replace(/^\s*(?:\d+[.)]|[-*•])\s*/, ''))
+      .filter(Boolean)
+      // Drop a header row if the model helpfully labels the columns.
+      .filter(l => !/^company\s*\|\s*contact/i.test(l))
+      .map((line) => {
+        const cells = line.split('|').map(c => c.trim());
+        const lead = {};
+        COLUMNS.forEach((key, i) => { if (cells[i]) lead[key] = cells[i]; });
+        if (source && !lead.source) lead.source = source;
+        return lead;
+      })
+      .filter(l => l.company);
+  }
+
   async _toolSaveLeads(args) {
     if (this._cloudWithoutOwner()) {
       return JSON.stringify({ error: 'No account context for this request — cannot save leads.' });
     }
+
+    args = { ...args, leads: this._parseLeadLines(args.leads, args.source) };
 
     const db = this._scopedData();
     if (db) {
