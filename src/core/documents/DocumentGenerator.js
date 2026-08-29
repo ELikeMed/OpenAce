@@ -269,49 +269,140 @@ ${data.terms && !data.dueDate ? `<footer class="doc">${esc(data.terms)}</footer>
     const esc = (v) => String(v ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
     const steps = Array.isArray(sop.steps) ? sop.steps : [];
 
-    // Steps are stored for automation, so the human-readable label lives in different
-    // fields depending on how the SOP was recorded.
+    // Steps are stored for automation, so the readable label lives in different fields
+    // depending on how the procedure was recorded.
     const describe = (st) => st.description || st.text || st.instruction ||
       [st.action && String(st.action).replace(/_/g, ' '), st.target || st.value || st.url]
         .filter(Boolean).join(' — ') || 'Step';
 
-    const rows = steps.map((st, i) => `      <tr>
-        <td class="num">${i + 1}</td>
-        <td>${esc(describe(st))}${st.url ? `<br><small class="muted">${esc(st.url)}</small>` : ''}</td>
-      </tr>`).join('\n');
+    // A short verb chip per step, so the sheet can be skimmed rather than read.
+    const VERB = {
+      navigate: 'Go to', click_text: 'Click', click_submit: 'Click', smart_click: 'Click',
+      right_click: 'Right-click', hover: 'Hover', edit_field: 'Type in', type: 'Type',
+      press: 'Press', select_option: 'Choose', scroll: 'Scroll', switch_tab: 'Switch tab',
+      go_back: 'Go back', copy_text: 'Copy', wait: 'Wait', wait_navigation: 'Wait',
+    };
+
+    // Recorded steps carry the page URL on every one. Repeating an identical URL down 34
+    // rows is noise that buries the actual instructions, so it is shown only when the page
+    // changes — which is also the information the reader needs.
+    let lastUrl = null;
+    const stepRows = steps.map((st, i) => {
+      const detail = describe(st);
+      // Drop the chip when the sentence already opens with that verb, otherwise recorded
+      // steps read "Click Click the 'what's on your mind'".
+      const candidate = VERB[st.action] || '';
+      const firstWord = detail.trim().split(/\s+/)[0] || '';
+      const verb = candidate && firstWord.toLowerCase() !== candidate.split(' ')[0].toLowerCase()
+        ? candidate
+        : '';
+
+      const showUrl = !!st.url && st.url !== lastUrl && !detail.includes(st.url);
+      if (st.url) lastUrl = st.url;
+      return `    <li class="step">
+      <div class="badge">${i + 1}</div>
+      <div class="body">
+        ${verb ? `<span class="verb">${esc(verb)}</span>` : ''}<span class="what">${esc(detail)}</span>
+        ${showUrl ? `<div class="where">${esc(st.url)}</div>` : ''}
+      </div>
+    </li>`;
+    }).join('\n');
 
     const vars = Array.isArray(sop.variables) ? sop.variables : [];
     const triggers = Array.isArray(sop.triggers) ? sop.triggers : [];
     const updated = sop.updatedAt || sop.createdAt;
+    const fmt = (d) => new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+    const meta = [
+      `${steps.length} step${steps.length === 1 ? '' : 's'}`,
+      sop.category ? esc(String(sop.category).replace(/_/g, ' ')) : null,
+      updated ? `Updated ${esc(fmt(updated))}` : null,
+    ].filter(Boolean);
 
     return `
-<header class="doc">
-  <h1>${esc(sop.name || 'Procedure')}</h1>
-  <div class="muted">Standard Operating Procedure${sop.category ? ` &middot; ${esc(sop.category)}` : ''}${updated ? ` &middot; Updated ${esc(new Date(updated).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }))}` : ''}</div>
-</header>
+<div class="sheet">
+  <header class="masthead">
+    <div class="eyebrow">Standard Operating Procedure</div>
+    <h1>${esc(sop.name || 'Procedure')}</h1>
+    ${sop.description ? `<p class="summary">${esc(sop.description)}</p>` : ''}
+    <div class="meta">${meta.map(m => `<span>${m}</span>`).join('<i>·</i>')}</div>
+  </header>
 
-${sop.description ? `<p>${esc(sop.description)}</p>` : ''}
+  ${vars.length ? `<section class="callout">
+    <h2>Before you start</h2>
+    <p class="hint">Have these ready — they change each time you run it.</p>
+    <dl>
+${vars.map(v => `      <dt>${esc(v.name || v)}</dt><dd>${esc(v.description || 'provided when it runs')}${v.example ? ` <em>e.g. ${esc(v.example)}</em>` : ''}</dd>`).join('\n')}
+    </dl>
+  </section>` : ''}
 
-<h2>Steps</h2>
-<table>
-  <thead><tr><th class="num" style="width:2.5em">#</th><th>What to do</th></tr></thead>
-  <tbody>
-${rows || '      <tr><td colspan="2" class="muted">No steps recorded.</td></tr>'}
-  </tbody>
-</table>
+  <section>
+    <h2>The steps</h2>
+    <ol class="steps">
+${stepRows || '      <li class="step"><div class="body"><span class="what muted">No steps recorded.</span></div></li>'}
+    </ol>
+  </section>
 
-${vars.length ? `<h2>Details needed each time</h2>
-<ul>
-${vars.map(v => `  <li><strong>${esc(v.name || v)}</strong>${v.description ? ` — ${esc(v.description)}` : ''}${v.example ? ` <span class="muted">(e.g. ${esc(v.example)})</span>` : ''}</li>`).join('\n')}
-</ul>` : ''}
+  ${triggers.length ? `<section class="callout quiet">
+    <h2>How to start it</h2>
+    <p>Say any of these to Ace:</p>
+    <ul class="triggers">
+${triggers.map(t => `      <li>${esc(t)}</li>`).join('\n')}
+    </ul>
+  </section>` : ''}
 
-${triggers.length ? `<h2>How to start it</h2>
-<p>Say any of: ${triggers.map(t => `&ldquo;${esc(t)}&rdquo;`).join(', ')}</p>` : ''}
+  <footer class="sheet-foot">
+    <span>${esc(sop.name || 'Procedure')}</span>
+    <span>Printed ${esc(fmt(Date.now()))}</span>
+  </footer>
+</div>
 
-<footer class="doc">${esc(sop.name || 'Procedure')}${steps.length ? ` &middot; ${steps.length} steps` : ''} &middot; Printed ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</footer>
 <style>
-  td.num { text-align: right; color: #5b6570; font-variant-numeric: tabular-nums; }
-  tbody td { vertical-align: top; }
+  /* A single accent, a neutral ramp, and one 4px-based spacing scale. Consistency is what
+     makes a printed sheet look designed rather than assembled. */
+  .sheet { --ink:#14171a; --ink-2:#5b6570; --line:#dfe4e9; --accent:#0f766e; --tint:#f4f7f8; }
+
+  .masthead { border-bottom: 3px solid var(--accent); padding-bottom: 14px; margin-bottom: 26px; }
+  .eyebrow { font-size: 8.5pt; letter-spacing: .13em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: 4px; }
+  .masthead h1 { font-size: 23pt; line-height: 1.12; margin: 0 0 6px; letter-spacing: -0.015em; }
+  .summary { font-size: 11pt; color: var(--ink-2); margin: 0 0 8px; max-width: 46em; }
+  .meta { font-size: 9pt; color: var(--ink-2); }
+  .meta i { font-style: normal; margin: 0 7px; color: var(--line); }
+
+  .sheet h2 { font-size: 10pt; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-2);
+              margin: 0 0 12px; font-weight: 700; }
+  .sheet section { margin-bottom: 26px; }
+
+  /* Steps as a list, not a table — a table's borders fight the numbers for attention. */
+  ol.steps { list-style: none; margin: 0; padding: 0; counter-reset: none; }
+  li.step { display: flex; gap: 13px; padding: 11px 0; border-top: 1px solid var(--line); align-items: baseline; }
+  li.step:first-child { border-top: none; padding-top: 0; }
+  .badge { flex: 0 0 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff;
+           font-size: 9.5pt; font-weight: 700; text-align: center; line-height: 22px; }
+  .step .body { flex: 1; }
+  .verb { font-weight: 700; margin-right: .35em; }
+  .what { }
+  .where { font-size: 9pt; color: var(--ink-2); margin-top: 3px; word-break: break-all; }
+
+  .callout { background: var(--tint); border-left: 3px solid var(--accent); padding: 14px 16px; border-radius: 3px; }
+  .callout.quiet { border-left-color: var(--line); }
+  .callout h2 { margin-bottom: 6px; }
+  .hint { font-size: 9.5pt; color: var(--ink-2); margin: 0 0 8px; }
+  .callout dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 10pt; }
+  .callout dt { font-weight: 700; font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 9.5pt; }
+  .callout dd { margin: 0; color: var(--ink-2); }
+  .callout dd em { color: var(--ink-2); }
+
+  ul.triggers { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
+  ul.triggers li { border: 1px solid var(--line); background: #fff; border-radius: 999px;
+                   padding: 3px 11px; font-size: 9.5pt; }
+
+  .sheet-foot { display: flex; justify-content: space-between; border-top: 1px solid var(--line);
+                padding-top: 9px; font-size: 8.5pt; color: var(--ink-2); }
+
+  /* Never split a step across a page, and never strand a heading at the foot of one. */
+  li.step, .callout { break-inside: avoid; page-break-inside: avoid; }
+  .sheet h2 { break-after: avoid; page-break-after: avoid; }
 </style>`;
   }
 

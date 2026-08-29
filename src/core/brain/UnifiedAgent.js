@@ -1189,7 +1189,7 @@ When a request matches a tool, call the tool. Present ONLY what the tool returne
     if (this._freeTierMode) {
       // Pure-chat turns skip the tool schema entirely — faster, and a small
       // model can't misfire a tool it was never offered.
-      const wantsAction = /\b(find|search|lead|research|competitor|save|note|remember|recall|pipeline|move|stage|contact|follow.?up|website|look.?up|track|list|show)\b/.test(lower);
+      const wantsAction = /\b(find|search|lead|research|competitor|save|note|remember|recall|pipeline|move|stage|contact|follow.?up|website|look.?up|track|list|show|procedure|sop|playbook|workflow|process|export|print|download)\b/.test(lower);
       if (lower.length < 100 && !wantsAction) {
         this._freeTierMode = false;
         return [{ functionDeclarations: [] }]; // No tools = pure conversation
@@ -1199,6 +1199,10 @@ When a request matches a tool, call the tool. Present ONLY what the tool returne
         'find_leads', 'save_leads', 'get_pipeline', 'move_lead',
         'manage_contacts',
         'save_note', 'recall_notes',
+        // Procedures are per-account in cloud mode, so these only ever touch the caller's
+        // own. run_sop is deliberately absent: it drives the operator's browser and
+        // logged-in accounts, and is blocked separately in cloud mode.
+        'draft_sop', 'create_sop', 'list_sops', 'export_sop',
       ]);
       const filtered = allTools.filter(t => freeTools.has(t.name));
       this._freeTierMode = false;
