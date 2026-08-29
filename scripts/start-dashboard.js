@@ -276,6 +276,28 @@ app.use('/projects', express.static(path.join(baseDir, 'projects'), {
   index: 'index.html'
 }));
 
+// A /projects/ path that matched no file falls through to the SPA catch-all below, which
+// answers 200 with the dashboard shell. A preview link for a project that was renamed or
+// deleted therefore looked like the Ace app had loaded instead of saying the page is gone.
+app.use('/projects', (req, res) => {
+  res.status(404).type('html').send(`<!doctype html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Page not found</title>
+<style>
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#111417;color:#e8eaed;
+       font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       text-align:center;padding:24px}
+  h1{font-size:1.4rem;margin:0 0 .4em}
+  p{color:#9aa4ad;margin:0 0 1.4em;max-width:34em}
+  a{color:#c9a227}
+</style>
+<div>
+  <h1>This page isn't here</h1>
+  <p>The project may have been renamed or removed. Ask Ace to list your sites, or build it again.</p>
+  <a href="/">Back to Ace</a>
+</div>`);
+});
+
 // Serve documentation
 app.use('/docs', express.static(path.join(baseDir, 'docs'), { extensions: ['html'], index: 'index.html' }));
 
