@@ -871,19 +871,19 @@ export class UnifiedAgent {
     if (this.subsystems.formManager) {
       declarations.push({
         name: 'create_form',
-        description: 'Create a form, quiz, or survey. Generates a professional, themed form with a live public URL. Use when the user asks to create a form, quiz, survey, or feedback collector. Define the actual questions and options — do NOT generate HTML yourself.',
+        description: 'Create a form, quiz, or survey with a live public URL, wired into the lead pipeline so submissions arrive as leads. Use when the user asks for a form, quiz, survey, intake form, booking request, feedback collector or lead capture. Write the actual questions as plain text — never HTML, and never JSON.',
         parameters: {
           type: 'OBJECT',
           properties: {
-            name: { type: 'STRING', description: 'Form name (e.g. "AI Experience Quiz")' },
-            description: { type: 'STRING', description: 'Short description of the form purpose' },
-            type: { type: 'STRING', description: 'Form type: "quiz", "form", or "survey"' },
-            steps: { type: 'STRING', description: 'JSON array of steps. Each step: {"id":"step-1","title":"Question text","subtitle":"Optional hint","type":"single_select|multi_select|text_input|email_input|textarea|rating","required":true,"options":[{"label":"Option A","emoji":"🌟","value":"option_a"}]}' },
-            settings: { type: 'STRING', description: 'JSON object: {"collect_contact":true,"contact_fields":["name","email","phone"],"add_to_pipeline":true,"submit_button_text":"Get Results"}' },
-            results: { type: 'STRING', description: 'JSON object for quiz results: {"enabled":true,"outcomes":[{"title":"Result Name","description":"Result text","match_tags":["tag1","tag2"],"cta_text":"Next Step"}],"default_outcome":{"title":"Thanks!","description":"Default result"}}' },
-            publish: { type: 'STRING', description: 'Set to "true" to publish immediately with a live URL' }
+            name: { type: 'STRING', description: 'Form name, e.g. "Dental Practice Enquiry"' },
+            description: { type: 'STRING', description: 'One line describing what the form is for' },
+            type: { type: 'STRING', description: '"form" (default), "quiz" or "survey"' },
+            questions: { type: 'STRING', description: 'REQUIRED. One question per line, as "Question text | type | options". Type is optional and defaults sensibly; options are comma-separated and only apply to choice types. Valid types: text, email, phone, textarea, choice, multi, rating. Do NOT ask for name, email or phone here — those are collected automatically at the end, so use contact_fields instead. Example:\nWhich treatment are you interested in? | choice | Cleaning, Whitening, Implants, Braces\nHow soon would you like to book? | choice | This week, This month, Just looking\nAnything else we should know? | textarea' },
+            contact_fields: { type: 'STRING', description: 'Contact details to collect at the end, comma-separated from: name, email, phone. Defaults to "name, email". These become the lead record.' },
+            submit_button_text: { type: 'STRING', description: 'Button label, e.g. "Request a callback"' },
+            publish: { type: 'BOOLEAN', description: 'True to publish immediately with a live URL. Default true.' }
           },
-          required: ['name', 'steps']
+          required: ['name', 'questions']
         }
       });
 
@@ -1241,6 +1241,7 @@ When a request matches a tool, call the tool. Present ONLY what the tool returne
       { group: 'projects',  patterns: [/\bproject\b/, /\bcode\b/, /\bbuild\b/, /\bcreate\s*(an?\s*)?(app|website|page|site)\b/, /\[Studio Project:/, /\bseo\b/, /\bhtml\b/, /\bcss\b/, /\bfile\b/, /\bupdate\b.*\b(page|site|app)\b/, /\bedit\b/, /\bchange\b.*\b(heading|title|text|color|style|section|button)\b/, /\bfix\b.*\b(bug|error|issue)\b/, /\bmetadata\b/] },
       { group: 'forms',     patterns: [/\bform\b/, /\bquiz\b/, /\bsurvey\b/, /\bsubmission/i] },
       { group: 'workload',  patterns: [/\bworkload\b/, /\bfile\b/, /\bdocument\b/, /\bmedia\b/, /\bupload\b/, /\bingest/i] },
+      { group: 'forms',     patterns: [/\bform\b/i, /\bquiz\b/i, /\bsurvey\b/i, /\bquestionnaire\b/i, /\bintake\b/i, /\bsign.?up sheet\b/i, /\bcapture leads?\b/i] },
       { group: 'sites',     patterns: [/\blanding page\b/i, /\bweb ?site\b/i, /\bweb ?page\b/i, /\bmarketing page\b/i, /\bsales page\b/i, /\bhomepage\b/i, /\bsplash page\b/i, /\bmock ?up\b/i, /\bwireframe\b/i, /\bdesign me\b/i, /\bbuild me\b/i, /\bpreview\b/i, /\bpublish\b/i, /\bdeploy\b/i, /\bgo live\b/i, /\bhost (it|my|the)\b/i, /\bmy (sites?|websites?|pages?|projects?)\b/i, /\bbuilt for me\b/i] },
       { group: 'documents', patterns: [/\bpdf\b/i, /\bprint(able|out)?\b/i, /\binvoice\b/i, /\bquote\b/i, /\bproposal\b/i, /\bcontract\b/i, /\bagreement\b/i, /\bletter\b/i, /\breport\b/i, /\bone.?pager\b/i, /\bflyer\b/i, /\bagenda\b/i, /\bletterhead\b/i, /\bwrite (me |up )?(a|an|the)\b/i, /\bdocument\b/i] },
       { group: 'deploy',    patterns: [/\bdeploy\b/, /\bpublish\b/, /\blaunch\b/, /\bship\b/, /\bnetlify\b/, /\bfirebase\b/] },
@@ -4164,6 +4165,9 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
     if (names.has('build_landing_page') && /\b(landing page|web ?page|web ?site|home ?page|sales page|marketing page|mock ?up)\b/i.test(message)) {
       return 'build_landing_page';
     }
+    if (names.has('create_form') && /\b(form|quiz|survey|questionnaire|intake|sign.?up sheet|feedback collector)\b/i.test(message)) {
+      return 'create_form';
+    }
     return null;
   }
 
@@ -5784,25 +5788,106 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
 
   // ── Form/Quiz Tools ──
 
+  /**
+   * Turn "Question | type | options" lines into form steps.
+   *
+   * Same shape that made invoices and landing pages reliable: the model writes flat text and
+   * this builds the structure, because a nested JSON string is the one thing it consistently
+   * fails to produce.
+   */
+  _parseFormQuestions(raw) {
+    const TYPE_ALIASES = {
+      text: 'text_input', short: 'text_input', name: 'text_input', phone: 'text_input',
+      number: 'text_input', input: 'text_input',
+      email: 'email_input', mail: 'email_input',
+      textarea: 'textarea', long: 'textarea', message: 'textarea', paragraph: 'textarea', notes: 'textarea',
+      choice: 'single_select', select: 'single_select', single: 'single_select',
+      radio: 'single_select', dropdown: 'single_select', options: 'single_select',
+      multi: 'multi_select', multiple: 'multi_select', checkbox: 'multi_select', checkboxes: 'multi_select',
+      rating: 'rating', stars: 'rating', scale: 'rating', score: 'rating',
+    };
+
+    return String(raw || '')
+      .split(/\r?\n/)
+      .map(l => l.trim())
+      // Tolerate a leading "1." or "- " if the model numbers or bullets the list.
+      .map(l => l.replace(/^\s*(?:\d+[.)]|[-*•])\s*/, '').trim())
+      .filter(Boolean)
+      .map((line, i) => {
+        const [rawTitle = '', rawType = '', rawOptions = ''] = line.split('|').map(x => x.trim());
+        const title = rawTitle.replace(/\s*\|\s*$/, '');
+        if (!title) return null;
+
+        const options = rawOptions
+          ? rawOptions.split(',').map(o => o.trim()).filter(Boolean)
+              .map(label => ({ label, value: label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') }))
+          : [];
+
+        let stepType = TYPE_ALIASES[rawType.toLowerCase()] || null;
+        // No type given: options imply a choice, otherwise a short text answer. A question
+        // that reads like a long answer gets a textarea.
+        if (!stepType) {
+          if (options.length) stepType = 'single_select';
+          else if (/\b(describe|tell us|anything else|details|comments?|explain)\b/i.test(title)) stepType = 'textarea';
+          else stepType = 'text_input';
+        }
+        // A choice type with no options would render an unanswerable question.
+        if ((stepType === 'single_select' || stepType === 'multi_select') && options.length === 0) {
+          stepType = 'text_input';
+        }
+
+        return {
+          id: `step-${i + 1}`,
+          title,
+          subtitle: '',
+          type: stepType,
+          required: true,
+          ...(options.length ? { options } : {}),
+        };
+      })
+      .filter(Boolean);
+  }
+
   async _toolCreateForm(args) {
     const fm = this.subsystems.formManager;
     if (!fm) return JSON.stringify({ error: 'FormManager not available' });
 
-    const { name, description, type, publish } = args;
+    const { name, description, type } = args;
 
-    // Parse JSON string parameters
-    let steps, settings, results;
-    try {
-      steps = typeof args.steps === 'string' ? JSON.parse(args.steps) : (args.steps || []);
-    } catch (e) {
-      return JSON.stringify({ error: `Invalid steps JSON: ${e.message}` });
+    // Questions arrive as plain lines rather than a JSON blob. Asked for JSON, the local
+    // model returned prose describing the questions and called nothing at all, so no form
+    // was ever created. Backwards compatible: a caller still passing `steps` is honoured.
+    let steps;
+    if (args.steps) {
+      try {
+        steps = typeof args.steps === 'string' ? JSON.parse(args.steps) : args.steps;
+      } catch (e) {
+        return JSON.stringify({ error: `Invalid steps JSON: ${e.message}` });
+      }
+    } else {
+      steps = this._parseFormQuestions(args.questions);
     }
-    try {
-      settings = args.settings ? (typeof args.settings === 'string' ? JSON.parse(args.settings) : args.settings) : {};
-    } catch { settings = {}; }
-    try {
-      results = args.results ? (typeof args.results === 'string' ? JSON.parse(args.results) : args.results) : { enabled: false };
-    } catch { results = { enabled: false }; }
+
+    if (!Array.isArray(steps) || steps.length === 0) {
+      return JSON.stringify({ error: 'No questions provided. Pass `questions` with one question per line, e.g. "Which service do you need? | choice | Cleaning, Whitening".' });
+    }
+
+    const contactFields = String(args.contact_fields || 'name, email')
+      .split(/[,\n]/).map(f => f.trim().toLowerCase())
+      .filter(f => ['name', 'email', 'phone'].includes(f));
+
+    const settings = {
+      collect_contact: true,
+      contact_fields: contactFields.length ? contactFields : ['name', 'email'],
+      add_to_pipeline: true,
+      ...(args.submit_button_text ? { submit_button_text: args.submit_button_text } : {}),
+    };
+
+    // Default to publishing. A draft with no link is not a deliverable, and the user asking
+    // for a form almost always wants something they can send to someone.
+    const shouldPublish = args.publish === undefined || args.publish === null
+      ? true
+      : (args.publish === true || String(args.publish).toLowerCase() === 'true');
 
     this.onProgress(`Creating ${type || 'form'}: ${name}`);
 
@@ -5811,13 +5896,14 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
         name,
         description: description || '',
         type: type || 'form',
-        status: publish === 'true' ? 'published' : 'draft',
+        status: shouldPublish ? 'published' : 'draft',
         steps,
         settings,
-        results
+        results: { enabled: false }
       });
 
-      const liveUrl = form.status === 'published' ? `/forms/${form.slug}` : null;
+      const base = (process.env.APP_URL || '').replace(/\/$/, '');
+      const liveUrl = form.status === 'published' ? `${base}/forms/${form.slug}` : null;
       this.onProgress(`Form "${name}" created${liveUrl ? ` — live at ${liveUrl}` : ' (draft)'}`);
 
       return JSON.stringify({
@@ -5829,9 +5915,9 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
         step_count: form.steps.length,
         live_url: liveUrl,
         dashboard_url: '/forms',
-        message: liveUrl
-          ? `Form "${name}" is live at ${liveUrl}! Manage it on the Forms page in the dashboard.`
-          : `Form "${name}" created as draft. Publish it from the Forms page to get a live URL.`
+        note: liveUrl
+          ? 'Give the user the live URL as a full tappable link, tell them submissions arrive as leads in their pipeline, and mention the Forms tab for responses. Then offer to add or reword questions, or to put the form on one of their landing pages.'
+          : 'The form was saved as a draft — tell the user it needs publishing from the Forms tab to get a link.'
       });
     } catch (e) {
       return JSON.stringify({ error: `Form creation failed: ${e.message}` });

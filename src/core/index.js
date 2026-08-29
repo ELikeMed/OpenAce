@@ -2328,6 +2328,13 @@ this.log.info('Task queue processing started');
       this.autonomousScheduler.setPipelineManager(this.pipelineManager);
     }
 
+    // FormManager captured the pre-swap pipeline at construction, so submissions kept
+    // creating leads on the old instance — written successfully, and invisible to the API
+    // reading the current one. A public form appeared to work and captured nothing.
+    if (this.formManager) {
+      this.formManager.pipelineManager = this.pipelineManager;
+    }
+
     return target;
   }
 

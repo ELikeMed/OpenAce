@@ -159,12 +159,23 @@ const ANON_ALLOWED = [
   '/api/events',           // SSE stream that backs chat
   '/api/feedback',         // anyone may report a problem
   '/api/billing/webhook',  // Stripe calls this; verified by signature, not JWT
-  '/forms/',               // published forms accept submissions from the open web
+  '/forms/',               // the rendered public form page
   '/health',
+];
+
+// Exceptions a prefix cannot express. Deliberately narrow: this opens the submit endpoint
+// of one form and nothing else. '/api/forms/' as a prefix would also expose the form list
+// and every submission, which are the operator's data.
+//
+// Without this a published form rendered fine to the open web and then rejected every
+// submission with 401, so the form looked like it worked and captured nothing.
+const ANON_ALLOWED_PATTERNS = [
+  /^\/api\/forms\/[A-Za-z0-9_-]+\/submit$/,
 ];
 
 function isAnonAllowed(path) {
   // Compare against the path only — a query string must never widen access
   const clean = (path || '').split('?')[0];
-  return ANON_ALLOWED.some(r => clean === r || clean.startsWith(r.endsWith('/') ? r : r + '/') || clean === r);
+  if (ANON_ALLOWED.some(r => clean === r || clean.startsWith(r.endsWith('/') ? r : r + '/') || clean === r)) return true;
+  return ANON_ALLOWED_PATTERNS.some(re => re.test(clean));
 }
