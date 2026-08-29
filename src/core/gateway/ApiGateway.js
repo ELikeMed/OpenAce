@@ -3761,6 +3761,32 @@ export class ApiGateway {
 
   registerWorkloadRoutes() {
     // List all ingested sources + stats
+    // ── Speech ──
+    // Which voice the server can produce, so the client knows whether to use it or fall
+    // back to the browser's own.
+    this.app.get('/api/speak/voice', this.wrap(async (req, res) => {
+      const svc = this.ace?.speechService;
+      res.json({ success: true, data: svc ? svc.listVoices() : { available: false, current: null } });
+    }));
+
+    this.app.post('/api/speak', this.wrap(async (req, res) => {
+      const svc = this.ace?.speechService;
+      if (!svc?.available) return res.status(503).json({ success: false, error: 'Speech not available on this server' });
+
+      const { text, voice, rate } = req.body || {};
+      if (!text || !String(text).trim()) return res.status(400).json({ success: false, error: 'text is required' });
+
+      try {
+        const file = await svc.synthesize(text, { voice, rate });
+        res.type('audio/mp4');
+        // Identical text renders to the same file, so let the browser keep it.
+        res.set('Cache-Control', 'private, max-age=86400');
+        res.sendFile(file);
+      } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+      }
+    }));
+
     // ── Documents ──
     this.app.get('/api/documents', this.wrap(async (req, res) => {
       const gen = this.ace?.documentGenerator;

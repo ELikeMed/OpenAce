@@ -17,6 +17,7 @@ import { SkillsManager, DEFAULT_SKILLS } from './skills/SkillsManager.js';
 import { KnowledgeBase } from './knowledge/KnowledgeBase.js';
 import { WorkloadStore } from './knowledge/WorkloadStore.js';
 import { DocumentGenerator } from './documents/DocumentGenerator.js';
+import { SpeechService } from './voice/SpeechService.js';
 import { HeartbeatMonitor } from './HeartbeatMonitor.js';
 import { PermissionsManager } from './permissions/PermissionsManager.js';
 import { ResearchAgent } from './agents/ResearchAgent.js';
@@ -221,6 +222,10 @@ export class OpenAce {
       // Initialize Document Generator
       this.documentGenerator = new DocumentGenerator(this.dataDir);
       await this.documentGenerator.initialize();
+
+      // Initialize Speech (server-side TTS)
+      this.speechService = new SpeechService(this.dataDir);
+      await this.speechService.initialize();
 
       // Initialize Permissions Manager
       console.log('🔐 Loading permissions...');

@@ -2277,6 +2277,8 @@ function Chat({ hideSidebar = false }) {
   const [speakingMsgIdx, setSpeakingMsgIdx] = useState(null);
   const [ttsSupported, setTtsSupported] = useState(false);
   const ttsUtteranceRef = useRef(null);
+  const serverAudioRef = useRef(null);   // <audio> currently playing server-rendered speech
+  const serverVoiceRef = useRef(false);  // whether the server can render speech at all
   const [activeAction, setActiveAction] = useState(null);
   const textFieldRef = useRef(null);
   const abortControllerRef = useRef(null);
@@ -2405,6 +2407,12 @@ function Chat({ hideSidebar = false }) {
 
   // ═══ Text-to-Speech (TTS) setup ═══
   useEffect(() => {
+    // Ask once whether the server can speak; if it can, its voice is used in preference.
+    fetch(`${API}/api/speak/voice`)
+      .then(r => r.json())
+      .then(r => { serverVoiceRef.current = !!r?.data?.available; })
+      .catch(() => { serverVoiceRef.current = false; });
+
     const supported = 'speechSynthesis' in window;
     setTtsSupported(supported);
     if (supported) {
@@ -2435,17 +2443,69 @@ function Chat({ hideSidebar = false }) {
 
   // ═══ TTS core functions ═══
   const stopSpeaking = useCallback(() => {
-    window.speechSynthesis.cancel();
+    // Stop both sources — speech may be coming from the server's audio element rather than
+    // the browser's synthesiser, and cancelling only one leaves it playing.
+    if (serverAudioRef.current) {
+      serverAudioRef.current.pause();
+      serverAudioRef.current = null;
+    }
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     setIsSpeaking(false);
     setSpeakingMsgIdx(null);
     ttsUtteranceRef.current = null;
   }, []);
 
+  // The server renders speech with a real Apple voice. The browser's own synthesis falls
+  // back to Apple's "compact" voices on iOS, which are the robotic ones, so this is used
+  // whenever the server can do it and browser speech is kept only as a fallback.
+  const speakViaServer = useCallback(async (cleanText, messageIndex) => {
+    const res = await fetch(`${API}/api/speak`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: cleanText }),
+    });
+    if (!res.ok) throw new Error(`speak failed: ${res.status}`);
+
+    const url = URL.createObjectURL(await res.blob());
+    const audio = new Audio(url);
+    serverAudioRef.current = audio;
+
+    const done = () => {
+      setIsSpeaking(false); setSpeakingMsgIdx(null);
+      serverAudioRef.current = null;
+      URL.revokeObjectURL(url);
+    };
+    audio.onplay = () => { setIsSpeaking(true); setSpeakingMsgIdx(messageIndex); };
+    audio.onended = done;
+    audio.onerror = done;
+
+    await audio.play();
+  }, []);
+
   const speakText = useCallback((text, messageIndex = null) => {
-    if (!ttsSupported) return;
-    window.speechSynthesis.cancel();
     const cleanText = stripMarkdownForSpeech(text);
     if (!cleanText) return;
+
+    // Stop whatever is already playing, from either source.
+    if (serverAudioRef.current) { serverAudioRef.current.pause(); serverAudioRef.current = null; }
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+
+    if (serverVoiceRef.current) {
+      speakViaServer(cleanText, messageIndex).catch((e) => {
+        // One failure should not leave the button dead for the rest of the session.
+        console.warn('[TTS] server voice failed, using browser voice:', e.message);
+        serverVoiceRef.current = false;
+        speakInBrowser(cleanText, messageIndex);
+      });
+      return;
+    }
+
+    speakInBrowser(cleanText, messageIndex);
+  }, [speakViaServer]);
+
+  const speakInBrowser = useCallback((cleanText, messageIndex = null) => {
+    if (!ttsSupported) return;
+    window.speechSynthesis.cancel();
 
     const utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.rate = 0.95;   // Slightly slower = more natural cadence

@@ -159,6 +159,7 @@ const ANON_ALLOWED = [
   '/api/events',           // SSE stream that backs chat
   '/api/feedback',         // anyone may report a problem
   '/api/billing/webhook',  // Stripe calls this; verified by signature, not JWT
+  '/api/speak',            // reading a reply aloud, for visitors as well as accounts
   '/forms/',               // the rendered public form page
   '/health',
 ];
