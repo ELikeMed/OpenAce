@@ -688,7 +688,7 @@ export class UnifiedAgent {
           type: 'OBJECT',
           properties: {
             name: { type: 'STRING', description: 'Name for the new SOP' },
-            steps: { type: 'STRING', description: 'Plain English steps, one per line. Example: "Go to eventbrite.com\\nLog in with saved credentials\\nClick Past Events\\nClick Copy on the most recent event\\nChange the date to {{event_date}}\\nClick Publish". The system automatically converts these into structured automation steps. Do NOT format as JSON — just write naturally.' },
+            steps: { type: 'STRING', description: 'Plain English steps, one per line. Format: one step per line, plain English, e.g. "Go to [url]", "Click [exact button text]", "Type {{variable_name}} into [field label]". Use only the steps THEY described — never an example workflow. The system converts these into structured automation steps. Do NOT format as JSON.' },
             triggers: { type: 'STRING', description: 'JSON array of trigger phrases that should activate this SOP' },
             keywords: { type: 'STRING', description: 'JSON array of keywords for matching' },
             category: { type: 'STRING', description: 'Category: "general", "custom", "lead_generation", "email", "meetups". Default "custom".' }
@@ -705,7 +705,7 @@ export class UnifiedAgent {
           properties: {
             name: { type: 'STRING', description: 'Name of the procedure' },
             description: { type: 'STRING', description: 'One-sentence description of what this procedure does' },
-            steps: { type: 'STRING', description: 'Plain English steps, one per line. Example: "Go to eventbrite.com\\nLog in with saved credentials\\nClick Past Events\\nClick Copy on the most recent event". The system automatically converts these into structured automation steps. Do NOT format as JSON — just write naturally.' },
+            steps: { type: 'STRING', description: 'Plain English steps, one per line. Format: one step per line, plain English, e.g. "Go to [url]", "Click [exact button text]". Use only the steps THEY described — never an example workflow. The system converts these into structured automation steps. Do NOT format as JSON.' },
             triggers: { type: 'STRING', description: 'JSON array of trigger phrases that activate this SOP' },
             keywords: { type: 'STRING', description: 'JSON array of keywords for matching' },
             variables: { type: 'STRING', description: 'JSON array of dynamic variables: [{"name":"city","description":"Target city","example":"Dallas"}]' },
@@ -1157,7 +1157,9 @@ Never mention AI, models, Ollama, or any technology names. You are Ace. That's a
     if (missing.length) {
       prompt += `\n\nGETTING TO KNOW THEM:
 You don't yet know: ${missing.join(', ')}.
-Weave in AT MOST ONE natural question per message, only when it fits the flow. NEVER block an answer on it — help first, ask second. If they ask you to do something, do it.`;
+Weave in AT MOST ONE natural question per message, only when it fits the flow. NEVER block an answer on it — help first, ask second. If they ask you to do something, do it.
+
+When someone opens by telling you what they do — "I run a local service business", "I sell products online", "I'm in real estate" — that is them handing you context, not asking to be taught. Do NOT reply with general advice about that industry; it reads as a brochure and tells them nothing they did not already know. Say something short that shows you understood, then ask the ONE question that would let you actually help: usually what specifically they do and where they are based. Two sentences is plenty.`;
     }
 
     // ── What Ace can actually do ──
@@ -2497,7 +2499,18 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
         // conversion copy instead of calling create_project. A command wants its tools.
         const skipOnCommand = looksLikeCommand && !looksLikeQuestion;
 
-        if (workloadResults.length > 0 && topRelevance > minRelevance && !skipOnCommand) {
+        // Someone introducing their business is giving Ace the context it needs, not asking
+        // to be taught. "I run a local service business" pulled in the chapter on local
+        // listings and Ace replied with a lecture instead of asking what kind and where —
+        // which is the one thing it actually needs to be useful afterwards.
+        const looksLikeIntroduction = message.length < 140 &&
+          // Contractions have no space — "I'm in real estate" failed a pattern that
+          // expected one, so the knowledge base fired and Ace recited a real-estate primer.
+          /^\s*(i'?m|we'?re|i|we)\s*(run|own|have|manage|started|sell|do|am|are|'m|'re|in|a|an)?\b/i.test(opener) &&
+          /\b(business|company|shop|store|practice|agency|firm|service|real estate|online|startup|freelanc|contractor|restaurant|salon|clinic)\b/i.test(message) &&
+          !/\?/.test(message);
+
+        if (workloadResults.length > 0 && topRelevance > minRelevance && !skipOnCommand && !looksLikeIntroduction) {
           // Chunks arrive whole — the old 500-char slice cut the answer off the end of
           // otherwise correct hits. Injection must still fit the model's context window alongside the system prompt,
           // tool definitions and history. ace-clubs pins num_ctx to 8192 and the app talks

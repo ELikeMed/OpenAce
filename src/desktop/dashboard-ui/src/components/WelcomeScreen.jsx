@@ -23,9 +23,19 @@ export default function WelcomeScreen({ onSend, onAttach }) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
+  // A first-time visitor tapping "I need help finding leads" asks for work Ace cannot do
+  // well yet — it knows nothing about them, so the answer is generic and the impression is
+  // that Ace is not much use. These openers instead say who the person is, which is the one
+  // thing Ace needs before anything else is useful, and it can ask a focused follow-up from
+  // there. Anyone who would rather type still has the input above.
   const suggestions = isReturning
     ? ['Find me new leads', "What's in my pipeline?", 'Research my competitors']
-    : ['I need help finding leads', 'Research my competitors', 'What can you do for my business?'];
+    : [
+        'I run a local service business',
+        'I sell products online',
+        "I'm in real estate",
+        "I'm starting something new",
+      ];
 
   return (
     <Box sx={{
@@ -34,18 +44,24 @@ export default function WelcomeScreen({ onSend, onAttach }) {
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
-      px: 2,
+      px: { xs: 2.5, md: 2 },
+      // Sit slightly above centre on a tall phone; dead centre leaves the content stranded
+      // in the middle with large empty bands above and below.
+      pb: { xs: 6, md: 0 },
+      // Clear of the home indicator and Safari's bottom bar.
+      pt: { xs: 2, md: 0 },
     }}>
       {/* Logo mark */}
-      <AceSpadeIcon sx={{ fontSize: 24, color: '#C9A96E', mb: 3, opacity: 0.6 }} />
+      <AceSpadeIcon sx={{ fontSize: 24, color: '#C9A96E', mb: { xs: 2, md: 3 }, opacity: 0.6 }} />
 
       {/* Greeting */}
       <Typography sx={{
-        fontSize: { xs: '1.5rem', md: '2rem' },
+        fontSize: { xs: '1.55rem', md: '2rem' },
         fontWeight: 300,
         color: '#F0EDE8',
         letterSpacing: '-0.02em',
         textAlign: 'center',
+        lineHeight: 1.2,
         mb: 0.5,
       }}>
         {isReturning ? `${timeGreeting}, ${userName}` : 'What does your business need?'}
@@ -56,7 +72,7 @@ export default function WelcomeScreen({ onSend, onAttach }) {
           fontSize: '0.88rem',
           color: '#6B6560',
           textAlign: 'center',
-          mb: 4,
+          mb: { xs: 3, md: 4 },
           fontWeight: 400,
         }}>
           Find leads. Close deals. Grow your business.
@@ -66,7 +82,7 @@ export default function WelcomeScreen({ onSend, onAttach }) {
       {isReturning && <Box sx={{ mb: 4 }} />}
 
       {/* Input bar */}
-      <Box sx={{ width: '100%', maxWidth: 520, mb: 3 }}>
+      <Box sx={{ width: '100%', maxWidth: 520, mb: { xs: 2, md: 3 } }}>
         <Box sx={{
           display: 'flex',
           alignItems: 'center',
@@ -121,25 +137,30 @@ export default function WelcomeScreen({ onSend, onAttach }) {
       {/* Suggestions */}
       <Box sx={{
         display: 'flex',
-        gap: 1,
+        gap: { xs: 0.8, md: 1 },
         flexWrap: 'wrap',
         justifyContent: 'center',
         maxWidth: 520,
+        width: '100%',
       }}>
         {suggestions.map((text) => (
           <Box
             key={text}
             onClick={() => onSend?.(text)}
             sx={{
-              px: 1.8,
-              py: 0.7,
+              px: { xs: 1.6, md: 1.8 },
+              // ~44px tall on a phone, which is the minimum comfortable tap target.
+              py: { xs: 1.1, md: 0.7 },
               borderRadius: 2,
               border: '1px solid #1E1E1E',
               color: '#A09A90',
-              fontSize: '0.8rem',
+              fontSize: { xs: '0.82rem', md: '0.8rem' },
               fontWeight: 400,
               cursor: 'pointer',
+              textAlign: 'center',
+              lineHeight: 1.25,
               transition: 'all 0.15s ease',
+              '&:active': { borderColor: '#C9A96E', color: '#F0EDE8' },
               '&:hover': { borderColor: '#C9A96E', color: '#F0EDE8' },
             }}
           >
