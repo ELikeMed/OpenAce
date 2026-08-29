@@ -512,7 +512,19 @@ That's it! Once connected, I can help you with research, email, social media, we
     // Layer 1 (exact trigger, confidence 0.95): Auto-execute for everyone (user + scheduler)
     // Layer 2 (word overlap, confidence 0.7-0.94): Ask user first. Skip for scheduler (no one to ask).
     // Chip click ([RUN SOP] prefix): Auto-execute at confidence ≥ 0.5
-    if (this.sopManager && this._executeSOP) {
+    // Saved procedures belong to the operator, not to visitors. The SOP tools are already
+    // withheld from the cloud tool subset, but this pre-flight runs before any of that and
+    // auto-executes on a high-confidence trigger match — so a visitor whose wording happened
+    // to match could have run the operator's automation against the operator's own browser
+    // and accounts. Gate it on the same signal the tool subset uses.
+    // Deterministic, not a mutable flag. Gating on unifiedAgent._freeTierMode did not hold:
+    // that flag is cleared once the tool subset is chosen, and an anonymous visitor typing
+    // "facebook post procedure" still matched, executed, and drove the mouse on the
+    // operator's machine. In cloud mode the pre-flight is off entirely — saved procedures
+    // are the operator's, run on the operator's desktop, against the operator's accounts.
+    const sopsAllowed = process.env.OPENACE_CLOUD !== 'true';
+
+    if (sopsAllowed && this.sopManager && this._executeSOP) {
       let sopMessage = message;
       let isSopChip = false;
 

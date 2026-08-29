@@ -5213,6 +5213,11 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
   }
 
   async _toolRunSOP(args) {
+    // Second line of defence. Saved procedures drive the operator's own browser and desktop;
+    // nothing reached over the network should be able to start one.
+    if (process.env.OPENACE_CLOUD === 'true') {
+      return JSON.stringify({ error: 'Saved procedures can only be run from the desktop app, not from the web.' });
+    }
     if (!this.sopManager) return JSON.stringify({ error: 'SOP Manager not available' });
     if (!this._executeSOP) return JSON.stringify({ error: 'SOP execution not available' });
 
