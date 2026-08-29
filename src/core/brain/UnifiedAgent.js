@@ -1211,6 +1211,13 @@ When a request matches a tool, call the tool. Present ONLY what the tool returne
       return [{ functionDeclarations: filtered }];
     }
 
+    // A message carrying an attached document is a reading task. Offering the full tool
+    // schema alongside it overflowed the context window — the model returned nothing at all
+    // — and none of those tools were relevant anyway. Give the document the whole window.
+    if (/\[Attached document:/i.test(message)) {
+      return [{ functionDeclarations: [] }];
+    }
+
     // Tool group definitions: name → array of tool names
     const groups = {
       memory:    ['save_note', 'recall_notes', 'recall_research', 'get_site_memory'],
@@ -3251,9 +3258,79 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
         this._lastResearchContext.pageContents.push({ url, title, content: text.substring(0, 3000) });
       }
 
+      // A site that builds its page with JavaScript returns an almost empty shell to a
+      // plain fetch — likemindedpro.com yielded 51 characters, its title and nothing else.
+      // Rendering it properly is the difference between "I could not read that page" and
+      // actually reading it, so fall back to a real browser when the text is too thin.
+      if (text.length < 600) {
+        const rendered = await this._renderPageText(url);
+        if (rendered && rendered.length > text.length) {
+          return JSON.stringify({
+            url, title, content: rendered.substring(0, 8000),
+            contentLength: rendered.length, rendered: true,
+          });
+        }
+      }
+
       return JSON.stringify({ url, title, content: text.substring(0, 8000), contentLength: text.length });
     } catch (e) {
       return JSON.stringify({ error: e.name === 'AbortError' ? 'Timeout' : e.message });
+    }
+  }
+
+  /**
+   * Load a page in headless Chrome and return its visible text.
+   *
+   * Chrome is already a dependency here, and this reuses it rather than adding a headless
+   * browser library. Hard-killed on a timer because a page holding an open connection —
+   * a live feed, a socket — never satisfies the virtual clock and would otherwise hang.
+   */
+  async _renderPageText(url) {
+    const CHROME_PATHS = [
+      process.env.OPENACE_CHROME_PATH,
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      '/Applications/Chromium.app/Contents/MacOS/Chromium',
+      '/usr/bin/google-chrome',
+      '/usr/bin/chromium',
+    ].filter(Boolean);
+
+    let chrome = null;
+    for (const candidate of CHROME_PATHS) {
+      try { await fs.access(candidate); chrome = candidate; break; } catch { /* next */ }
+    }
+    if (!chrome) return null;
+
+    try {
+      const { execFile } = await import('child_process');
+      const html = await new Promise((resolve, reject) => {
+        const child = execFile(chrome, [
+          '--headless', '--disable-gpu', '--no-sandbox',
+          '--virtual-time-budget=8000',
+          '--run-all-compositor-stages-before-draw',
+          '--dump-dom', url,
+        ], { timeout: 25_000, maxBuffer: 12 * 1024 * 1024, killSignal: 'SIGKILL' },
+        (err, stdout) => {
+          // A timeout still leaves usable DOM on stdout, so take whatever arrived.
+          if (stdout && stdout.length > 200) return resolve(stdout);
+          return err ? reject(err) : resolve(stdout || '');
+        });
+        child.on('error', reject);
+      });
+
+      if (!html) return null;
+      return html
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<nav[\s\S]*?<\/nav>/gi, '')
+        .replace(/<footer[\s\S]*?<\/footer>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"').replace(/&#\d+;/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    } catch {
+      return null; // fetch result still stands
     }
   }
 

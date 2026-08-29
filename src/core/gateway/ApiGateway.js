@@ -3761,6 +3761,38 @@ export class ApiGateway {
 
   registerWorkloadRoutes() {
     // List all ingested sources + stats
+    // ── Chat attachments ──
+    // Reads a document the user attached to a message and returns its text, so it can be
+    // put in front of Ace as part of the conversation. Deliberately separate from the
+    // workload store: attaching a file to a question should not permanently ingest it into
+    // the shared knowledge base.
+    this.app.post('/api/attachments/extract', this.wrap(async (req, res) => {
+      const store = this.ace?.workloadStore;
+      if (!store) return res.json({ success: false, error: 'Parser not available' });
+
+      const { buffer, filename: partFilename } = await this.readUploadBody(req);
+      const filename = decodeURIComponent(req.headers['x-filename'] || '') || partFilename || 'attachment.txt';
+
+      if (!buffer.length) return res.json({ success: false, error: 'Empty file' });
+      // 20MB — comfortably above any document someone pastes into a chat.
+      if (buffer.length > 20 * 1024 * 1024) {
+        return res.json({ success: false, error: 'That file is too large to read here (20MB max).' });
+      }
+
+      try {
+        const text = (await store._parseBuffer(buffer, filename) || '').trim();
+        if (!text) {
+          return res.json({
+            success: false,
+            error: `I could not read any text out of ${filename}. If it is a scanned image rather than a text document, send it as a photo instead and I will look at it.`,
+          });
+        }
+        res.json({ success: true, data: { filename, text, chars: text.length } });
+      } catch (err) {
+        res.json({ success: false, error: `Could not read ${filename}: ${err.message}` });
+      }
+    }));
+
     // ── Speech ──
     // Which voice the server can produce, so the client knows whether to use it or fall
     // back to the browser's own.

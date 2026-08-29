@@ -12,6 +12,7 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import CloseIcon from '@mui/icons-material/Close';
+import DescriptionIcon from '@mui/icons-material/Description';
 import SchoolIcon from '@mui/icons-material/School';
 import StopCircleIcon from '@mui/icons-material/StopCircle';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
@@ -2258,6 +2259,7 @@ function Chat({ hideSidebar = false }) {
   const [isThinking, setIsThinking] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [attachedImages, setAttachedImages] = useState([]);
+  const [attachedDocs, setAttachedDocs] = useState([]);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef(null);
   const [isTraining, setIsTraining] = useState(false);
@@ -2541,19 +2543,53 @@ function Chat({ hideSidebar = false }) {
   }, [ttsSupported]);
 
   // ═══ Image helpers ═══
+  // Images go to the vision model as before. Anything else — a PDF, a Word file, a
+  // spreadsheet export — is read on the server and its text travels with the message, so
+  // attaching a document actually puts it in front of Ace instead of being ignored.
   const handleFileSelect = useCallback((files) => {
     for (const file of files) {
-      if (!file.type.startsWith('image/')) continue;
-      if (file.size > 10 * 1024 * 1024) continue; // 10MB limit
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setAttachedImages(prev => [...prev, {
-          base64: e.target.result,
-          name: file.name,
-          preview: e.target.result,
-        }]);
-      };
-      reader.readAsDataURL(file);
+      if (file.type.startsWith('image/')) {
+        if (file.size > 10 * 1024 * 1024) continue;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          setAttachedImages(prev => [...prev, {
+            base64: e.target.result,
+            name: file.name,
+            preview: e.target.result,
+          }]);
+        };
+        reader.readAsDataURL(file);
+        continue;
+      }
+
+      if (file.size > 20 * 1024 * 1024) {
+        setAttachedDocs(prev => [...prev, { name: file.name, error: 'Too large to read (20MB max)' }]);
+        continue;
+      }
+
+      const pending = { name: file.name, loading: true };
+      setAttachedDocs(prev => [...prev, pending]);
+
+      fetch('/api/attachments/extract', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'x-filename': encodeURIComponent(file.name),
+        },
+        body: file,
+      })
+        .then(r => r.json())
+        .then(r => {
+          setAttachedDocs(prev => prev.map(d => d.name !== file.name ? d : (
+            r.success
+              ? { name: file.name, text: r.data.text, chars: r.data.chars }
+              : { name: file.name, error: r.error || 'Could not read this file' }
+          )));
+        })
+        .catch(() => {
+          setAttachedDocs(prev => prev.map(d => d.name !== file.name ? d
+            : { name: file.name, error: 'Could not read this file' }));
+        });
     }
   }, []);
 
@@ -3304,21 +3340,41 @@ function Chat({ hideSidebar = false }) {
   const handleSend = async () => {
     const hasText = inputText.trim().length > 0;
     const hasImages = attachedImages.length > 0;
-    if (!hasText && !hasImages) return;
+    const hasDocs = attachedDocs.some(d => d.text);
+    if (!hasText && !hasImages && !hasDocs) return;
     if (isSpeaking) stopSpeaking();
 
     // Prepend action prefix if an action chip is active (user doesn't see it)
     const rawText = inputText.trim();
     const messageToSend = activeAction ? activeAction.prefix + rawText : rawText;
     const imagesToSend = [...attachedImages];
+    const docsToSend = attachedDocs.filter(d => d.text);
+
+    // The document text is prepended to what actually reaches Ace, while the bubble on
+    // screen shows only the filename — nobody wants ten pages of a PDF echoed back at them.
+    // The model's context window is small, so a long document has to be trimmed rather than
+    // sent whole — sending everything produced an empty reply. Say so plainly instead of
+    // silently answering from a fraction of the file.
+    const PER_DOC_LIMIT = 6000;
+    const docContext = docsToSend
+      .map(d => {
+        const body = d.text.length > PER_DOC_LIMIT
+          ? `${d.text.slice(0, PER_DOC_LIMIT)}\n\n[Only the first ${PER_DOC_LIMIT.toLocaleString()} characters of ${d.name} are shown here, out of ${d.text.length.toLocaleString()}. Say so if the answer might be further in, and offer to look at a specific section.]`
+          : d.text;
+        return `[Attached document: ${d.name}]\n${body}`;
+      })
+      .join('\n\n');
+
     setMessages(prev => [...prev, {
       sender: 'You',
       text: rawText || (imagesToSend.length > 0 ? `Sent ${imagesToSend.length} image(s)` : ''),
       images: imagesToSend.map(img => img.preview),
+      docs: docsToSend.map(d => d.name),
       actionMode: activeAction?.label || null,
     }]);
     setInputText('');
     setAttachedImages([]);
+    setAttachedDocs([]);
     setActiveAction(null);
     if (recognitionRef.current && isListening) {
       recognitionRef.current._shouldRestart = false;
@@ -3334,7 +3390,8 @@ function Chat({ hideSidebar = false }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: messageToSend,
+          // Document text rides with the message so Ace reads what was attached.
+          message: docContext ? `${docContext}\n\n${messageToSend}` : messageToSend,
           conversationId: activeConversationId,
           images: imagesToSend.map(img => img.base64),
         }),
@@ -3705,6 +3762,34 @@ function Chat({ hideSidebar = false }) {
             width: '100%',
           }}>
             {/* Image preview strip */}
+            {attachedDocs.length > 0 && (
+              <Box sx={{ display: 'flex', gap: 1, mb: 1.5, px: 0.5, flexWrap: 'wrap' }}>
+                {attachedDocs.map((doc, i) => (
+                  <Box key={`${doc.name}-${i}`} sx={{
+                    display: 'flex', alignItems: 'center', gap: 0.8,
+                    px: 1.2, py: 0.6, borderRadius: 2,
+                    border: `1px solid ${doc.error ? alpha('#b42318', 0.5) : BRAND.border}`,
+                    background: alpha(BRAND.surface, 0.6),
+                    fontSize: '0.78rem',
+                    color: doc.error ? '#e5847d' : BRAND.textMuted,
+                    maxWidth: 260,
+                  }}>
+                    <DescriptionIcon sx={{ fontSize: 15 }} />
+                    <Box sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {doc.name}
+                    </Box>
+                    <Box sx={{ color: BRAND.textMuted, opacity: 0.8, whiteSpace: 'nowrap' }}>
+                      {doc.loading ? 'reading…' : doc.error ? 'unreadable' : `${Math.round((doc.chars || 0) / 1000)}k chars`}
+                    </Box>
+                    <IconButton size="small" onClick={() => setAttachedDocs(prev => prev.filter((_, j) => j !== i))}
+                      sx={{ width: 18, height: 18, color: BRAND.textMuted }}>
+                      <CloseIcon sx={{ fontSize: 13 }} />
+                    </IconButton>
+                  </Box>
+                ))}
+              </Box>
+            )}
+
             {attachedImages.length > 0 && (
               <Box sx={{
                 display: 'flex', gap: 1, mb: 1.5, px: 0.5,
@@ -3797,13 +3882,13 @@ function Chat({ hideSidebar = false }) {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,.pdf,.doc,.docx,.txt,.md,.csv,.rtf"
                 multiple
                 style={{ display: 'none' }}
                 onChange={(e) => { handleFileSelect(e.target.files); e.target.value = ''; }}
               />
               {/* Attach button */}
-              <Tooltip title="Attach image" placement="top">
+              <Tooltip title="Attach an image or document" placement="top">
                 <IconButton
                   onClick={() => fileInputRef.current?.click()}
                   sx={{
