@@ -24,13 +24,16 @@ const run = promisify(execFile);
 // and are preferred when present; the plain US voices below are what ships by default.
 // Override with OPENACE_VOICE to use any installed voice by name.
 const VOICE_PREFERENCE = [
-  // US, best quality first
-  'Evan (Premium)', 'Nathan (Premium)', 'Ava (Premium)', 'Zoe (Premium)',
-  'Tom (Enhanced)', 'Evan (Enhanced)', 'Allison (Enhanced)', 'Ava (Enhanced)', 'Samantha (Enhanced)',
+  // American male, best quality first — Ace is male, so female voices are a last resort
+  // rather than a ranked option.
+  'Evan (Premium)', 'Nathan (Premium)',
+  'Tom (Enhanced)', 'Evan (Enhanced)', 'Nathan (Enhanced)',
   'Reed (English (US))', 'Rocko (English (US))', 'Eddy (English (US))',
-  'Tom', 'Evan', 'Allison', 'Ava', 'Samantha',
-  // Non-US only if nothing American is installed
-  'Jamie (Premium)', 'Daniel', 'Karen',
+  'Tom', 'Evan', 'Nathan', 'Aaron',
+  // Non-US male before any female voice
+  'Daniel', 'Jamie (Premium)', 'Oliver', 'Arthur',
+  // Only if nothing above is installed
+  'Ava (Premium)', 'Allison (Enhanced)', 'Samantha', 'Ava', 'Allison',
 ];
 
 const MAX_CHARS = 2500;
