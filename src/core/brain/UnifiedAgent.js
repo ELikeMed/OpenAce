@@ -120,7 +120,7 @@ export class UnifiedAgent {
       contacts:  { name: 'Contacts',           tools: ['manage_contacts'], description: 'Manage contact book' },
       calendar:  { name: 'Calendar',           tools: ['list_calendar_events', 'create_calendar_event', 'delete_calendar_event'], description: 'Google Calendar events' },
       social:    { name: 'Social Media',       tools: ['post_social_media', 'schedule_social_post', 'create_content_plan', 'select_media_for_content'], description: 'Post and schedule on social platforms' },
-      sops:      { name: 'Processes',           tools: ['list_sops', 'update_sop', 'create_sop', 'draft_sop', 'run_sop'], description: 'Manage and run standard procedures' },
+      sops:      { name: 'Processes',           tools: ['list_sops', 'update_sop', 'create_sop', 'draft_sop', 'run_sop', 'export_sop'], description: 'Manage and run standard procedures' },
       projects:  { name: 'Projects',           tools: ['create_project', 'write_project_file', 'list_projects', 'read_project_file', 'edit_project_file'], description: 'Code projects in Ace Studio' },
       forms:     { name: 'Forms & Quizzes',    tools: ['create_form', 'list_forms', 'get_form_submissions', 'get_form', 'update_form'], description: 'Create and manage forms' },
       workload:  { name: 'Workload / Knowledge', tools: ['search_workload', 'list_workload_sources', 'list_media'], description: 'Search ingested files and media' },
@@ -669,6 +669,19 @@ export class UnifiedAgent {
       });
 
       declarations.push({
+        name: 'export_sop',
+        description: 'Export a saved procedure as a printable PDF the user can print, file, upload to Google Drive, or email. Use when they ask to print, download, export, share or "get a copy of" a procedure or SOP.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            sop: { type: 'STRING', description: 'The procedure name or id to export. Use list_sops first if unsure which one they mean.' },
+            email_to: { type: 'STRING', description: 'Optional. An email address to send the PDF to once it is made.' }
+          },
+          required: ['sop']
+        }
+      });
+
+      declarations.push({
         name: 'create_sop',
         description: 'Create a new SOP from a procedure the user describes. Use when the user teaches you a new workflow like "when I say X, do these steps: ..." or "create a procedure that...". If a draft_sop was already previewed and approved, call this with just the name — the draft will be used automatically.',
         parameters: {
@@ -1203,7 +1216,7 @@ When a request matches a tool, call the tool. Present ONLY what the tool returne
       contacts:  ['manage_contacts'],
       calendar:  ['list_calendar_events', 'create_calendar_event', 'delete_calendar_event'],
       social:    ['post_social_media', 'schedule_social_post', 'create_content_plan', 'select_media_for_content'],
-      sops:      ['list_sops', 'update_sop', 'create_sop', 'draft_sop', 'run_sop'],
+      sops:      ['list_sops', 'update_sop', 'create_sop', 'draft_sop', 'run_sop', 'export_sop'],
       projects:  ['create_project', 'write_project_file', 'list_projects', 'list_project_files', 'read_project_file', 'edit_project_file'],
       forms:     ['create_form', 'list_forms', 'get_form_submissions', 'get_form', 'update_form'],
       workload:  ['search_workload', 'list_workload_sources', 'list_media'],
@@ -1225,7 +1238,7 @@ When a request matches a tool, call the tool. Present ONLY what the tool returne
       { group: 'contacts',  patterns: [/\bcontact/i] },
       { group: 'calendar',  patterns: [/\bcalendar\b/, /\bmeeting\b/, /\bevent\b/, /\bschedule\b/, /\bappointment\b/, /\bblock\s*time\b/, /\bset\s*up\s*(a|an)?\s*(call|meeting|sync)\b/i] },
       { group: 'social',    patterns: [/\bpost\b/, /\bsocial\b/, /\btwitter\b/, /\blinkedin\b/, /\bfacebook\b/, /\binstagram\b/, /\btiktok\b/, /\bcontent\s*plan\b/] },
-      { group: 'sops',      patterns: [/\bsop\b/i, /\bprocedure\b/, /\bplaybook\b/, /\btrain\b/, /\bteach\b/, /\bshow me how\b/] },
+      { group: 'sops',      patterns: [/\bsop\b/i, /\bprocedure\b/i, /\bplaybook\b/i, /\btrain\b/, /\bteach\b/, /\bshow me how\b/, /\bworkflow\b/i] },
       { group: 'projects',  patterns: [/\bproject\b/, /\bcode\b/, /\bbuild\b/, /\bcreate\s*(an?\s*)?(app|website|page|site)\b/, /\[Studio Project:/, /\bseo\b/, /\bhtml\b/, /\bcss\b/, /\bfile\b/, /\bupdate\b.*\b(page|site|app)\b/, /\bedit\b/, /\bchange\b.*\b(heading|title|text|color|style|section|button)\b/, /\bfix\b.*\b(bug|error|issue)\b/, /\bmetadata\b/] },
       { group: 'forms',     patterns: [/\bform\b/, /\bquiz\b/, /\bsurvey\b/, /\bsubmission/i] },
       { group: 'workload',  patterns: [/\bworkload\b/, /\bfile\b/, /\bdocument\b/, /\bmedia\b/, /\bupload\b/, /\bingest/i] },
@@ -2084,7 +2097,21 @@ User: "Find contact info for companies on builtinaustin.com"
     // SOP Training Interview Protocol
     prompt += `# SOP TRAINING INTERVIEW PROTOCOL
 
-When the user wants to teach you a procedure, create an SOP, or says things like "teach you how to", "create a procedure", "remember how to", "when I say X do Y", "let me show you my process", or selects "Teach me how you'd do this" — you MUST conduct a structured training interview. Follow this multi-turn protocol:
+## WHEN NOT TO INTERVIEW — READ THIS FIRST
+If the user has ALREADY given you the name and the steps in their message — for example
+"Create a procedure called Weekly Invoice Run: open the billing dashboard, filter to unpaid
+invoices, export the list to CSV, then email it to accounts@example.com" — they have just
+told you the whole procedure. Do NOT interview them; it reads as if you were not listening.
+Call draft_sop ONCE with those steps, show the user the preview it returns, and ask whether
+to save it. If they say yes, call create_sop with just the name.
+
+Call draft_sop at most ONCE per procedure per turn. Calling it repeatedly re-parses the same
+steps, takes a long time, and produces nothing new.
+
+The interview below is for the other case: the user wants to teach you something and has not
+yet spelled out the steps.
+
+When the user wants to teach you a procedure and has NOT already listed the steps — "teach you how to", "remember how to", "when I say X do Y", "let me show you my process", or they select "Teach me how you'd do this" — conduct a structured training interview. Follow this multi-turn protocol:
 
 ## PHASE 1: UNDERSTAND THE PROCEDURE
 1. **Name it**: "What should I call this procedure?" (If the user already named it, confirm: "I'll call this '[name]' — sound right?")
@@ -2529,9 +2556,20 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
       let result;
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          const selectedTools = this._selectToolsForMessage(message);
-          const offered = selectedTools[0]?.functionDeclarations || [];
+          let selectedTools = this._selectToolsForMessage(message);
+          let offered = selectedTools[0]?.functionDeclarations || [];
           const forceTool = this._forcedToolFor(message, offered);
+
+          // When the tool is known, send only that one. tool_choice alone was not enough:
+          // with 29 tools offered the model ignored it, called unrelated tools and emitted
+          // malformed tool-call text. One tool leaves nothing to get wrong.
+          if (forceTool) {
+            const only = offered.filter(t => t.name === forceTool);
+            if (only.length) {
+              offered = only;
+              selectedTools = [{ functionDeclarations: only }];
+            }
+          }
           console.log(`[Tools] ${offered.length} offered${forceTool ? `, forcing ${forceTool}` : ''}: ${offered.map(t => t.name).join(', ')}`);
           result = await this.aiManager.chatWithTools(messages, {
             systemPrompt,
@@ -2969,6 +3007,7 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
       case 'update_sop': return await this._toolUpdateSOP(args);
       case 'create_sop': return await this._toolCreateSOP(args);
       case 'draft_sop': return await this._toolDraftSOP(args);
+      case 'export_sop': return await this._toolExportSOP(args);
       case 'run_sop': return await this._toolRunSOP(args);
       case 'save_note': return await this._toolSaveNote(args);
       case 'recall_notes': return await this._toolRecallNotes(args);
@@ -4198,6 +4237,17 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
       return 'list_sites';
     }
 
+    // Checked before the command gate: "export" and "print" are not build verbs, so the
+    // gate below would return null first. Asked to export a procedure the model reached for
+    // run_sop, which executes it and drives the browser for real — printing a procedure
+    // must never be able to run it.
+    if (names.has('export_sop') &&
+        /\b(print|printable|download|export|pdf|copy of|save (it|this) to|google drive)\b/i.test(message) &&
+        /\b(procedure|sop|playbook|workflow)\b/i.test(message) &&
+        !/\b(run|execute|start|do) (it|the|this)\b/i.test(message)) {
+      return 'export_sop';
+    }
+
     const isCommand = /^\s*(create|make|build|generate|design|draft|mock ?up)\b/i.test(opener);
     const isQuestion = /^\s*(how|what|why|when|where|who|which|should|is|are|does|do|did|tell me|explain)\b/i.test(opener);
     if (!isCommand || isQuestion) return null;
@@ -4859,9 +4909,83 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
     }
   }
 
+  async _toolExportSOP(args) {
+    const gen = this.subsystems.documentGenerator;
+    if (!gen) return JSON.stringify({ error: 'Document generator not available' });
+    if (!this.sopManager) return JSON.stringify({ error: 'SOP Manager not available' });
+
+    const wanted = String(args.sop || '').trim().toLowerCase();
+    if (!wanted) return JSON.stringify({ error: 'Which procedure should I export?' });
+
+    const all = this.sopManager.getAllSOPs();
+    const sop = all.find(s => String(s.id).toLowerCase() === wanted)
+      || all.find(s => String(s.name || '').toLowerCase() === wanted)
+      || all.find(s => String(s.name || '').toLowerCase().includes(wanted));
+
+    if (!sop) {
+      return JSON.stringify({
+        error: `No procedure matching "${args.sop}".`,
+        available: all.slice(0, 12).map(s => s.name),
+      });
+    }
+
+    try {
+      this.onProgress(`Exporting procedure: ${sop.name}`);
+      const doc = await gen.createDocument({
+        title: sop.name || 'Procedure',
+        html: gen.renderSOP(sop),
+        format: 'pdf',
+        ownerId: this._ownerId,
+      });
+
+      const base = (process.env.APP_URL || '').replace(/\/$/, '');
+      const file = doc.pdfFile || doc.htmlFile;
+      const downloadUrl = `${base}/api/documents/${encodeURIComponent(file)}`;
+
+      let emailed = null;
+      if (args.email_to && this.subsystems.email?.sendEmail) {
+        try {
+          await this.subsystems.email.sendEmail({
+            to: args.email_to,
+            subject: `Procedure: ${sop.name}`,
+            body: `Attached is the procedure "${sop.name}".\n\nYou can also download it here: ${downloadUrl}`,
+            attachments: doc.pdfPath ? [doc.pdfPath] : [],
+          });
+          emailed = args.email_to;
+        } catch (e) {
+          emailed = `failed: ${e.message}`;
+        }
+      }
+
+      return JSON.stringify({
+        success: true,
+        procedure: sop.name,
+        step_count: (sop.steps || []).length,
+        download_url: downloadUrl,
+        emailed,
+        warning: doc.warning,
+        note: 'Give the user the download link as a full tappable URL, and mention they can print it, save it to Google Drive, or have you email it to someone.',
+      });
+    } catch (err) {
+      return JSON.stringify({ error: `Could not export the procedure: ${err.message}` });
+    }
+  }
+
   async _toolDraftSOP(args) {
     const { name } = args;
     if (!name) return JSON.stringify({ error: 'name is required' });
+
+    // Parsing runs SOPParser's AI pipeline, which is slow. Asked to create a procedure the
+    // model called this three times in a row on the same steps and the request timed out,
+    // so a repeat for the same name returns the draft already prepared.
+    if (this._pendingSOPDraft && this._pendingSOPDraft.name === name && this._lastToolPreview) {
+      return JSON.stringify({
+        success: true,
+        preview: this._lastToolPreview,
+        already_drafted: true,
+        message: 'This procedure is already drafted. Show the preview to the user and ask whether to save it — do not draft it again.'
+      });
+    }
 
     // ═══ Parse steps through SOPParser (the reliable engine) ═══
     let parsedSteps = [];

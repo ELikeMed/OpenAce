@@ -39,15 +39,32 @@ export class SOPManager {
    * Load all SOPs from disk
    */
   async loadAllSOPs() {
-    for (const category of this.categories) {
+    // Scan every subdirectory rather than the hardcoded category list. SOPs saved under a
+    // category not in that list — "research" and "social" both existed on disk — were
+    // silently invisible: the manager reported 0 procedures, so nothing could be listed,
+    // matched, run or exported, and no error was ever raised.
+    let categories;
+    try {
+      const entries = await fs.readdir(this.dataDir, { withFileTypes: true });
+      categories = entries.filter(e => e.isDirectory()).map(e => e.name);
+    } catch {
+      categories = this.categories;
+    }
+
+    for (const category of categories) {
       try {
         const categoryDir = path.join(this.dataDir, category);
         const files = await fs.readdir(categoryDir);
         
         for (const file of files) {
-          if (file.endsWith('.json')) {
+          // learning.json holds run statistics and history/ holds past runs — neither is a
+          // procedure definition, and both sit beside them in per-SOP directories.
+          if (file.endsWith('.json') && file !== 'learning.json') {
             const data = await fs.readFile(path.join(categoryDir, file), 'utf8');
             const sop = JSON.parse(data);
+
+            // Skip anything that is not actually a procedure.
+            if (!sop || !sop.id || !Array.isArray(sop.steps)) continue;
 
             // Normalize: migrate triggerPatterns → triggers/keywords if missing
             if (sop.triggerPatterns && (!sop.triggers || sop.triggers.length === 0)) {

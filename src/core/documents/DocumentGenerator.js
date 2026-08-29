@@ -33,7 +33,10 @@ const PAPER_SIZES = new Set(['Letter', 'Legal', 'Tabloid', 'A3', 'A4', 'A5']);
 
 export class DocumentGenerator {
   constructor(dataDir) {
-    this.docsDir = path.join(dataDir, 'documents');
+    // Resolved because the PDF step hands this to Chrome as a file:// URL, and a relative
+    // path there is not a valid URL — it fails with ERR_INVALID_URL rather than anything
+    // that points at the cause.
+    this.docsDir = path.resolve(dataDir, 'documents');
     this.chromePath = null;
   }
 
@@ -113,7 +116,7 @@ export class DocumentGenerator {
       `--print-to-pdf=${pdfPath}`,
     ];
     if (landscape) args.push('--landscape');
-    args.push(`file://${htmlPath}`);
+    args.push(`file://${path.resolve(htmlPath)}`);
 
     await run(this.chromePath, args, { timeout: 60_000, maxBuffer: 1024 * 1024 });
   }
@@ -251,6 +254,64 @@ ${data.terms && !data.dueDate ? `<footer class="doc">${esc(data.terms)}</footer>
   .parties { display: flex; gap: 2.5em; margin-bottom: .5em; }
   .party { font-size: 10pt; line-height: 1.45; }
   .party .muted { font-weight: 600; margin-bottom: .25em; }
+</style>`;
+  }
+
+  /**
+   * Render a stored SOP as a printable procedure sheet.
+   *
+   * Built here rather than asked of the model for the same reason invoices are: the steps
+   * already exist as structured data, so there is nothing for a model to add except the
+   * opportunity to lose a step or reword one into something that no longer matches what
+   * the automation actually does.
+   */
+  renderSOP(sop = {}) {
+    const esc = (v) => String(v ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    const steps = Array.isArray(sop.steps) ? sop.steps : [];
+
+    // Steps are stored for automation, so the human-readable label lives in different
+    // fields depending on how the SOP was recorded.
+    const describe = (st) => st.description || st.text || st.instruction ||
+      [st.action && String(st.action).replace(/_/g, ' '), st.target || st.value || st.url]
+        .filter(Boolean).join(' — ') || 'Step';
+
+    const rows = steps.map((st, i) => `      <tr>
+        <td class="num">${i + 1}</td>
+        <td>${esc(describe(st))}${st.url ? `<br><small class="muted">${esc(st.url)}</small>` : ''}</td>
+      </tr>`).join('\n');
+
+    const vars = Array.isArray(sop.variables) ? sop.variables : [];
+    const triggers = Array.isArray(sop.triggers) ? sop.triggers : [];
+    const updated = sop.updatedAt || sop.createdAt;
+
+    return `
+<header class="doc">
+  <h1>${esc(sop.name || 'Procedure')}</h1>
+  <div class="muted">Standard Operating Procedure${sop.category ? ` &middot; ${esc(sop.category)}` : ''}${updated ? ` &middot; Updated ${esc(new Date(updated).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }))}` : ''}</div>
+</header>
+
+${sop.description ? `<p>${esc(sop.description)}</p>` : ''}
+
+<h2>Steps</h2>
+<table>
+  <thead><tr><th class="num" style="width:2.5em">#</th><th>What to do</th></tr></thead>
+  <tbody>
+${rows || '      <tr><td colspan="2" class="muted">No steps recorded.</td></tr>'}
+  </tbody>
+</table>
+
+${vars.length ? `<h2>Details needed each time</h2>
+<ul>
+${vars.map(v => `  <li><strong>${esc(v.name || v)}</strong>${v.description ? ` — ${esc(v.description)}` : ''}${v.example ? ` <span class="muted">(e.g. ${esc(v.example)})</span>` : ''}</li>`).join('\n')}
+</ul>` : ''}
+
+${triggers.length ? `<h2>How to start it</h2>
+<p>Say any of: ${triggers.map(t => `&ldquo;${esc(t)}&rdquo;`).join(', ')}</p>` : ''}
+
+<footer class="doc">${esc(sop.name || 'Procedure')}${steps.length ? ` &middot; ${steps.length} steps` : ''} &middot; Printed ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</footer>
+<style>
+  td.num { text-align: right; color: #5b6570; font-variant-numeric: tabular-nums; }
+  tbody td { vertical-align: top; }
 </style>`;
   }
 
