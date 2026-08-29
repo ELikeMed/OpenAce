@@ -200,6 +200,9 @@ body {
   color: var(--ink);
   font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
+  /* Copy is written by a model and can contain long unbroken strings; without this a single
+     one widens the page and the whole layout scrolls sideways on a phone. */
+  overflow-wrap: break-word;
 }
 h1, h2, h3 { line-height: 1.15; margin: 0 0 var(--sp-2); letter-spacing: -0.02em; }
 h1 { font-size: clamp(2.1rem, 5vw, 3.4rem); }
@@ -274,9 +277,16 @@ input[aria-invalid="true"] { border-color: #b42318; }
 
 @media (max-width: 720px) {
   .site nav { display: none; }
+  /* A long CTA label ("Contact us for a free demo") is a flex item that will not shrink
+     below its text, which pushed the header — and with it the page — wider than the screen
+     and cut the headline off. The hero repeats this button immediately below, so drop it. */
+  .site .btn { display: none; }
+  .site .bar { justify-content: flex-start; }
   .hero { padding: var(--sp-6) 0 var(--sp-4); }
-  .hero .wrap { padding-inline: var(--sp-3); }
+  .hero .wrap { padding-inline: var(--sp-3); max-width: 100%; }
   .section { padding: var(--sp-6) 0; }
+  .actions .btn { flex: 1 1 auto; text-align: center; }
+  .quote blockquote { font-size: 1.12rem; }
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
