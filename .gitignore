@@ -98,3 +98,4 @@ training/*
 # data. data/ is ignored too, so without these a fresh deploy has no knowledge at all —
 # scripts/seed-knowledge.js rebuilds the index from them.
 !training/Ace-*.md
+vendor/

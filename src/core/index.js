@@ -224,7 +224,7 @@ export class OpenAce {
       await this.documentGenerator.initialize();
 
       // Initialize Speech (server-side TTS)
-      this.speechService = new SpeechService(this.dataDir);
+      this.speechService = new SpeechService(this.dataDir, this.baseDir);
       await this.speechService.initialize();
 
       // Initialize Permissions Manager

@@ -38,14 +38,38 @@ const VOICE_PREFERENCE = [
 
 const MAX_CHARS = 2500;
 
+// Piper is a small neural TTS engine (MIT). Its voices are markedly more natural than the
+// stock Apple ones, which on this machine are the compact quality — the only Premium voice
+// installed is British, and installing more is a System Settings operation with no CLI.
+// Vendored into the project so it is contained and removable: delete vendor/ to fall back.
+const PIPER_PY = 'vendor/tts-venv/bin/python';
+const PIPER_MODEL = 'vendor/voices/en_US-ryan-high.onnx';
+
 export class SpeechService {
-  constructor(dataDir) {
+  constructor(dataDir, projectRoot = process.cwd()) {
     this.cacheDir = path.resolve(dataDir, 'tts');
+    this.projectRoot = projectRoot;
     this.voice = null;
     this.available = false;
+    this.engine = null; // 'piper' | 'say'
   }
 
   async initialize() {
+    await fs.mkdir(this.cacheDir, { recursive: true }).catch(() => {});
+
+    // Prefer Piper when it is present and actually runs.
+    this.piperPy = path.resolve(this.projectRoot, PIPER_PY);
+    this.piperModel = path.resolve(this.projectRoot, PIPER_MODEL);
+    try {
+      await fs.access(this.piperPy);
+      await fs.access(this.piperModel);
+      this.engine = 'piper';
+      this.available = true;
+      this.voice = 'Ryan (Piper)';
+      console.log('🔊 Speech ready (Piper neural voice: Ryan, US male)');
+      return this;
+    } catch { /* not vendored — fall through to the system voices */ }
+
     try {
       const { stdout } = await run('say', ['-v', '?'], { timeout: 10_000 });
       const installed = stdout.split('\n')
@@ -71,9 +95,9 @@ export class SpeechService {
         || null;
 
       this.available = !!this.voice;
-      await fs.mkdir(this.cacheDir, { recursive: true });
+      if (this.available) this.engine = 'say';
       console.log(this.available
-        ? `🔊 Speech ready (voice: ${this.voice})`
+        ? `🔊 Speech ready (system voice: ${this.voice})`
         : 'ℹ️  Speech unavailable — the browser will fall back to its own voice');
     } catch {
       this.available = false;
@@ -83,7 +107,7 @@ export class SpeechService {
   }
 
   listVoices() {
-    return { current: this.voice, available: this.available };
+    return { current: this.voice, available: this.available, engine: this.engine };
   }
 
   /**
@@ -98,6 +122,7 @@ export class SpeechService {
     if (!clean) throw new Error('Nothing to say');
 
     const useVoice = voice && /^[\w()\s.-]+$/.test(voice) ? voice : this.voice;
+    void useVoice;
     // Slightly under the default 175 wpm — the default reads faster than people speak.
     const useRate = Number.isFinite(Number(rate)) ? Math.min(300, Math.max(100, Number(rate))) : 165;
 
@@ -108,6 +133,26 @@ export class SpeechService {
       await fs.access(m4aPath);
       return m4aPath;
     } catch { /* not cached yet */ }
+
+    if (this.engine === 'piper') {
+      const wavPath = path.join(this.cacheDir, `${key}.wav`);
+      try {
+        // Text on stdin, never the command line — a reply can contain anything.
+        await new Promise((resolve, reject) => {
+          const child = execFile(
+            this.piperPy,
+            ['-m', 'piper', '-m', this.piperModel, '-f', wavPath],
+            { timeout: 90_000, cwd: this.projectRoot },
+            (err) => (err ? reject(err) : resolve())
+          );
+          child.stdin.end(clean);
+        });
+        await run('afconvert', [wavPath, m4aPath, '-f', 'm4af', '-d', 'aac'], { timeout: 60_000 });
+        return m4aPath;
+      } finally {
+        await fs.unlink(wavPath).catch(() => {});
+      }
+    }
 
     const aiffPath = path.join(this.cacheDir, `${key}.aiff`);
     // Text goes via a file, never the command line — a reply can contain quotes, newlines
