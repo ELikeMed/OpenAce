@@ -89,6 +89,25 @@ export class ResponseParser {
       }
     }
 
+    // An opening tag with no closing one — the model forgot it, or the response was cut
+    // short. Both regexes above need the closing tag, so without this the raw
+    // [ACE_ACTIONS]{"actions":[... JSON is shown to the user as chat text.
+    const unclosed = cleanText.indexOf('[ACE_ACTIONS]');
+    if (unclosed !== -1) {
+      if (!pendingActions) {
+        const tail = cleanText.slice(unclosed + '[ACE_ACTIONS]'.length).trim();
+        // Recover the actions if the JSON object itself is complete, even though the tag is not.
+        const braces = tail.match(/^\{[\s\S]*\}/);
+        if (braces) {
+          try {
+            const parsed = JSON.parse(braces[0]);
+            if (Array.isArray(parsed.actions) && parsed.actions.length > 0) pendingActions = parsed.actions;
+          } catch { /* genuinely truncated — drop it rather than showing it */ }
+        }
+      }
+      cleanText = cleanText.slice(0, unclosed).trim();
+    }
+
     return { cleanText, pendingActions };
   }
 

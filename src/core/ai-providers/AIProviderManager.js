@@ -1001,10 +1001,16 @@ export class AIProviderManager {
       model,
       messages: ollamaMessages,
       tools: openaiTools,
+      // Pin the model to one tool when the caller is certain which is needed. In isolation
+      // the model picks the right tool reliably, but under the full system prompt and
+      // history it sometimes narrates a plan instead of acting. Used sparingly — forcing on
+      // every turn would break ordinary conversation.
+      ...(options.forceTool && { tool_choice: { type: 'function', function: { name: options.forceTool } } }),
       ...(options.maxTokens && { max_tokens: options.maxTokens }),
     });
 
     const choice = response.choices[0];
+    console.log(`[Ollama] finish=${choice?.finish_reason} tool_calls=${(choice?.message?.tool_calls || []).length} content=${(choice?.message?.content || '').length}ch forced=${options.forceTool || 'no'}`);
     const { text, functionCalls, toolCallBlocks } = this._parseOpenAIToolResponse(choice);
 
     const conversationHistory = [...ollamaMessages];

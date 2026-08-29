@@ -125,7 +125,7 @@ export class UnifiedAgent {
       forms:     { name: 'Forms & Quizzes',    tools: ['create_form', 'list_forms', 'get_form_submissions', 'get_form', 'update_form'], description: 'Create and manage forms' },
       workload:  { name: 'Workload / Knowledge', tools: ['search_workload', 'list_workload_sources', 'list_media'], description: 'Search ingested files and media' },
       documents: { name: 'Documents',           tools: ['create_document'], description: 'Create printable PDF and HTML documents' },
-      sites:     { name: 'Site Builder',        tools: ['build_landing_page'], description: 'Build designed landing pages and marketing sites' },
+      sites:     { name: 'Site Builder',        tools: ['build_landing_page', 'list_sites', 'publish_site'], description: 'Build, list and publish landing pages and marketing sites' },
       deploy:    { name: 'Deploy',             tools: ['deploy_project'], description: 'Deploy projects to Netlify, Firebase, SFTP' },
       gdrive:    { name: 'Google Drive',       tools: ['create_google_doc', 'list_google_drive_files', 'upload_to_google_drive'], description: 'Google Drive file management' },
       goals:     { name: 'Goals',              tools: ['manage_goals'], description: 'Track missions and goals' },
@@ -757,8 +757,27 @@ export class UnifiedAgent {
       });
 
       declarations.push({
+        name: 'list_sites',
+        description: 'List the websites and landing pages that have been built, with their preview links. Use when the user asks "where is my site", "show me my pages", "what have you built", or wants to find something made earlier.',
+        parameters: { type: 'OBJECT', properties: {} }
+      });
+
+      declarations.push({
+        name: 'publish_site',
+        description: 'Publish a built project to a live public web address. Use when the user says publish, deploy, go live, host it, or asks how to put it online. Netlify and Firebase are configured. Tell the user the live URL that comes back.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {
+            project: { type: 'STRING', description: 'The project name to publish, e.g. "dental-demo"' },
+            target: { type: 'STRING', description: '"netlify" (default) or "firebase"' }
+          },
+          required: ['project']
+        }
+      });
+
+      declarations.push({
         name: 'build_landing_page',
-        description: 'Build a complete, professionally designed landing page as a project — hero, benefits, about, testimonial, contact form, footer, responsive and accessible. PREFER THIS over create_project whenever the user wants a landing page, marketing page, or simple website: you supply the words and the design is handled, so the result is publishable rather than a scaffold. Write real, specific copy from the conversation and the business context — never "Lorem ipsum", never "Your Company Here", and never restate the request back as the headline.',
+        description: 'Build a complete, professionally designed landing page as a project — hero, benefits, about, testimonial, contact form, footer, responsive and accessible. USE THIS whenever the user asks for a landing page, website, web page, mockup, design or marketing page. NEVER describe a page in prose instead of building it: an outline of sections, colours and fonts in a chat message is not a deliverable and the user cannot preview, download or publish it. Build the real page, then give them the preview link this tool returns. Write real, specific copy from the conversation and the business context — never "Lorem ipsum", never a bracketed placeholder like [Your Company Name] or [Your Phone Number], and never restate the request back as the headline. If you genuinely do not know the business name or contact details, ask one short question first, then build.',
         parameters: {
           type: 'OBJECT',
           properties: {
@@ -1201,7 +1220,7 @@ When a request matches a tool, call the tool. Present ONLY what the tool returne
       forms:     ['create_form', 'list_forms', 'get_form_submissions', 'get_form', 'update_form'],
       workload:  ['search_workload', 'list_workload_sources', 'list_media'],
       documents: ['create_document'],
-      sites: ['build_landing_page'],
+      sites: ['build_landing_page', 'list_sites', 'publish_site'],
       deploy:    ['deploy_project'],
       gdrive:    ['create_google_doc', 'list_google_drive_files', 'upload_to_google_drive'],
       goals:     ['manage_goals'],
@@ -1222,7 +1241,7 @@ When a request matches a tool, call the tool. Present ONLY what the tool returne
       { group: 'projects',  patterns: [/\bproject\b/, /\bcode\b/, /\bbuild\b/, /\bcreate\s*(an?\s*)?(app|website|page|site)\b/, /\[Studio Project:/, /\bseo\b/, /\bhtml\b/, /\bcss\b/, /\bfile\b/, /\bupdate\b.*\b(page|site|app)\b/, /\bedit\b/, /\bchange\b.*\b(heading|title|text|color|style|section|button)\b/, /\bfix\b.*\b(bug|error|issue)\b/, /\bmetadata\b/] },
       { group: 'forms',     patterns: [/\bform\b/, /\bquiz\b/, /\bsurvey\b/, /\bsubmission/i] },
       { group: 'workload',  patterns: [/\bworkload\b/, /\bfile\b/, /\bdocument\b/, /\bmedia\b/, /\bupload\b/, /\bingest/i] },
-      { group: 'sites',     patterns: [/\blanding page\b/i, /\bweb ?site\b/i, /\bweb ?page\b/i, /\bmarketing page\b/i, /\bsales page\b/i, /\bhomepage\b/i, /\bsplash page\b/i] },
+      { group: 'sites',     patterns: [/\blanding page\b/i, /\bweb ?site\b/i, /\bweb ?page\b/i, /\bmarketing page\b/i, /\bsales page\b/i, /\bhomepage\b/i, /\bsplash page\b/i, /\bmock ?up\b/i, /\bwireframe\b/i, /\bdesign me\b/i, /\bbuild me\b/i, /\bpreview\b/i, /\bpublish\b/i, /\bdeploy\b/i, /\bgo live\b/i, /\bhost (it|my|the)\b/i, /\bmy (sites?|websites?|pages?|projects?)\b/i, /\bbuilt for me\b/i] },
       { group: 'documents', patterns: [/\bpdf\b/i, /\bprint(able|out)?\b/i, /\binvoice\b/i, /\bquote\b/i, /\bproposal\b/i, /\bcontract\b/i, /\bagreement\b/i, /\bletter\b/i, /\breport\b/i, /\bone.?pager\b/i, /\bflyer\b/i, /\bagenda\b/i, /\bletterhead\b/i, /\bwrite (me |up )?(a|an|the)\b/i, /\bdocument\b/i] },
       { group: 'deploy',    patterns: [/\bdeploy\b/, /\bpublish\b/, /\blaunch\b/, /\bship\b/, /\bnetlify\b/, /\bfirebase\b/] },
       { group: 'gdrive',    patterns: [/\bdrive\b/, /\bgoogle\s*doc\b/, /\bupload.*drive\b/] },
@@ -2430,9 +2449,16 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
         // than creating the document. A command needs its tools, not an essay. Strong
         // matches still go through, since those are genuinely about the task, and anything
         // phrased as a question is always treated as a question.
-        const looksLikeQuestion = /\?\s*$/.test(message) ||
-          /^\s*(how|what|why|when|where|who|which|should|can|could|would|is|are|does|do|tell me|explain)\b/i.test(message);
-        const looksLikeCommand = /^\s*(create|make|build|generate|draft|write|send|email|call|text|find|search|schedule|post|add|update|delete|remove|deploy|run|open|download|export)\b/i.test(message);
+        // Classify on how the message OPENS, after stripping greetings and politeness.
+        // Testing for a trailing "?" mis-read "Make me a mockup of a landing page. How can
+        // I see it?" as a question, so the knowledge went in and no tool was called. And
+        // treating "can"/"could" as question words broke "Can you build me a page?", which
+        // is a request. Stripping the polite prefix first resolves both.
+        const opener = message.replace(
+          /^[\s,.]*(?:hey|hi|hello|ok|okay|so|now|also|please|can you|could you|would you|will you|i want you to|i need you to|i'?d like you to|let'?s|lets|go ahead and)\b[\s,:.-]*/gi, ''
+        );
+        const looksLikeQuestion = /^\s*(how|what|why|when|where|who|which|should|is|are|does|do|did|tell me|explain)\b/i.test(opener);
+        const looksLikeCommand = /^\s*(create|make|build|generate|draft|write|send|email|call|text|find|search|schedule|post|add|update|delete|remove|deploy|publish|run|open|download|export|design|mock ?up)\b/i.test(opener);
         // Originally this only skipped weak matches, on the theory that a strong one was
         // worth injecting anyway. It is not: "Build a landing page" scores 0.705 against the
         // marketing chapter on landing pages, and injecting it made the model discuss
@@ -2504,10 +2530,12 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
         try {
           const selectedTools = this._selectToolsForMessage(message);
           const offered = selectedTools[0]?.functionDeclarations || [];
-          console.log(`[Tools] ${offered.length} offered: ${offered.map(t => t.name).join(', ')}`);
+          const forceTool = this._forcedToolFor(message, offered);
+          console.log(`[Tools] ${offered.length} offered${forceTool ? `, forcing ${forceTool}` : ''}: ${offered.map(t => t.name).join(', ')}`);
           result = await this.aiManager.chatWithTools(messages, {
             systemPrompt,
             tools: selectedTools,
+            forceTool,
           });
           break; // Success
         } catch (apiError) {
@@ -2913,6 +2941,8 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
       case 'manage_goals': return await this._toolManageGoals(args);
       case 'recall_research': return await this._toolRecallResearch(args);
       case 'build_landing_page': return await this._toolBuildLandingPage(args);
+      case 'list_sites': return await this._toolListSites(args);
+      case 'publish_site': return await this._toolPublishSite(args);
       case 'create_document': return await this._toolCreateDocument(args);
       case 'search_workload': return await this._toolSearchWorkload(args);
       case 'list_workload_sources': return await this._toolListWorkloadSources(args);
@@ -4105,6 +4135,38 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
     }
   }
 
+  /**
+   * The one tool a message unambiguously requires, or null.
+   *
+   * Only for requests where any other choice is wrong. "Build me a landing page" produced a
+   * prose outline of sections and colours often enough to be a real problem — the user
+   * cannot preview, download or publish an outline. Everything else stays on the model's
+   * own judgement, since forcing broadly would break normal conversation.
+   */
+  _forcedToolFor(message, offered = []) {
+    const names = new Set(offered.map(t => t.name));
+    const opener = String(message).replace(
+      /^[\s,.]*(?:hey|hi|hello|ok|okay|so|now|also|please|can you|could you|would you|will you|i want you to|i need you to|i'?d like you to|let'?s|lets|go ahead and)\b[\s,:.-]*/gi, ''
+    );
+    // Asking to see what has been built is unambiguous, and "show me" otherwise pulls in the
+    // browser tools — one such request took a screenshot of the desktop instead of listing
+    // the sites. This is checked before the command test, since it is phrased as a request.
+    if (names.has('list_sites') &&
+        /\b(show|list|see|find|where are|what are)\b[^.?!]{0,40}\b(sites?|websites?|web pages?|landing pages?|projects?)\b/i.test(message) &&
+        !/\b(build|create|make|new)\b/i.test(message)) {
+      return 'list_sites';
+    }
+
+    const isCommand = /^\s*(create|make|build|generate|design|draft|mock ?up)\b/i.test(opener);
+    const isQuestion = /^\s*(how|what|why|when|where|who|which|should|is|are|does|do|did|tell me|explain)\b/i.test(opener);
+    if (!isCommand || isQuestion) return null;
+
+    if (names.has('build_landing_page') && /\b(landing page|web ?page|web ?site|home ?page|sales page|marketing page|mock ?up)\b/i.test(message)) {
+      return 'build_landing_page';
+    }
+    return null;
+  }
+
   // ── Site builder ──
   async _toolBuildLandingPage(args) {
     const codeAgent = this.subsystems.codeAgent;
@@ -4131,14 +4193,69 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
       }, null, 2), 'utf-8');
 
       this.onProgress(`Built landing page: ${projectName}`);
+      const base = (process.env.APP_URL || '').replace(/\/$/, '');
       return JSON.stringify({
         success: true, project: projectName,
         files: ['index.html', 'styles.css', 'script.js'],
-        preview: `/projects/${projectName}/`,
-        note: 'The page is live at the preview path. Give the user that link, and offer to change the copy, colour or sections.'
+        preview_url: `${base}/projects/${projectName}/`,
+        download_url: `${base}/api/projects/${projectName}/download`,
+        edit_in: 'the Studio tab, where the page can be previewed and edited side by side',
+        can_publish: 'Netlify or Firebase, via publish_site',
+        // Without this the model builds the page and then says nothing about how to see it,
+        // which leaves the user with a file they do not know exists.
+        note: 'ALWAYS tell the user all four of these in your reply: the preview link (give the full URL so it is tappable), that it is also in the Studio tab, that they can download it as a ZIP, and that you can publish it to a live domain for them. Then offer to change the copy, colours or sections.'
       });
     } catch (err) {
       return JSON.stringify({ error: `Could not build the landing page: ${err.message}` });
+    }
+  }
+
+  async _toolListSites(args) {
+    const base = (process.env.APP_URL || '').replace(/\/$/, '');
+    try {
+      const dir = path.join(PROJECT_ROOT, 'projects');
+      const names = (await fs.readdir(dir, { withFileTypes: true }))
+        .filter(d => d.isDirectory() && !d.name.startsWith('_') && !d.name.startsWith('.'))
+        .map(d => d.name);
+
+      const sites = [];
+      for (const name of names) {
+        // Only list things that actually have a page to look at.
+        try { await fs.access(path.join(dir, name, 'index.html')); } catch { continue; }
+        sites.push({ name, preview_url: `${base}/projects/${name}/`, download_url: `${base}/api/projects/${name}/download` });
+      }
+      return JSON.stringify({
+        success: true, count: sites.length, sites,
+        note: 'Give the user the preview links as full tappable URLs. Mention they can also open these in the Studio tab, download any as a ZIP, or ask you to publish one live.'
+      });
+    } catch (err) {
+      return JSON.stringify({ error: `Could not list sites: ${err.message}` });
+    }
+  }
+
+  async _toolPublishSite(args) {
+    const pipeline = this.subsystems.deployPipeline;
+    if (!pipeline) return JSON.stringify({ error: 'Deploy pipeline not available' });
+
+    const project = String(args.project || '').trim();
+    if (!project) return JSON.stringify({ error: 'Which project should I publish?' });
+    const target = /firebase/i.test(args.target || '') ? 'firebase' : 'netlify';
+
+    try {
+      this.onProgress(`Publishing ${project} to ${target}...`);
+      const result = await pipeline.deploy(project, target, {});
+      const url = result?.url || result?.data?.url || result?.deployUrl;
+      if (result?.success === false) {
+        return JSON.stringify({ error: result.error || `Publishing to ${target} failed.`, target });
+      }
+      return JSON.stringify({
+        success: true, project, target, live_url: url || null,
+        note: url
+          ? 'Give the user this live URL as a tappable link and tell them it is now public.'
+          : 'Publishing reported success but returned no URL — tell the user to check the Studio tab for the deploy result.'
+      });
+    } catch (err) {
+      return JSON.stringify({ error: `Could not publish: ${err.message}`, target });
     }
   }
 

@@ -15,10 +15,22 @@ const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
 ));
 
-// Split a newline- or pipe-separated list into trimmed entries.
-const lines = (v) => String(v || '')
-  .split(/\r?\n/).flatMap(l => l.includes('|') ? l.split('|') : [l])
-  .map(s => s.trim()).filter(Boolean);
+// Split a list into entries. The instruction asks for one per line, but the model regularly
+// returns them comma-separated on a single line, which previously collapsed three benefits
+// into one card — so fall back to splitting on the "Title ::" boundary when that happens.
+const lines = (v) => {
+  let out = String(v || '')
+    .split(/\r?\n/).flatMap(l => l.includes('|') ? l.split('|') : [l])
+    .map(s => s.trim()).filter(Boolean);
+
+  if (out.length === 1 && (out[0].match(/::/g) || []).length > 1) {
+    out = out[0]
+      .split(/[,;]\s*(?=[^,;:]{2,60}::)/)
+      .map(s => s.trim().replace(/^[,;.\s]+/, ''))
+      .filter(Boolean);
+  }
+  return out;
+};
 
 // "Heading :: body" or "Heading - body" splits into a titled benefit; otherwise it is body only.
 function splitBenefit(entry) {
