@@ -2268,7 +2268,16 @@ function Chat({ hideSidebar = false }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [attachedImages, setAttachedImages] = useState([]);
   const [attachedDocs, setAttachedDocs] = useState([]);
-  const [welcomeProfile, setWelcomeProfile] = useState(null); // shown once, when the account activates
+  const [welcomeProfile, setWelcomeProfile] = useState(() => {
+    // ?welcome=1 replays the celebration on demand. It only shows an overlay — no account
+    // is created and nothing is stored — so it is a way to look at it without having to
+    // complete a real signup in a private window every time.
+    try {
+      const p = new URLSearchParams(window.location.search);
+      if (p.has('welcome')) return { name: p.get('name') || 'Eric' };
+    } catch { /* no URL access */ }
+    return null;
+  }); // otherwise shown once, when the account activates
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef(null);
   const [isTraining, setIsTraining] = useState(false);
