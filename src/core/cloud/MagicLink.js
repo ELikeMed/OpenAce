@@ -133,6 +133,9 @@ export class MagicLink {
     db.prepare("UPDATE magic_links SET used_at = datetime('now') WHERE token_hash = ?").run(hash);
 
     let user = db.prepare('SELECT * FROM users WHERE email = ?').get(entry.email);
+    // Whether this link created the account, so the app can welcome a genuinely new
+    // customer rather than congratulating someone who signs in every week.
+    const isNewAccount = !user;
 
     if (!user) {
       // First sign-in for this address — create the account now.
@@ -154,6 +157,7 @@ export class MagicLink {
     return {
       success: true,
       token: jwtToken,
+      isNewAccount,
       user: { id: user.id, email: user.email, name: user.name },
     };
   }

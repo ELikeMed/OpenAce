@@ -72,7 +72,8 @@ export default function AuthPage({ onAuth, onClose, notice }) {
       // Store token and notify parent
       localStorage.setItem('ace_token', data.data.token);
       localStorage.setItem('ace_user', JSON.stringify(data.data.user));
-      onAuth(data.data);
+      // Creating an account is worth celebrating; signing back in is not.
+      onAuth({ ...data.data, isNewAccount: mode === 'signup' });
     } catch {
       setError('Could not connect to server');
     } finally {

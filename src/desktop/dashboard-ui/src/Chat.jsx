@@ -2305,6 +2305,18 @@ function Chat({ hideSidebar = false }) {
   const [bizProfile, setBizProfile] = useState(null);
   const [projectToast, setProjectToast] = useState(null); // { name } — shows "Project ready in Studio!"
 
+  // Raised when someone creates an account through the sign-in form, so one celebration
+  // covers both routes in: chatting their way to an account, or signing up directly.
+  useEffect(() => {
+    const onNewAccount = (e) => {
+      if (localStorage.getItem('ace_welcomed')) return;
+      localStorage.setItem('ace_welcomed', '1');
+      setWelcomeProfile(e.detail?.profile || {});
+    };
+    window.addEventListener('ace:new-account', onNewAccount);
+    return () => window.removeEventListener('ace:new-account', onNewAccount);
+  }, []);
+
   // Fetch active business profile for personalized suggestions
   useEffect(() => {
     fetch('/api/businesses/active')

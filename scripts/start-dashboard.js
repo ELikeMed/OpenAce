@@ -108,7 +108,9 @@ app.get('/auth/verify', (req, res) => {
     <script>
       localStorage.setItem('ace_token',${JSON.stringify(result.token)});
       localStorage.setItem('ace_user',${JSON.stringify(JSON.stringify(result.user))});
-      window.location.replace('/');
+      // Only a link that created the account lands on the welcome. Someone signing back
+      // in should not be congratulated for existing.
+      window.location.replace(${JSON.stringify(result.isNewAccount ? '/?welcome=1' : '/')});
     </script></body></html>`);
 });
 

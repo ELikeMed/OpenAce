@@ -418,6 +418,10 @@ function App() {
             setShowAuth(false);
             setAuthNotice('');
             if (data?.user) setMe({ known: !!data.user.name, isAuthed: true, name: data.user.name, email: data.user.email });
+            // Chat owns the welcome overlay, so tell it rather than duplicating it here.
+            if (data?.isNewAccount) {
+              window.dispatchEvent(new CustomEvent('ace:new-account', { detail: { profile: data.user || {} } }));
+            }
             refreshMe();
           }}
         />
