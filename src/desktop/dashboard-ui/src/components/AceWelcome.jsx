@@ -138,22 +138,47 @@ export default function AceWelcome({ profile, onClose }) {
                 <stop offset="0%" stopColor="#EBD7AC" />
                 <stop offset="100%" stopColor={GOLD} />
               </linearGradient>
+              <linearGradient id="aceSuit" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#2B2E36" />
+                <stop offset="100%" stopColor="#1A1C21" />
+              </linearGradient>
+              {/* The jacket is clipped to the spade so it follows his silhouette exactly. */}
+              <clipPath id="aceBodyClip">
+                <path transform="translate(16,10) scale(7)" d="M12 2L11.3 2.9C10.2 4.4 5 11 4.2 13.5C3.6 15.3 4.1 16.8 5 17.8C5.9 18.8 7.3 19.2 8.6 18.7C9.6 18.3 10.4 17.4 10.9 16.3C10.5 18 9.8 19.5 8.5 21H15.5C14.2 19.5 13.5 18 13.1 16.3C13.6 17.4 14.4 18.3 15.4 18.7C16.7 19.2 18.1 18.8 19 17.8C19.9 16.8 20.4 15.3 19.8 13.5C19 11 13.8 4.4 12.7 2.9L12 2Z" />
+              </clipPath>
             </defs>
             <circle cx="100" cy="100" r="98" fill="url(#aceGlow)" />
 
-            <g className="ace-armL" fill="url(#aceBodyFill)">
-              <rect x="24" y="105" width="34" height="16" rx="8" />
-              <circle cx="26" cy="113" r="13" />
+            {/* Sleeve, then a white cuff, then the hand. Dark fabric alone vanished against
+                a dark backdrop — the cuff is what makes the arm read. */}
+            <g className="ace-armL">
+              <rect x="38" y="105" width="24" height="16" rx="8" fill="url(#aceSuit)" />
+              <rect x="34" y="104" width="8" height="18" rx="3" fill="#F0EDE8" />
+              <rect x="24" y="106" width="14" height="14" rx="7" fill="url(#aceBodyFill)" />
+              <circle cx="26" cy="113" r="13" fill="url(#aceBodyFill)" />
             </g>
-            <g className="ace-armR" fill="url(#aceBodyFill)">
-              <rect x="142" y="105" width="34" height="16" rx="8" />
-              <circle cx="174" cy="113" r="13" />
+            <g className="ace-armR">
+              <rect x="138" y="105" width="24" height="16" rx="8" fill="url(#aceSuit)" />
+              <rect x="158" y="104" width="8" height="18" rx="3" fill="#F0EDE8" />
+              <rect x="162" y="106" width="14" height="14" rx="7" fill="url(#aceBodyFill)" />
+              <circle cx="174" cy="113" r="13" fill="url(#aceBodyFill)" />
             </g>
 
             <g className="ace-body">
               <g transform="translate(16,10) scale(7)">
                 <path fill="url(#aceBodyFill)" d="M12 2L11.3 2.9C10.2 4.4 5 11 4.2 13.5C3.6 15.3 4.1 16.8 5 17.8C5.9 18.8 7.3 19.2 8.6 18.7C9.6 18.3 10.4 17.4 10.9 16.3C10.5 18 9.8 19.5 8.5 21H15.5C14.2 19.5 13.5 18 13.1 16.3C13.6 17.4 14.4 18.3 15.4 18.7C16.7 19.2 18.1 18.8 19 17.8C19.9 16.8 20.4 15.3 19.8 13.5C19 11 13.8 4.4 12.7 2.9L12 2Z" />
               </g>
+
+              <g clipPath="url(#aceBodyClip)">
+                <path d="M44 128 L100 128 L100 172 L38 172 Z" fill="url(#aceSuit)" />
+                <path d="M156 128 L100 128 L100 172 L162 172 Z" fill="url(#aceSuit)" />
+                <path d="M80 126 L100 147 L120 126 L120 172 L80 172 Z" fill="#F0EDE8" />
+                <path d="M80 126 L100 147 L93 126 Z" fill="url(#aceSuit)" opacity=".9" />
+                <path d="M120 126 L100 147 L107 126 Z" fill="url(#aceSuit)" opacity=".9" />
+                <path d="M96 144 L104 144 L107 152 L100 157 L93 152 Z" fill="#8E2F2A" />
+                <path d="M93 152 L107 152 L104 172 L100 176 L96 172 Z" fill="#A83A33" />
+              </g>
+
               <ellipse cx="70" cy="118" rx="8" ry="5" fill="#C0392B" opacity=".2" />
               <ellipse cx="130" cy="118" rx="8" ry="5" fill="#C0392B" opacity=".2" />
               <g className="ace-eyes">
@@ -162,8 +187,7 @@ export default function AceWelcome({ profile, onClose }) {
                 <ellipse cx="116" cy="100" rx="9.5" ry="11" fill="#14120F" />
                 <circle cx="119" cy="96" r="3.2" fill="#fff" />
               </g>
-              <path d="M84 118 Q100 134 116 118" stroke="#14120F" strokeWidth="5" fill="none" strokeLinecap="round" />
-              <path d="M88 121 Q100 130 112 121" fill="#8E3B34" opacity=".55" />
+              <path d="M84 118 Q100 132 116 118" stroke="#14120F" strokeWidth="5" fill="none" strokeLinecap="round" />
             </g>
           </svg>
         </Box>
