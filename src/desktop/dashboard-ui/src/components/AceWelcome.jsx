@@ -177,15 +177,26 @@ export default function AceWelcome({ profile, onClose }) {
                 <path d="M120 126 L100 147 L107 126 Z" fill="url(#aceSuit)" opacity=".9" />
                 <path d="M96 144 L104 144 L107 152 L100 157 L93 152 Z" fill="#8E2F2A" />
                 <path d="M93 152 L107 152 L104 172 L100 176 L96 172 Z" fill="#A83A33" />
+                {/* Pocket square, folded points showing above the breast pocket. */}
+                <path d="M66 152 L82 152 L80 144 L74 149 L68 143 Z" fill="#F0EDE8" />
               </g>
 
-              <ellipse cx="70" cy="118" rx="8" ry="5" fill="#C0392B" opacity=".2" />
-              <ellipse cx="130" cy="118" rx="8" ry="5" fill="#C0392B" opacity=".2" />
+              <ellipse cx="66" cy="120" rx="8" ry="5" fill="#C0392B" opacity=".2" />
+              <ellipse cx="134" cy="120" rx="8" ry="5" fill="#C0392B" opacity=".2" />
               <g className="ace-eyes">
                 <ellipse cx="84" cy="100" rx="9.5" ry="11" fill="#14120F" />
                 <circle cx="87" cy="96" r="3.2" fill="#fff" />
                 <ellipse cx="116" cy="100" rx="9.5" ry="11" fill="#14120F" />
                 <circle cx="119" cy="96" r="3.2" fill="#fff" />
+              </g>
+              {/* Glasses sit over the eyes but outside the blink group, so the lenses stay
+                  still while he blinks behind them. */}
+              <g fill="none" stroke="#14120F" strokeWidth="3.2" strokeLinecap="round">
+                <circle cx="84" cy="100" r="15" fill="#F0EDE8" fillOpacity=".10" />
+                <circle cx="116" cy="100" r="15" fill="#F0EDE8" fillOpacity=".10" />
+                <path d="M99 99 Q100 96 101 99" />
+                <path d="M69 96 L60 92" />
+                <path d="M131 96 L140 92" />
               </g>
               <path d="M84 118 Q100 132 116 118" stroke="#14120F" strokeWidth="5" fill="none" strokeLinecap="round" />
             </g>
@@ -196,25 +207,25 @@ export default function AceWelcome({ profile, onClose }) {
           fontSize: '0.72rem', letterSpacing: '0.22em', textTransform: 'uppercase',
           color: GOLD, fontWeight: 700, mb: 1.2,
         }}>
-          You&rsquo;re in
+          Account created
         </Typography>
 
         <Typography sx={{
           fontSize: { xs: '1.75rem', sm: '2rem' }, lineHeight: 1.15, fontWeight: 300,
           color: CREAM, letterSpacing: '-0.02em', mb: 1.2,
         }}>
-          {name ? <>Welcome, {name} —<br />you&rsquo;re an Ace</> : <>Welcome — you&rsquo;re an Ace</>}
+          {name ? <>Welcome, {name}.<br />You&rsquo;re an Ace.</> : <>You&rsquo;re an Ace.</>}
         </Typography>
 
         <Typography sx={{ fontSize: '0.92rem', color: '#A09A90', mb: 3, lineHeight: 1.6 }}>
-          Your account is live and everything from this conversation is saved. Nothing to set up.
+          Your account is live. Everything from this chat is saved.
         </Typography>
 
         <Box sx={{ display: 'grid', gap: 1, mb: 3.2, textAlign: 'left' }}>
           {[
-            'Your leads and pipeline, kept between visits',
-            'Sites, documents and procedures you can share',
-            'Ace picks up exactly where you left off',
+            'Your leads and pipeline stay put',
+            'Your sites, documents and procedures are yours',
+            'Ace remembers where you left off',
           ].map((line) => (
             <Box key={line} sx={{ display: 'flex', gap: 1.2, alignItems: 'flex-start' }}>
               <Box aria-hidden sx={{
