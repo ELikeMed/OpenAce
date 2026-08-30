@@ -2067,29 +2067,6 @@ function MessageBubble({ msg, msgIndex, onConfirmActions, onCancelActions, onQue
         </Box>
 
         {/* Tools used — friendly labels */}
-        {/* Token cost of this reply. Ollama reports exact counts, so this is measured
-            rather than estimated — and on the operator's own machine it is information
-            rather than a bill. */}
-        {msg.usage?.totalTokens > 0 && (
-          <Box sx={{
-            mt: 0.6, px: 0.5,
-            fontSize: '0.68rem',
-            color: BRAND.textMuted,
-            opacity: 0.65,
-            display: 'flex', gap: 0.75, flexWrap: 'wrap', alignItems: 'center',
-          }}>
-            <span>{msg.usage.totalTokens.toLocaleString()} tokens</span>
-            <span style={{ opacity: 0.5 }}>·</span>
-            <span>{msg.usage.promptTokens.toLocaleString()} in / {msg.usage.completionTokens.toLocaleString()} out</span>
-            {msg.usage.calls > 1 && (
-              <>
-                <span style={{ opacity: 0.5 }}>·</span>
-                <span>{msg.usage.calls} model calls</span>
-              </>
-            )}
-          </Box>
-        )}
-
         {msg.toolsUsed?.length > 0 && (
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.75, px: 0.5 }}>
             {/* Deduplicate and show friendly labels */}
