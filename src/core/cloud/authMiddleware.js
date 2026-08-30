@@ -7,6 +7,7 @@
  */
 
 import jwt from 'jsonwebtoken';
+import { ApiKeyService } from '../api/ApiKeyService.js';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { isCloudMode } from './SupabaseClient.js';
@@ -29,6 +30,21 @@ export function authMiddleware(req, res, next) {
   // Local mode — no auth
   if (!isCloudMode()) {
     req.userId = 'local';
+    return next();
+  }
+
+  // An API key is an alternative to the JWT for callers outside the app. It resolves to
+  // exactly one account, so everything downstream — leads, forms, procedures, documents —
+  // scopes to that owner through the same ownerId the browser session uses.
+  const presented = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+  if (presented.startsWith('ace_live_')) {
+    const record = ApiKeyService.verify(presented);
+    if (!record) {
+      return res.status(401).json({ success: false, error: 'Invalid or revoked API key' });
+    }
+    req.ownerId = record.userId;
+    req.isAuthed = true;
+    req.apiKey = record;
     return next();
   }
 

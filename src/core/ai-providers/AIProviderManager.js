@@ -5,6 +5,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { ApiKeyService } from '../api/ApiKeyService.js';
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import fs from 'fs/promises';
@@ -1011,6 +1012,7 @@ export class AIProviderManager {
 
     const choice = response.choices[0];
     console.log(`[Ollama] finish=${choice?.finish_reason} tool_calls=${(choice?.message?.tool_calls || []).length} content=${(choice?.message?.content || '').length}ch forced=${options.forceTool || 'no'}`);
+    this._noteUsage(model, response?.usage, options);
     const { text, functionCalls, toolCallBlocks } = this._parseOpenAIToolResponse(choice);
 
     const conversationHistory = [...ollamaMessages];
@@ -1089,6 +1091,8 @@ export class AIProviderManager {
       messages: allMessages,
       ...(options.maxTokens && { max_tokens: options.maxTokens }),
     });
+
+    this._noteUsage(config.model, response?.usage, options);
 
     return {
       content: response.choices[0].message.content,
@@ -1480,6 +1484,28 @@ CRITICAL RULES:
    * Returns the assigned provider if it's connected, otherwise falls back to activeProvider.
    * Task types: 'code', 'vision', 'research'
    */
+  /**
+   * Record what a call actually cost. The provider reports exact counts, so this is
+   * measured rather than estimated. Deliberately silent on failure — accounting must never
+   * be able to break a reply — and it records regardless of whether anyone is billed, since
+   * the operator's own usage is unmetered but still worth seeing.
+   */
+  _noteUsage(model, usage, options = {}) {
+    if (!usage) return;
+    // The usage tables live in the cloud database, which only exists in cloud mode.
+    if (process.env.OPENACE_CLOUD !== 'true') return;
+    try {
+      ApiKeyService.recordUsage({
+        userId: options.ownerId || null,
+        apiKeyId: options.apiKeyId || null,
+        model,
+        promptTokens: usage.prompt_tokens || 0,
+        completionTokens: usage.completion_tokens || 0,
+        source: options.apiKeyId ? 'api' : 'app',
+      });
+    } catch { /* never break a reply over accounting */ }
+  }
+
   getProviderForTask(taskType) {
     const routing = this.config.ai_providers?.task_routing || {};
     const assigned = routing[taskType];

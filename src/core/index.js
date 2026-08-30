@@ -977,7 +977,8 @@ this.log.info('Task queue processing started');
           mode: options.mode,
           // Whose data may this turn touch? Set by the API layer from the
           // authenticated request. Tools scope their reads/writes to it.
-          ownerId: options.ownerId || null
+          ownerId: options.ownerId || null,
+          apiKeyId: options.apiKeyId || null
         });
 
         // ── Handle markers from IntentRouter ──

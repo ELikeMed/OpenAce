@@ -142,6 +142,39 @@ function initSchema(db) {
       updated_at TEXT DEFAULT (datetime('now'))
     );
 
+    -- API keys for calling Ace from outside the app.
+    -- Only a hash is stored: a leaked database must not yield working keys. The prefix is
+    -- kept so a key can be recognised in a list without being recoverable.
+    -- unlimited marks the operator's own keys — their model on their machine, so those
+    -- calls are recorded for visibility but never metered or charged.
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      key_hash TEXT NOT NULL UNIQUE,
+      key_prefix TEXT NOT NULL,
+      unlimited INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      last_used_at TEXT,
+      revoked_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
+
+    -- Token usage, one row per model call. Ollama reports exact counts, so this is measured
+    -- rather than estimated, and it stands on its own whether or not anything bills from it.
+    CREATE TABLE IF NOT EXISTS token_usage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT,
+      api_key_id TEXT,
+      model TEXT,
+      prompt_tokens INTEGER DEFAULT 0,
+      completion_tokens INTEGER DEFAULT 0,
+      duration_ms INTEGER DEFAULT 0,
+      source TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_token_usage_user_day ON token_usage(user_id, created_at);
+
     -- Forms
     CREATE TABLE IF NOT EXISTS forms (
       id TEXT PRIMARY KEY,

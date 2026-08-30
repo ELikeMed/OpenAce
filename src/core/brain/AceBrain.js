@@ -601,7 +601,8 @@ That's it! Once connected, I can help you with research, email, social media, we
 
         const result = await this.unifiedAgent.process(message, history, {
           channelId, userName, source, trainingMode,
-          ownerId: context.ownerId || null
+          ownerId: context.ownerId || null,
+          apiKeyId: context.apiKeyId || null
         });
 
         if (result) {

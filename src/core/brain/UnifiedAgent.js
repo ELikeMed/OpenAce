@@ -2434,6 +2434,7 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
     // Whose data this turn may touch. Data tools scope to it in cloud mode so a
     // visitor's chat can never read or write the operator's leads, contacts or notes.
     this._ownerId = channelContext.ownerId || null;
+    this._apiKeyId = channelContext.apiKeyId || null;
 
     // Cloud users get a context-injected prompt built from THEIR data.
     // (This replaced a hardcoded 5-stage onboarding script keyed on message
@@ -2602,6 +2603,10 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
             systemPrompt,
             tools: selectedTools,
             forceTool,
+            // So the call can be attributed — usage counted against nobody is not usage
+            // anyone can act on.
+            ownerId: this._ownerId,
+            apiKeyId: this._apiKeyId || null,
           });
           break; // Success
         } catch (apiError) {

@@ -18,6 +18,7 @@
  */
 
 import fs from 'fs/promises';
+import { ApiKeyService } from '../api/ApiKeyService.js';
 import { existsSync } from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -705,7 +706,11 @@ export class ApiGateway {
         chatMessage = `[Studio Project: ${req.body.project}] ${chatMessage}`;
       }
 
-      const response = await this.ace.chat(chatMessage, { images, conversationId, ownerId: req.ownerId });
+      const response = await this.ace.chat(chatMessage, {
+        images, conversationId,
+        ownerId: req.ownerId,
+        apiKeyId: req.apiKey?.id || null,
+      });
 
       if (this.activityLogger) {
         const logContent = images.length > 0
@@ -3761,6 +3766,48 @@ export class ApiGateway {
 
   registerWorkloadRoutes() {
     // List all ingested sources + stats
+    // ── API keys & token usage ──
+    this.app.get('/api/keys', this.wrap(async (req, res) => {
+      if (!req.ownerId) return res.status(401).json({ success: false, error: 'Sign in first' });
+      res.json({ success: true, data: ApiKeyService.list(req.ownerId) });
+    }));
+
+    this.app.post('/api/keys', this.wrap(async (req, res) => {
+      if (!req.ownerId || !req.isAuthed) return res.status(401).json({ success: false, error: 'Sign in first' });
+
+      // Only the operator can mint an unmetered key. It is their model on their machine, so
+      // their own calls should not be billed — but a customer must not be able to grant
+      // themselves the same by passing a flag.
+      const isOperator = req.userEmail && ['openaceai@gmail.com', 'likemindedpro@gmail.com'].includes(req.userEmail);
+      const unlimited = isOperator && req.body?.unlimited !== false;
+
+      const created = ApiKeyService.create({
+        userId: req.ownerId,
+        name: req.body?.name,
+        unlimited,
+      });
+      res.json({
+        success: true,
+        data: created,
+        note: 'This key is shown once and cannot be retrieved again. Store it somewhere safe.',
+      });
+    }));
+
+    this.app.delete('/api/keys/:id', this.wrap(async (req, res) => {
+      if (!req.ownerId) return res.status(401).json({ success: false, error: 'Sign in first' });
+      const ok = ApiKeyService.revoke(req.ownerId, req.params.id);
+      res.json({ success: ok, error: ok ? undefined : 'Key not found' });
+    }));
+
+    this.app.get('/api/usage/tokens', this.wrap(async (req, res) => {
+      // '/api/usage' is allowlisted for the anonymous free-message counter, and this route
+      // sits under that prefix — so it needs its own check. An anonymous caller has an
+      // ownerId, so testing for one is not enough.
+      if (!req.ownerId || !req.isAuthed) return res.status(401).json({ success: false, error: 'Sign in first' });
+      const days = Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 30));
+      res.json({ success: true, data: ApiKeyService.usageSummary(req.ownerId, days) });
+    }));
+
     // ── Chat attachments ──
     // Reads a document the user attached to a message and returns its text, so it can be
     // put in front of Ace as part of the conversation. Deliberately separate from the
