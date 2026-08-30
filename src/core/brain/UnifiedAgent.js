@@ -22,9 +22,10 @@ const WORKLOAD_MIN_RELEVANCE = 0.03;
 // the first few; measured on a 36-question set, recall was 30/36 at 3, 31/36 at 5, and
 // 33/36 at 8. Eight buys most of the gain for roughly 1.8k tokens of context.
 const WORKLOAD_TOP_N = 8;
-// Character ceiling for the injected block. See the note at the injection site — this
-// exists to keep the whole prompt inside the model's context window.
-const WORKLOAD_CHAR_BUDGET = 4000;
+// Character ceiling for the injected block, sized to the model's context window. Raised
+// from 4000 when the model stopped being pinned to an 8192-token window it never needed —
+// the machine and the Ollama server both allowed far more.
+const WORKLOAD_CHAR_BUDGET = 9000;
 
 const PROJECT_ROOT = process.cwd();
 
@@ -1211,11 +1212,13 @@ When a request matches a tool, call the tool. Present ONLY what the tool returne
       return [{ functionDeclarations: filtered }];
     }
 
-    // A message carrying an attached document is a reading task. Offering the full tool
-    // schema alongside it overflowed the context window — the model returned nothing at all
-    // — and none of those tools were relevant anyway. Give the document the whole window.
+    // A message carrying an attached document is a reading task, and the tools that matter
+    // for one are few. This used to return nothing at all, because the full schema plus a
+    // document overflowed an 8192-token window; with a larger window a small set fits
+    // alongside the document, so Ace can act on what it just read.
     if (/\[Attached document:/i.test(message)) {
-      return [{ functionDeclarations: [] }];
+      const forReading = new Set(['save_note', 'create_document', 'create_form', 'save_leads']);
+      return [{ functionDeclarations: allTools.filter(t => forReading.has(t.name)) }];
     }
 
     // Tool group definitions: name → array of tool names

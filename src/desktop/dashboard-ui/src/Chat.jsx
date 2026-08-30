@@ -3362,7 +3362,7 @@ function Chat({ hideSidebar = false }) {
     // The model's context window is small, so a long document has to be trimmed rather than
     // sent whole — sending everything produced an empty reply. Say so plainly instead of
     // silently answering from a fraction of the file.
-    const PER_DOC_LIMIT = 6000;
+    const PER_DOC_LIMIT = 18000;
     const docContext = docsToSend
       .map(d => {
         const body = d.text.length > PER_DOC_LIMIT
