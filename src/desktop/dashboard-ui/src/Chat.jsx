@@ -13,6 +13,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import CloseIcon from '@mui/icons-material/Close';
 import DescriptionIcon from '@mui/icons-material/Description';
+import AceWelcome from './components/AceWelcome';
 import SchoolIcon from '@mui/icons-material/School';
 import StopCircleIcon from '@mui/icons-material/StopCircle';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
@@ -2267,6 +2268,7 @@ function Chat({ hideSidebar = false }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [attachedImages, setAttachedImages] = useState([]);
   const [attachedDocs, setAttachedDocs] = useState([]);
+  const [welcomeProfile, setWelcomeProfile] = useState(null); // shown once, when the account activates
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef(null);
   const [isTraining, setIsTraining] = useState(false);
@@ -3306,10 +3308,15 @@ function Chat({ hideSidebar = false }) {
               }
             }
             if (event.type === 'account_created') {
-              // Auto-save token — user is now logged in without knowing
               localStorage.setItem('ace_token', event.token);
               localStorage.setItem('ace_user', JSON.stringify(event.profile));
-              console.log('[Ace] Account auto-created for', event.profile?.email);
+              // Becoming a customer is the single most important moment in the product and
+              // it used to pass with nothing but a console line. Mark it, once — the flag
+              // is stored so a refresh does not replay the celebration.
+              if (!localStorage.getItem('ace_welcomed')) {
+                localStorage.setItem('ace_welcomed', '1');
+                setWelcomeProfile(event.profile || {});
+              }
             }
             if (event.type === 'profile_updated') {
               // Update stored profile
@@ -3635,6 +3642,9 @@ function Chat({ hideSidebar = false }) {
 
   return (
     <Box ref={chatContainerRef} sx={{ height: hideSidebar ? '100vh' : 'calc(100vh - 140px)', display: 'flex', flexDirection: 'row' }}>
+      {welcomeProfile && (
+        <AceWelcome profile={welcomeProfile} onClose={() => setWelcomeProfile(null)} />
+      )}
       {/* Conversation Sidebar — hidden when App-level Sidebar handles navigation */}
       {!hideSidebar && (
         <ConversationSidebar
