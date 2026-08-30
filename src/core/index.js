@@ -1047,6 +1047,9 @@ this.log.info('Task queue processing started');
             provider: brainResult.metadata?.provider,
             model: brainResult.metadata?.model,
             duration: brainResult.metadata?.duration,
+            // This object is rebuilt rather than spread, so anything the brain adds has to
+            // be listed here or it is silently dropped on the way to the client.
+            usage: brainResult.metadata?.usage || null,
             actionsExecuted: results.length,
             timestamp: new Date().toISOString()
           }

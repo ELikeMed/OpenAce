@@ -2435,6 +2435,7 @@ Ace: "Step 7: Click **'Publish'**. Let me generate the full procedure..."
     // visitor's chat can never read or write the operator's leads, contacts or notes.
     this._ownerId = channelContext.ownerId || null;
     this._apiKeyId = channelContext.apiKeyId || null;
+    this.aiManager?.resetTurnUsage?.();
 
     // Cloud users get a context-injected prompt built from THEIR data.
     // (This replaced a hardcoded 5-stage onboarding script keyed on message

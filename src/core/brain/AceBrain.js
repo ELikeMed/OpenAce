@@ -505,6 +505,10 @@ That's it! Once connected, I can help you with research, email, social media, we
       }
     }
 
+    // Reset here rather than inside the agent: a short message can answer without ever
+    // reaching it, and would otherwise report the previous turn's tokens.
+    this.aiManager?.resetTurnUsage?.();
+
     // Step 0: Record the incoming message
     this.addToConversation(channelId, 'user', message, { userName, source });
 
@@ -619,7 +623,11 @@ That's it! Once connected, I can help you with research, email, social media, we
             toolsUsed: result.toolsUsed || [],
             question: result.question || null,
             pendingActions: result.pendingActions || null,
-            metadata: { source: 'unified', duration: Date.now() - startTime }
+            metadata: {
+              source: 'unified',
+              duration: Date.now() - startTime,
+              usage: this.aiManager?.getTurnUsage?.() || null,
+            }
           };
         }
       } catch (unifiedErr) {
@@ -688,7 +696,8 @@ I'll be ready to help as soon as the limit resets!`;
         provider: aiResponse?.provider,
         model: aiResponse?.model,
         duration: Date.now() - startTime,
-        contextTokens: thoughtProcess.contextSize
+        contextTokens: thoughtProcess.contextSize,
+        usage: this.aiManager?.getTurnUsage?.() || null,
       }
     };
   }

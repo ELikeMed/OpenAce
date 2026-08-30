@@ -897,10 +897,10 @@ export class ApiGateway {
             break;
           case 'coo':
             res.write(`data: ${JSON.stringify({ type: 'thinking', content: '⚙️ COO Mode: Focusing on operations & efficiency...' })}\n\n`);
-            response = await this.ace.chat(message, { images, conversationId, ownerId: req.ownerId });
+            response = await this.ace.chat(message, { images, conversationId, ownerId: req.ownerId, apiKeyId: req.apiKey?.id || null });
             break;
           default:
-            response = await this.ace.chat(message, { images, conversationId, ownerId: req.ownerId });
+            response = await this.ace.chat(message, { images, conversationId, ownerId: req.ownerId, apiKeyId: req.apiKey?.id || null });
         }
         
         if (this.activityLogger && message) {

@@ -1492,6 +1492,16 @@ CRITICAL RULES:
    */
   _noteUsage(model, usage, options = {}) {
     if (!usage) return;
+
+    // Accumulate for the turn regardless of mode, so the count can be shown in the chat
+    // even on the desktop where the cloud usage tables do not exist. A turn can make
+    // several model calls — a tool loop is several — and the user cares about the total.
+    if (!this._turnUsage) this.resetTurnUsage();
+    this._turnUsage.calls += 1;
+    this._turnUsage.promptTokens += usage.prompt_tokens || 0;
+    this._turnUsage.completionTokens += usage.completion_tokens || 0;
+    this._turnUsage.model = model;
+
     // The usage tables live in the cloud database, which only exists in cloud mode.
     if (process.env.OPENACE_CLOUD !== 'true') return;
     try {
@@ -1504,6 +1514,15 @@ CRITICAL RULES:
         source: options.apiKeyId ? 'api' : 'app',
       });
     } catch { /* never break a reply over accounting */ }
+  }
+
+  resetTurnUsage() {
+    this._turnUsage = { calls: 0, promptTokens: 0, completionTokens: 0, model: null };
+  }
+
+  getTurnUsage() {
+    const u = this._turnUsage || { calls: 0, promptTokens: 0, completionTokens: 0, model: null };
+    return { ...u, totalTokens: u.promptTokens + u.completionTokens };
   }
 
   getProviderForTask(taskType) {
