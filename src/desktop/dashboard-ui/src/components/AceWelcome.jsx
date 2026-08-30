@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Box, Typography, Button } from '@mui/material';
-import AceSpadeIcon from './AceSpadeIcon';
 
 /**
  * The moment someone becomes an Ace.
@@ -109,31 +108,64 @@ export default function AceWelcome({ profile, onClose }) {
           },
         }}
       >
-        {/* The mark: a soft gold bloom behind it, then the spade settling into place. */}
-        <Box sx={{ position: 'relative', display: 'inline-grid', placeItems: 'center', mb: 2.2 }}>
-          <Box aria-hidden sx={{
-            position: 'absolute', width: 130, height: 130, borderRadius: '50%',
-            background: `radial-gradient(circle, ${GOLD}33 0%, transparent 68%)`,
-            animation: 'aceBloom 2.6s ease-in-out infinite',
-            '@keyframes aceBloom': {
-              '0%,100%': { transform: 'scale(1)', opacity: 0.75 },
-              '50%':     { transform: 'scale(1.16)', opacity: 1 },
-            },
-            '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
-          }} />
-          <AceSpadeIcon sx={{
-            position: 'relative',
-            fontSize: 62,
-            color: GOLD,
-            filter: `drop-shadow(0 6px 18px ${GOLD}55)`,
-            animation: 'aceMark .75s cubic-bezier(.2,1.4,.4,1) both',
-            '@keyframes aceMark': {
-              '0%':   { transform: 'scale(.3) rotate(-24deg)', opacity: 0 },
-              '60%':  { transform: 'scale(1.14) rotate(6deg)', opacity: 1 },
-              '100%': { transform: 'scale(1) rotate(0)', opacity: 1 },
-            },
-            '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
-          }} />
+        {/* Ace himself, clapping. Drawn in SVG from the brand mark so there is no asset to
+            ship or keep in sync — the spade is the body, with a face, arms and a bounce. */}
+        <Box sx={{
+          width: 190, height: 190, mx: 'auto', mb: 1,
+          '& .ace-body':  { animation: 'aceBob .95s ease-in-out infinite', transformOrigin: '100px 160px' },
+          '& .ace-armL':  { animation: 'aceClapL .46s ease-in-out infinite', transformOrigin: '52px 112px' },
+          '& .ace-armR':  { animation: 'aceClapR .46s ease-in-out infinite', transformOrigin: '148px 112px' },
+          '& .ace-eyes':  { animation: 'aceBlink 3.4s infinite', transformOrigin: '100px 100px' },
+          '@keyframes aceBob': {
+            '0%,100%': { transform: 'translateY(0) rotate(0deg)' },
+            '25%':     { transform: 'translateY(-9px) rotate(-2deg)' },
+            '75%':     { transform: 'translateY(-9px) rotate(2deg)' },
+          },
+          '@keyframes aceClapL': { '0%,100%': { transform: 'rotate(-26deg)' }, '50%': { transform: 'rotate(28deg)' } },
+          '@keyframes aceClapR': { '0%,100%': { transform: 'rotate(26deg)' },  '50%': { transform: 'rotate(-28deg)' } },
+          '@keyframes aceBlink': { '0%,93%,100%': { transform: 'scaleY(1)' }, '96%': { transform: 'scaleY(.08)' } },
+          '@media (prefers-reduced-motion: reduce)': {
+            '& .ace-body, & .ace-armL, & .ace-armR, & .ace-eyes': { animation: 'none' },
+          },
+        }}>
+          <svg viewBox="0 0 200 200" width="190" height="190" role="img" aria-label="Ace celebrating">
+            <defs>
+              <radialGradient id="aceGlow" cx="50%" cy="50%">
+                <stop offset="0%" stopColor={GOLD} stopOpacity=".28" />
+                <stop offset="72%" stopColor={GOLD} stopOpacity="0" />
+              </radialGradient>
+              <linearGradient id="aceBodyFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#EBD7AC" />
+                <stop offset="100%" stopColor={GOLD} />
+              </linearGradient>
+            </defs>
+            <circle cx="100" cy="100" r="98" fill="url(#aceGlow)" />
+
+            <g className="ace-armL" fill="url(#aceBodyFill)">
+              <rect x="24" y="105" width="34" height="16" rx="8" />
+              <circle cx="26" cy="113" r="13" />
+            </g>
+            <g className="ace-armR" fill="url(#aceBodyFill)">
+              <rect x="142" y="105" width="34" height="16" rx="8" />
+              <circle cx="174" cy="113" r="13" />
+            </g>
+
+            <g className="ace-body">
+              <g transform="translate(16,10) scale(7)">
+                <path fill="url(#aceBodyFill)" d="M12 2L11.3 2.9C10.2 4.4 5 11 4.2 13.5C3.6 15.3 4.1 16.8 5 17.8C5.9 18.8 7.3 19.2 8.6 18.7C9.6 18.3 10.4 17.4 10.9 16.3C10.5 18 9.8 19.5 8.5 21H15.5C14.2 19.5 13.5 18 13.1 16.3C13.6 17.4 14.4 18.3 15.4 18.7C16.7 19.2 18.1 18.8 19 17.8C19.9 16.8 20.4 15.3 19.8 13.5C19 11 13.8 4.4 12.7 2.9L12 2Z" />
+              </g>
+              <ellipse cx="70" cy="118" rx="8" ry="5" fill="#C0392B" opacity=".2" />
+              <ellipse cx="130" cy="118" rx="8" ry="5" fill="#C0392B" opacity=".2" />
+              <g className="ace-eyes">
+                <ellipse cx="84" cy="100" rx="9.5" ry="11" fill="#14120F" />
+                <circle cx="87" cy="96" r="3.2" fill="#fff" />
+                <ellipse cx="116" cy="100" rx="9.5" ry="11" fill="#14120F" />
+                <circle cx="119" cy="96" r="3.2" fill="#fff" />
+              </g>
+              <path d="M84 118 Q100 134 116 118" stroke="#14120F" strokeWidth="5" fill="none" strokeLinecap="round" />
+              <path d="M88 121 Q100 130 112 121" fill="#8E3B34" opacity=".55" />
+            </g>
+          </svg>
         </Box>
 
         <Typography sx={{
